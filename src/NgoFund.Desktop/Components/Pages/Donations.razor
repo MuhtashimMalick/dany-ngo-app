@@ -1,0 +1,335 @@
+@page "/donations"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("donations.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">Record Donation</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by donation no., donor, receipt ref…" />
+</FilterBar>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="DonationDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="donations-rows" EmptyText="No donations found."
+           EmptyDescription="Donations you record will appear here." EmptyIcon="donations">
+    <HeaderRow>
+        <th>Number</th>
+        <th>Donor</th>
+        <th>Fund</th>
+        <th class="num">Amount (PKR)</th>
+        <th>Date</th>
+        <th>Method</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="donation">
+        <tr>
+            <td>@donation.DonationNumber</td>
+            <td>@donation.DonorName</td>
+            <td>@donation.FundCategoryName</td>
+            <td class="num">@donation.Amount.ToString("N2")</td>
+            <td>@donation.DonationDate.ToString("yyyy-MM-dd")</td>
+            <td>@donation.PaymentMethod</td>
+            <td><StatusBadge Status="@donation.Status" /></td>
+            <td class="table-actions">
+                @if (AuthState.HasPermission("donations.void") && donation.Status != "Voided")
+                {
+                    <OverflowMenu>
+                        <button type="button" class="overflow-menu-item destructive" @onclick="() => OpenVoidModal(donation)">
+                            <Icon Name="trash" Size="15" />Void
+                        </button>
+                    </OverflowMenu>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showForm)
+{
+    <Modal Title="Record Donation" Size="md" OnClose="CloseForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <FormSection Title="Donor">
+            @if (_selectedDonor is not null)
+            {
+                <div class="flex items-center gap-3">
+                    <span>@_selectedDonor.FullName (@_selectedDonor.DonorCode)</span>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _selectedDonor = null">Change</button>
+                </div>
+            }
+            else
+            {
+                <Combobox TItem="DonorDto" SearchFunc="SearchDonorsAsync" OnSelect="SelectDonor"
+                          Placeholder="Search by name, donor code or CNIC" NoResultsText="No matching donors.">
+                    <OptionTemplate Context="donor">
+                        <span>@donor.FullName (@donor.DonorCode)</span>
+                    </OptionTemplate>
+                </Combobox>
+            }
+        </FormSection>
+
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="donation-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormSection Title="Allocation">
+                <div class="form-grid">
+                    <FormField Label="Fund Category" For="fundCategoryId">
+                        <InputSelect id="fundCategoryId" @bind-Value="_form.FundCategoryId">
+                            <option value="">-- Select a fund --</option>
+                            @foreach (var fund in _fundCategories)
+                            {
+                                <option value="@fund.Id">@fund.Name @(fund.IsZakat ? "(Zakat)" : "(General)")</option>
+                            }
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="Amount" For="amount" ValidationFor="() => _form.Amount">
+                        <InputNumber id="amount" @bind-Value="_form.Amount" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Details">
+                <div class="form-grid">
+                    <FormField Label="Donation Date" For="donationDate">
+                        <InputDate id="donationDate" @bind-Value="_form.DonationDate" />
+                    </FormField>
+
+                    <FormField Label="Payment Method" For="paymentMethod">
+                        <InputSelect id="paymentMethod" @bind-Value="_form.PaymentMethod">
+                            <option value="Cash">Cash</option>
+                            <option value="BankTransfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Online">Online</option>
+                            <option value="InKind">In Kind</option>
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="Receipt Reference" For="receiptReference" CssClass="span-2">
+                        <InputText id="receiptReference" @bind-Value="_form.ReceiptReference" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Notes">
+                <div class="form-grid">
+                    <FormField Label="Notes" For="notes" CssClass="span-2">
+                        <InputTextArea id="notes" @bind-Value="_form.Notes" />
+                    </FormField>
+                </div>
+            </FormSection>
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="submit" form="donation-form" class="btn btn-primary" disabled="@(_isSaving || _selectedDonor is null)">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_showVoidModal)
+{
+    <Modal Title="@($"Void Donation {_donationPendingVoid?.DonationNumber}")" Size="sm" OnClose="CloseVoidModal">
+        <ChildContent>
+        <p class="field-hint">This posts a reversing entry to the fund ledger — the original record is kept for audit purposes.</p>
+
+        @if (_voidError is not null)
+        {
+            <div class="alert alert-error">@_voidError</div>
+        }
+
+        <div class="field">
+            <label for="voidReason">Reason</label>
+            <textarea id="voidReason" @bind="_voidReason"></textarea>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseVoidModal">Cancel</button>
+            <button type="button" class="btn btn-destructive" disabled="@_isVoiding" @onclick="ConfirmVoidAsync">@(_isVoiding ? "Voiding..." : "Void Donation")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private const int PageSize = 25;
+    private PagedResult<DonationDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private IReadOnlyList<FundCategoryDto> _fundCategories = [];
+
+    private bool _showForm;
+    private bool _isSaving;
+    private string? _formError;
+    private DonationFormModel _form = new();
+    private DonorDto? _selectedDonor;
+
+    private bool _showVoidModal;
+    private bool _isVoiding;
+    private string? _voidError;
+    private string _voidReason = "";
+    private DonationDto? _donationPendingVoid;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#donations-rows tr");
+        }
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _errorMessage = null;
+        try
+        {
+            _page = await ApiClient.GetDonationsAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private async Task OpenCreateModal()
+    {
+        _form = new DonationFormModel { DonationDate = DateOnly.FromDateTime(DateTime.Today) };
+        _selectedDonor = null;
+        _formError = null;
+
+        try
+        {
+            _fundCategories = await ApiClient.GetFundCategoriesAsync();
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+            return;
+        }
+
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    // Server-side ILIKE search against name/code/CNIC, page size 20 — replaces the old client-side
+    // filter over a donor list capped at a silently-clamped pageSize of 100 (donor #101+ was
+    // literally unselectable). See ApiClient.GetDonorsAsync's activeOnly filter for the
+    // server-side "only active donors" behavior this relies on.
+    private async Task<IReadOnlyList<DonorDto>> SearchDonorsAsync(string query)
+    {
+        var result = await ApiClient.GetDonorsAsync(1, 20, query, activeOnly: true);
+        return result.Items;
+    }
+
+    private void SelectDonor(DonorDto donor) => _selectedDonor = donor;
+
+    private async Task SaveAsync()
+    {
+        if (_selectedDonor is null || _form.FundCategoryId is not { Length: > 0 })
+        {
+            _formError = "Please select a donor and a fund category.";
+            return;
+        }
+
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            var created = await ApiClient.CreateDonationAsync(new CreateDonationRequest(
+                _selectedDonor.Id, Guid.Parse(_form.FundCategoryId), _form.Amount, _form.DonationDate,
+                _form.PaymentMethod, _form.ReceiptReference, null, null, _form.Notes));
+
+            Toast.Success($"Donation recorded · {created.DonationNumber}");
+            _showForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void OpenVoidModal(DonationDto donation)
+    {
+        _donationPendingVoid = donation;
+        _voidReason = "";
+        _voidError = null;
+        _showVoidModal = true;
+    }
+
+    private void CloseVoidModal() => _showVoidModal = false;
+
+    private async Task ConfirmVoidAsync()
+    {
+        if (_donationPendingVoid is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_voidReason))
+        {
+            _voidError = "A reason is required.";
+            return;
+        }
+
+        _isVoiding = true;
+        _voidError = null;
+        try
+        {
+            await ApiClient.VoidDonationAsync(_donationPendingVoid.Id, _voidReason);
+            Toast.Success($"Donation voided · {_donationPendingVoid.DonationNumber}");
+            _showVoidModal = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _voidError = ex.Message;
+        }
+        finally
+        {
+            _isVoiding = false;
+        }
+    }
+
+    private class DonationFormModel
+    {
+        public string? FundCategoryId { get; set; }
+        [Range(0.01, double.MaxValue)] public decimal Amount { get; set; }
+        public DateOnly DonationDate { get; set; }
+        public string PaymentMethod { get; set; } = "Cash";
+        public string? ReceiptReference { get; set; }
+        public string? Notes { get; set; }
+    }
+}

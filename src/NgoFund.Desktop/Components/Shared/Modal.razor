@@ -1,0 +1,75 @@
+@* Single shared modal shell — replaces 13 hand-duplicated "card modal" blocks that were the root
+   cause of most of the visual/behavioral inconsistency the client flagged (off-screen content,
+   bare "&times;" close glyphs, ad hoc max-width/max-height per page). The parent still owns
+   *whether* the modal is mounted (wrap usage in an `@if (_showXxx)`), matching the existing
+   ConfirmDialog/DocumentViewer convention already used across the app — this component owns
+   everything about how it looks and behaves once mounted. *@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="modal-backdrop" @onclick="RequestCloseAsync">
+    <div class="modal modal-@Size" id="@_id" role="dialog" aria-modal="true" aria-labelledby="@_titleId" @onclick:stopPropagation="true">
+        <header class="modal-header">
+            <h3 id="@_titleId">@Title</h3>
+            <button type="button" class="modal-close" aria-label="Close dialog" @onclick="RequestCloseAsync">
+                <Icon Name="close" Size="18" />
+            </button>
+        </header>
+        <div class="modal-body">
+            @ChildContent
+        </div>
+        @if (Footer is not null)
+        {
+            <footer class="modal-footer">
+                @Footer
+            </footer>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    /// <summary>One of "sm" (420px), "md" (560px, default), "lg" (760px).</summary>
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
+
+    private readonly string _id = $"modal-{Guid.NewGuid():N}";
+    private string _titleId => $"{_id}-title";
+    private DotNetObjectReference<Modal>? _selfRef;
+    private bool _jsOpened;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ngoFundModal.open", _id, $"#{_id}", _selfRef);
+            _jsOpened = true;
+        }
+    }
+
+    /// <summary>Called from JS when Escape is pressed while this modal is the top of the stack.</summary>
+    [JSInvokable]
+    public async Task RequestCloseFromJsAsync() => await OnClose.InvokeAsync();
+
+    private async Task RequestCloseAsync() => await OnClose.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsOpened)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ngoFundModal.close", _id);
+            }
+            catch (JSDisconnectedException)
+            {
+                // App/page is tearing down — nothing left to clean up client-side.
+            }
+        }
+
+        _selfRef?.Dispose();
+    }
+}

@@ -1,0 +1,99 @@
+@page "/login"
+@layout AuthLayout
+@inject ApiClient ApiClient
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@* Two-pane layout: org identity on the left, a compact sign-in form on the right (collapses to a
+   single column under 860px — see .auth-split in app.css). Replaces the old single centered card
+   plus its icon-square "N" brand mark with a plain text wordmark. *@
+<div class="auth-split">
+    <div class="auth-split-brand">
+        <img src="images/logo-full.png" alt="DANY" class="auth-split-logo" />
+        <div class="auth-split-wordmark">NGO Fund Management</div>
+        <p class="auth-split-tagline">Donor funds, applicant assistance and disbursements — tracked in one place, end to end.</p>
+    </div>
+
+    <div class="auth-split-form">
+        <div class="auth-split-form-inner" id="login-form">
+            <h1>Sign in</h1>
+            <p class="subtitle">Enter your credentials to continue.</p>
+
+            @if (_errorMessage is not null)
+            {
+                <div class="alert alert-error">@_errorMessage</div>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="validation-summary" />
+
+                <FormField Label="Email" For="email" ValidationFor="() => _model.Email">
+                    <InputText id="email" @bind-Value="_model.Email" autocomplete="username" />
+                </FormField>
+
+                <FormField Label="Password" For="password" ValidationFor="() => _model.Password">
+                    <InputText id="password" type="password" @bind-Value="_model.Password" autocomplete="current-password" />
+                </FormField>
+
+                <a href="#" class="auth-forgot" @onclick:preventDefault="true" @onclick="() => _showForgotHint = true">Forgot password?</a>
+
+                <button type="submit" class="btn btn-primary btn-block" disabled="@_isSubmitting">
+                    @(_isSubmitting ? "Signing in..." : "Sign in")
+                </button>
+
+                @if (_showForgotHint)
+                {
+                    <p class="field-hint" style="margin-top: var(--space-3);">Password resets are handled by a system administrator — contact yours to have it reset.</p>
+                }
+            </EditForm>
+
+            <p class="auth-meta-line">NGO Fund Management &middot; v1.0</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly LoginModel _model = new();
+    private bool _isSubmitting;
+    private bool _showForgotHint;
+    private string? _errorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("ngoFundMotion.animateAuthCard", "#login-form");
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            await ApiClient.LoginAsync(_model.Email, _model.Password);
+            Navigation.NavigateTo("/", replace: true);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+            await JS.InvokeVoidAsync("ngoFundMotion.shake", "#login-form");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private class LoginModel
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+    }
+}

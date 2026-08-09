@@ -1,0 +1,24 @@
+@* One label-above-value pair inside a <DetailList>. Set IsNumeric for money/count values so they
+   render with tabular-nums (digits line up if several appear stacked). Set SpanFull for long
+   values (address, purpose) that shouldn't be squeezed into a half-width column. *@
+<div class="detail-item @(SpanFull ? "span-2" : "")">
+    <div class="detail-item-label">@Label</div>
+    <div class="detail-item-value @(IsNumeric ? "num" : "")">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            @(string.IsNullOrEmpty(Value) ? "-" : Value)
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public bool IsNumeric { get; set; }
+    [Parameter] public bool SpanFull { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

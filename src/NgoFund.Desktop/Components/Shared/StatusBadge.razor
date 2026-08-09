@@ -1,0 +1,8 @@
+<span class="badge badge-@CssKey">@(Text ?? Status)</span>
+
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = "";
+    [Parameter] public string? Text { get; set; }
+
+    private string CssKey => Status.Replace(" ", "").ToLowerInvariant();
+}

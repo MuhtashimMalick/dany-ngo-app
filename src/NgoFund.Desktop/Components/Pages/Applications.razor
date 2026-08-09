@@ -1,0 +1,738 @@
+@page "/applications"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<div class="page-header">
+    @if (AuthState.HasPermission("applications.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">New Application</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by app #, membership #, name, CNIC…" />
+    <div class="field filter-field-md mb-0">
+        <label for="statusFilter">Status</label>
+        <select id="statusFilter" @bind="_statusFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All statuses</option>
+            @foreach (var status in Statuses)
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-lg mb-0">
+        <label for="categoryFilter">Category</label>
+        <select id="categoryFilter" @bind="_categoryFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All categories</option>
+            @foreach (var category in _categories)
+            {
+                <option value="@category.Id">@category.Name</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-sm mb-0">
+        <label for="dateFromFilter">From</label>
+        <input id="dateFromFilter" type="date" @bind="_dateFromFilter" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+    <div class="field filter-field-sm mb-0">
+        <label for="dateToFilter">To</label>
+        <input id="dateToFilter" type="date" @bind="_dateToFilter" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+</FilterBar>
+
+<FilterChips Filters="ActiveFilters" OnClearAll="ClearAllFiltersAsync" />
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="ApplicationDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="applications-rows" EmptyText="No applications found."
+           EmptyDescription="Applications you record will appear here." EmptyIcon="applications">
+    <HeaderRow>
+        <th>App #</th>
+        <th>Applicant</th>
+        <th>Category</th>
+        <th>Fund</th>
+        <th class="num">Requested (PKR)</th>
+        <th class="num">Approved (PKR)</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="application">
+        <tr>
+            <td>@application.ApplicationNumber</td>
+            <td>@application.ApplicantName</td>
+            <td>@application.ApplicationCategoryName</td>
+            <td>@application.FundCategoryName</td>
+            <td class="num">@application.RequestedAmount.ToString("N2")</td>
+            <td class="num">@(application.ApprovedAmount?.ToString("N2") ?? "-")</td>
+            <td>@application.Priority</td>
+            <td><StatusBadge Status="@application.Status" /></td>
+            <td>@application.ApplicationDate.ToString("yyyy-MM-dd")</td>
+            <td class="table-actions">
+                <button class="icon-btn" aria-label="Manage application" @onclick="() => OpenManageModalAsync(application)"><Icon Name="eye" Size="16" /></button>
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showCreateForm)
+{
+    <Modal Title="New Application" Size="md" OnClose="CloseCreateForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <FormSection Title="Applicant">
+            @if (_selectedApplicant is not null)
+            {
+                <div class="flex items-center gap-3">
+                    <span>@_selectedApplicant.FullName (@_selectedApplicant.Cnic)</span>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _selectedApplicant = null">Change</button>
+                </div>
+            }
+            else
+            {
+                <Combobox TItem="ApplicantDto" SearchFunc="SearchApplicantsAsync" OnSelect="SelectApplicant"
+                          Placeholder="Search by name or CNIC" NoResultsText="No matching applicants.">
+                    <OptionTemplate Context="applicant">
+                        <span>@applicant.FullName (@applicant.Cnic)</span>
+                    </OptionTemplate>
+                </Combobox>
+            }
+        </FormSection>
+
+        <EditForm Model="_form" OnValidSubmit="CreateAsync" id="application-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormSection Title="Request">
+                <div class="form-grid">
+                    <FormField Label="Category" For="applicationCategoryId">
+                        <InputSelect id="applicationCategoryId" @bind-Value="_form.ApplicationCategoryId">
+                            <option value="">Select category</option>
+                            @foreach (var category in _categories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="Fund" For="fundCategoryId"
+                               Hint="@(SelectedCategoryIsZakatEligible ? null : "This category isn't Zakat-eligible — only the General fund is payable.")">
+                        <InputSelect id="fundCategoryId" @bind-Value="_form.FundCategoryId">
+                            <option value="">Select fund</option>
+                            @foreach (var fund in _funds)
+                            {
+                                <option value="@fund.Id" disabled="@(fund.IsZakat && !SelectedCategoryIsZakatEligible)">
+                                    @fund.Name@(fund.IsZakat && !SelectedCategoryIsZakatEligible ? " (not eligible)" : "")
+                                </option>
+                            }
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="Requested Amount" For="requestedAmount" ValidationFor="() => _form.RequestedAmount">
+                        <InputNumber id="requestedAmount" @bind-Value="_form.RequestedAmount" />
+                    </FormField>
+
+                    <FormField Label="Priority" For="priority">
+                        <InputSelect id="priority" @bind-Value="_form.Priority">
+                            <option value="Normal">Normal</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="Application Date" For="applicationDate">
+                        <InputDate id="applicationDate" @bind-Value="_form.ApplicationDate" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Purpose">
+                <div class="form-grid">
+                    <FormField Label="Purpose" For="purpose" CssClass="span-2">
+                        <InputTextArea id="purpose" @bind-Value="_form.Purpose" />
+                    </FormField>
+                </div>
+            </FormSection>
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseCreateForm">Cancel</button>
+            <button type="submit" form="application-form" class="btn btn-primary" disabled="@(_isSaving || _selectedApplicant is null)">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_managing is not null)
+{
+    <Modal Title="@($"{_managing.ApplicationNumber} — {_managing.ApplicantName}")" Size="lg" OnClose="CloseManageModal">
+        <ChildContent>
+        @if (_manageError is not null)
+        {
+            <div class="alert alert-error">@_manageError</div>
+        }
+
+        <DetailList>
+            <DetailItem Label="Category" Value="@_managing.ApplicationCategoryName" />
+            <DetailItem Label="Fund" Value="@_managing.FundCategoryName" />
+            <DetailItem Label="Requested" Value="@_managing.RequestedAmount.ToString("N2")" IsNumeric="true" />
+            <DetailItem Label="Approved" Value="@(_managing.ApprovedAmount?.ToString("N2") ?? "-")" IsNumeric="true" />
+            <DetailItem Label="Priority" Value="@_managing.Priority" />
+            <DetailItem Label="Status"><StatusBadge Status="@_managing.Status" /></DetailItem>
+            <DetailItem Label="Purpose" Value="@_managing.Purpose" SpanFull="true" />
+        </DetailList>
+
+        @if (AuthState.HasPermission("applications.review"))
+        {
+            <FormSection Title="Change Status">
+                @if (_managing.AllowedNextStatuses.Count == 0)
+                {
+                    <p class="field-hint">No further manual status changes are available right now.</p>
+                }
+                else
+                {
+                    <div class="flex gap-3 items-end flex-wrap">
+                        <div class="field w-200 mb-0">
+                            <label for="newStatus">New status</label>
+                            <select id="newStatus" @bind="_newStatus">
+                                @foreach (var status in _managing.AllowedNextStatuses)
+                                {
+                                    <option value="@status">@status</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field flex-1 min-w-200 mb-0">
+                            <label for="statusRemarks">Remarks</label>
+                            <input id="statusRemarks" @bind="_statusRemarks" />
+                        </div>
+                        @if (_newStatus == "Rejected")
+                        {
+                            <div class="field flex-1 min-w-200 mb-0">
+                                <label for="rejectionReason">Rejection reason</label>
+                                <input id="rejectionReason" @bind="_rejectionReason" />
+                            </div>
+                        }
+                        <button class="btn btn-primary" @onclick="ChangeStatusAsync" disabled="@_isChangingStatus">Apply</button>
+                    </div>
+                }
+            </FormSection>
+        }
+
+        @if (AuthState.HasPermission("payments.view"))
+        {
+            <FormSection Title="Payment History">
+                <div class="card payment-summary-card">
+                    <div>
+                        <div class="fund-balance-col-label">Approved</div>
+                        <div class="fund-balance-col-value">@(_managing.ApprovedAmount?.ToString("N2") ?? "-")</div>
+                    </div>
+                    <div>
+                        <div class="fund-balance-col-label">Paid</div>
+                        <div class="fund-balance-col-value">@PaymentsPaid.ToString("N2")</div>
+                    </div>
+                    <div>
+                        <div class="fund-balance-col-label">Remaining</div>
+                        <div class="fund-balance-col-value">@(PaymentsRemaining?.ToString("N2") ?? "-")</div>
+                    </div>
+                </div>
+
+                @if (_payments.Count == 0)
+                {
+                    <EmptyState Icon="payments" Title="No payments recorded yet" />
+                }
+                else
+                {
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Number</th>
+                                    <th>Date</th>
+                                    <th class="num">Amount (PKR)</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Void Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var payment in _payments.OrderByDescending(p => p.PaymentDate))
+                                {
+                                    <tr>
+                                        <td>@payment.PaymentNumber</td>
+                                        <td>@payment.PaymentDate.ToString("yyyy-MM-dd")</td>
+                                        <td class="num">@payment.Amount.ToString("N2")</td>
+                                        <td>@payment.PaymentMethod</td>
+                                        <td><StatusBadge Status="@payment.Status" /></td>
+                                        <td>@(payment.Status == "Voided" ? (payment.VoidReason ?? "-") : "-")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </FormSection>
+        }
+
+        <FormSection Title="History">
+            @if (_history.Count == 0)
+            {
+                <EmptyState Icon="applications" Title="No history yet" Description="Status changes will appear here." />
+            }
+            else
+            {
+                <ul class="timeline">
+                    @foreach (var entry in _history.OrderByDescending(h => h.ChangedAt))
+                    {
+                        <li class="timeline-item">
+                            <span class="timeline-marker"></span>
+                            <div class="timeline-content">
+                                <div class="timeline-transition">
+                                    @(entry.FromStatus is null ? "Created as" : $"{entry.FromStatus} →")
+                                    <StatusBadge Status="@entry.ToStatus" />
+                                </div>
+                                <div class="timeline-meta" title="@entry.ChangedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")">@RelativeTimeFormat.From(entry.ChangedAt)</div>
+                                @if (!string.IsNullOrEmpty(entry.Remarks))
+                                {
+                                    <div class="timeline-remarks">@entry.Remarks</div>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </FormSection>
+
+        <FormSection Title="Remarks">
+            @if (_remarks.Count == 0)
+            {
+                <EmptyState Icon="applications" Title="No remarks yet" />
+            }
+            else
+            {
+                <div>
+                    @foreach (var remark in _remarks.OrderByDescending(r => r.CreatedAt))
+                    {
+                        <div class="remark-item">
+                            <div class="remark-header">
+                                <span title="@remark.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")">@RelativeTimeFormat.From(remark.CreatedAt)</span>
+                                @if (remark.IsInternal)
+                                {
+                                    <span class="badge badge-internal">Internal</span>
+                                }
+                            </div>
+                            <div class="remark-body">@remark.Remark</div>
+                        </div>
+                    }
+                </div>
+            }
+            @if (AuthState.HasPermission("applications.edit"))
+            {
+                <div class="remark-composer">
+                    <div class="field flex-1 mb-0">
+                        <label for="newRemarkText">Add a remark</label>
+                        <input id="newRemarkText" @bind="_newRemark" />
+                    </div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" @bind="_newRemarkIsInternal" /> Internal
+                    </label>
+                    <button class="btn btn-secondary" @onclick="AddRemarkAsync">Add</button>
+                </div>
+            }
+        </FormSection>
+
+        <FormSection Title="Documents">
+            @if (_documents.Count == 0)
+            {
+                <EmptyState Icon="file" Title="No documents yet" />
+            }
+            else
+            {
+                <ul class="plain-list">
+                    @foreach (var document in _documents)
+                    {
+                        <li>
+                            <span class="flex-1">@document.FileName (@((document.SizeBytes / 1024.0).ToString("N0")) KB)</span>
+                            <button class="icon-btn" aria-label="View document" @onclick="() => _viewingDocument = document"><Icon Name="eye" Size="16" /></button>
+                            <button class="icon-btn" aria-label="Download document" @onclick="() => DownloadDocumentAsync(document)"><Icon Name="download" Size="16" /></button>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (AuthState.HasPermission("documents.upload"))
+            {
+                <FileDrop OnFileSelected="OnDocumentSelectedAsync" Hint="PDF, JPG or PNG up to 10 MB" />
+            }
+        </FormSection>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseManageModal">Close</button>
+        </Footer>
+    </Modal>
+}
+
+<DocumentViewer Document="_viewingDocument" OnClose="() => _viewingDocument = null" />
+
+@code {
+    private static readonly string[] Statuses =
+        ["Pending", "UnderReview", "Approved", "Rejected", "Paid", "PartiallyPaid", "OnHold"];
+
+    [SupplyParameterFromQuery(Name = "applicationId")]
+    [Parameter]
+    public Guid? ApplicationIdQuery { get; set; }
+
+    private const int PageSize = 25;
+    private PagedResult<ApplicationDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _categoryFilter = "";
+    private DateOnly? _dateFromFilter;
+    private DateOnly? _dateToFilter;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+    private Guid? _autoOpenedApplicationId;
+
+    private IReadOnlyList<ApplicationCategoryDto> _categories = [];
+    private IReadOnlyList<FundCategoryDto> _funds = [];
+
+    private bool _showCreateForm;
+    private bool _isSaving;
+    private string? _formError;
+    private ApplicationFormModel _form = new();
+    private ApplicantDto? _selectedApplicant;
+
+    private bool SelectedCategoryIsZakatEligible =>
+        _form.ApplicationCategoryId is null ||
+        (_categories.FirstOrDefault(c => c.Id == _form.ApplicationCategoryId)?.IsZakatEligible ?? true);
+
+    private ApplicationDto? _managing;
+    private string? _manageError;
+    private IReadOnlyList<ApplicationStatusHistoryDto> _history = [];
+    private IReadOnlyList<ApplicationRemarkDto> _remarks = [];
+    private IReadOnlyList<DocumentDto> _documents = [];
+    private IReadOnlyList<PaymentDto> _payments = [];
+    private DocumentDto? _viewingDocument;
+    private string _newStatus = "";
+    private string _statusRemarks = "";
+    private string _rejectionReason = "";
+    private bool _isChangingStatus;
+    private string _newRemark = "";
+    private bool _newRemarkIsInternal;
+
+    // "Paid" only counts Completed payments — a Voided payment isn't real money paid, but it still
+    // needs to be listed in the table below for audit visibility.
+    private decimal PaymentsPaid => _payments.Where(p => p.Status == "Completed").Sum(p => p.Amount);
+    private decimal? PaymentsRemaining => _managing?.ApprovedAmount is { } approved ? approved - PaymentsPaid : null;
+
+    private List<(string Label, Func<Task> Clear)> ActiveFilters
+    {
+        get
+        {
+            var filters = new List<(string, Func<Task>)>();
+            if (!string.IsNullOrEmpty(_statusFilter))
+            {
+                filters.Add(($"Status: {_statusFilter}", async () => { _statusFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (!string.IsNullOrEmpty(_categoryFilter))
+            {
+                var name = _categories.FirstOrDefault(c => c.Id.ToString() == _categoryFilter)?.Name ?? _categoryFilter;
+                filters.Add(($"Category: {name}", async () => { _categoryFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (_dateFromFilter is not null)
+            {
+                filters.Add(($"From: {_dateFromFilter:yyyy-MM-dd}", async () => { _dateFromFilter = null; await LoadPageAsync(1); }));
+            }
+            if (_dateToFilter is not null)
+            {
+                filters.Add(($"To: {_dateToFilter:yyyy-MM-dd}", async () => { _dateToFilter = null; await LoadPageAsync(1); }));
+            }
+            return filters;
+        }
+    }
+
+    private async Task ClearAllFiltersAsync()
+    {
+        _statusFilter = "";
+        _categoryFilter = "";
+        _dateFromFilter = null;
+        _dateToFilter = null;
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await ApiClient.GetApplicationCategoriesAsync();
+        _funds = await ApiClient.GetFundCategoriesAsync();
+        await LoadPageAsync(1);
+    }
+
+    // Deep-link from the Dashboard's "Needs Attention" list — GoToApplication navigates here with
+    // ?applicationId={id}, and this opens that specific application's manage modal on load instead
+    // of just landing on the unfiltered list (the fix for the dead-end links the client flagged).
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ApplicationIdQuery is { } id && id != _autoOpenedApplicationId)
+        {
+            _autoOpenedApplicationId = id;
+            try
+            {
+                var application = await ApiClient.GetApplicationAsync(id);
+                await OpenManageModalAsync(application);
+            }
+            catch (ApiException)
+            {
+                // Stale/invalid id in the URL — nothing to open, fall through to the plain list.
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#applications-rows tr");
+        }
+    }
+
+    private int _loadToken;
+
+    private async Task LoadPageAsync(int page)
+    {
+        var token = ++_loadToken;
+        _errorMessage = null;
+        try
+        {
+            var result = await ApiClient.GetApplicationsAsync(page, PageSize,
+                string.IsNullOrWhiteSpace(_search) ? null : _search,
+                string.IsNullOrWhiteSpace(_statusFilter) ? null : _statusFilter,
+                applicantId: null,
+                categoryId: string.IsNullOrWhiteSpace(_categoryFilter) ? null : Guid.Parse(_categoryFilter),
+                dateFrom: _dateFromFilter,
+                dateTo: _dateToFilter);
+            if (token != _loadToken)
+            {
+                return; // a newer load superseded this one; discard
+            }
+            _page = result;
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            if (token != _loadToken)
+            {
+                return;
+            }
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _form = new ApplicationFormModel { ApplicationDate = DateOnly.FromDateTime(DateTime.Today) };
+        _selectedApplicant = null;
+        _formError = null;
+        _showCreateForm = true;
+    }
+
+    private void CloseCreateForm() => _showCreateForm = false;
+
+    private async Task<IReadOnlyList<ApplicantDto>> SearchApplicantsAsync(string query)
+    {
+        var result = await ApiClient.GetApplicantsAsync(1, 10, query);
+        return result.Items;
+    }
+
+    private void SelectApplicant(ApplicantDto applicant) => _selectedApplicant = applicant;
+
+    private async Task CreateAsync()
+    {
+        if (_selectedApplicant is null || _form.ApplicationCategoryId is null || _form.FundCategoryId is null)
+        {
+            _formError = "Applicant, category, and fund are required.";
+            return;
+        }
+
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            var created = await ApiClient.CreateApplicationAsync(new CreateApplicationRequest(
+                _selectedApplicant.Id, _form.ApplicationCategoryId.Value, _form.FundCategoryId.Value,
+                _form.RequestedAmount, _form.Priority, _form.ApplicationDate, _form.Purpose));
+
+            Toast.Success($"Application created · {created.ApplicationNumber}");
+            _showCreateForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task OpenManageModalAsync(ApplicationDto application)
+    {
+        _managing = application;
+        _manageError = null;
+        _newStatus = application.AllowedNextStatuses.FirstOrDefault() ?? "";
+        _statusRemarks = "";
+        _rejectionReason = "";
+        _newRemark = "";
+        _newRemarkIsInternal = false;
+        await ReloadManageDataAsync();
+    }
+
+    private async Task ReloadManageDataAsync()
+    {
+        if (_managing is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _history = await ApiClient.GetApplicationHistoryAsync(_managing.Id);
+            _remarks = await ApiClient.GetApplicationRemarksAsync(_managing.Id);
+            _documents = await ApiClient.GetDocumentsForApplicationAsync(_managing.Id);
+            _payments = AuthState.HasPermission("payments.view")
+                ? (await ApiClient.GetPaymentsAsync(1, 100, applicationId: _managing.Id)).Items
+                : [];
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+    }
+
+    private void CloseManageModal()
+    {
+        _managing = null;
+
+        // Drop the query-string id so navigating away and back (or reopening a different row)
+        // doesn't try to re-open a modal that's already been closed.
+        if (ApplicationIdQuery is not null)
+        {
+            Navigation.NavigateTo("/applications", replace: true);
+        }
+    }
+
+    private async Task ChangeStatusAsync()
+    {
+        if (_managing is null || string.IsNullOrWhiteSpace(_newStatus))
+        {
+            return;
+        }
+
+        _isChangingStatus = true;
+        _manageError = null;
+        try
+        {
+            await ApiClient.ChangeApplicationStatusAsync(_managing.Id, _newStatus,
+                string.IsNullOrWhiteSpace(_statusRemarks) ? null : _statusRemarks,
+                string.IsNullOrWhiteSpace(_rejectionReason) ? null : _rejectionReason);
+
+            _managing = await ApiClient.GetApplicationAsync(_managing.Id);
+            _newStatus = _managing.AllowedNextStatuses.FirstOrDefault() ?? "";
+            Toast.Success($"Status updated · {_managing.ApplicationNumber}");
+            await ReloadManageDataAsync();
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+        finally
+        {
+            _isChangingStatus = false;
+        }
+    }
+
+    private async Task AddRemarkAsync()
+    {
+        if (_managing is null || string.IsNullOrWhiteSpace(_newRemark))
+        {
+            return;
+        }
+
+        try
+        {
+            await ApiClient.AddApplicationRemarkAsync(_managing.Id, _newRemark, _newRemarkIsInternal);
+            _newRemark = "";
+            _newRemarkIsInternal = false;
+            await ReloadManageDataAsync();
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+    }
+
+    private async Task OnDocumentSelectedAsync(IBrowserFile file)
+    {
+        if (_managing is null)
+        {
+            return;
+        }
+
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+
+            await ApiClient.UploadDocumentAsync(memory.ToArray(), file.Name, file.ContentType, "SupportingDocument",
+                applicationId: _managing.Id);
+            Toast.Success($"Document uploaded · {file.Name}");
+            await ReloadManageDataAsync();
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+    }
+
+    private async Task DownloadDocumentAsync(DocumentDto document)
+    {
+        try
+        {
+            var (bytes, contentType) = await ApiClient.DownloadDocumentAsync(document.Id);
+            await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(bytes), document.FileName, contentType);
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+    }
+
+    private class ApplicationFormModel
+    {
+        public Guid? ApplicationCategoryId { get; set; }
+        public Guid? FundCategoryId { get; set; }
+        [Range(0.01, double.MaxValue)] public decimal RequestedAmount { get; set; }
+        public string Priority { get; set; } = "Normal";
+        public DateOnly ApplicationDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string? Purpose { get; set; }
+    }
+}

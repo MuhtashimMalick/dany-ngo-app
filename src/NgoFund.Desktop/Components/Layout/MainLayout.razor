@@ -1,0 +1,219 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthState AuthState
+@inject ApiClient ApiClient
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<MainLayout> Logger
+
+<div class="app-shell">
+    <nav class="sidebar @(_sidebarCollapsed ? "collapsed" : "")" id="sidebar-nav">
+        <div class="sidebar-header">
+            <div class="sidebar-brand" title="NGO Fund Management">
+                <img src="images/logo-icon.png" alt="" class="sidebar-brand-mark" />
+                <span class="sidebar-brand-text">NGO Fund Management</span>
+            </div>
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle-btn" @onclick="ToggleSidebarAsync"
+                    aria-expanded="@(!_sidebarCollapsed)" aria-controls="sidebar-nav"
+                    aria-label="@(_sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar")"
+                    title="@(_sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar")">
+                <Icon Name="chevron-down" Size="16" CssClass="sidebar-toggle-icon" />
+            </button>
+        </div>
+
+        <div class="nav-group-label">Overview</div>
+        <NavLink class="nav-item" href="" Match="NavLinkMatch.All" title="Dashboard"><Icon Name="dashboard" CssClass="nav-icon" /><span class="nav-label">Dashboard</span></NavLink>
+
+        @if (AuthState.HasPermission("fundcategories.view") || AuthState.HasPermission("donors.view") || AuthState.HasPermission("donations.view"))
+        {
+            <div class="nav-group-label">Fundraising</div>
+            @if (AuthState.HasPermission("fundcategories.view"))
+            {
+                <NavLink class="nav-item" href="funds" title="Funds"><Icon Name="funds" CssClass="nav-icon" /><span class="nav-label">Funds</span></NavLink>
+            }
+            @if (AuthState.HasPermission("donors.view"))
+            {
+                <NavLink class="nav-item" href="donors" title="Donors"><Icon Name="donors" CssClass="nav-icon" /><span class="nav-label">Donors</span></NavLink>
+            }
+            @if (AuthState.HasPermission("donations.view"))
+            {
+                <NavLink class="nav-item" href="donations" title="Donations"><Icon Name="donations" CssClass="nav-icon" /><span class="nav-label">Donations</span></NavLink>
+            }
+        }
+
+        @if (AuthState.HasPermission("applicants.view") || AuthState.HasPermission("applications.view") || AuthState.HasPermission("payments.view"))
+        {
+            <div class="nav-group-label">Assistance</div>
+            @if (AuthState.HasPermission("applicants.view"))
+            {
+                <NavLink class="nav-item" href="applicants" title="Applicants"><Icon Name="applicants" CssClass="nav-icon" /><span class="nav-label">Applicants</span></NavLink>
+            }
+            @if (AuthState.HasPermission("applications.view"))
+            {
+                <NavLink class="nav-item" href="applications" title="Applications"><Icon Name="applications" CssClass="nav-icon" /><span class="nav-label">Applications</span></NavLink>
+            }
+            @if (AuthState.HasPermission("payments.view"))
+            {
+                <NavLink class="nav-item" href="payments" title="Payments"><Icon Name="payments" CssClass="nav-icon" /><span class="nav-label">Payments</span></NavLink>
+            }
+        }
+
+        @if (AuthState.HasPermission("reports.view") || AuthState.HasPermission("users.view") || AuthState.HasPermission("auditlogs.view") || AuthState.HasPermission("settings.view"))
+        {
+            <div class="nav-group-label">Administration</div>
+            @if (AuthState.HasPermission("reports.view"))
+            {
+                <NavLink class="nav-item" href="reports" title="Reports"><Icon Name="reports" CssClass="nav-icon" /><span class="nav-label">Reports</span></NavLink>
+            }
+            @if (AuthState.HasPermission("users.view"))
+            {
+                <NavLink class="nav-item" href="users" title="Users"><Icon Name="users" CssClass="nav-icon" /><span class="nav-label">Users</span></NavLink>
+            }
+            @if (AuthState.HasPermission("auditlogs.view"))
+            {
+                <NavLink class="nav-item" href="audit-logs" title="Audit Log"><Icon Name="audit" CssClass="nav-icon" /><span class="nav-label">Audit Log</span></NavLink>
+            }
+            @if (AuthState.HasPermission("settings.view"))
+            {
+                <NavLink class="nav-item" href="settings" title="Settings"><Icon Name="settings" CssClass="nav-icon" /><span class="nav-label">Settings</span></NavLink>
+            }
+        }
+    </nav>
+
+    <div class="main-content">
+        <header class="topbar">
+            <h1 class="topbar-title">@CurrentPageTitle</h1>
+            <div class="topbar-actions">
+                <SectionOutlet SectionName="page-actions" />
+            </div>
+            <div class="user-menu">
+                <span class="user-avatar">@UserInitial</span>
+                <span>@AuthState.CurrentUser?.FullName</span>
+                <button class="btn btn-secondary" @onclick="LogoutAsync"><Icon Name="logout" Size="16" />Log out</button>
+            </div>
+        </header>
+        <main class="page-content" id="page-content-root">
+            <ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="exception">
+                    @{ LogPageError(exception); }
+                    <div class="card" style="padding: var(--space-5); max-width: 640px;">
+                        <h3>Something went wrong on this page</h3>
+                        <p class="field-hint">@exception.Message</p>
+                        <button class="btn btn-primary" @onclick="RecoverFromError">Try again</button>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+    <Toast />
+</div>
+
+@code {
+    private static readonly Dictionary<string, string> PageTitles = new()
+    {
+        [""] = "Dashboard",
+        ["funds"] = "Funds",
+        ["donors"] = "Donors",
+        ["donations"] = "Donations",
+        ["applicants"] = "Applicants",
+        ["applications"] = "Applications",
+        ["payments"] = "Payments",
+        ["reports"] = "Reports",
+        ["users"] = "Users",
+        ["audit-logs"] = "Audit Log",
+        ["settings"] = "Settings",
+    };
+
+    private const string SidebarCollapsedKey = "ngofund.sidebar.collapsed";
+
+    private ErrorBoundary? _errorBoundary;
+    private bool _sidebarCollapsed;
+
+    private string UserInitial => string.IsNullOrEmpty(AuthState.CurrentUser?.FullName) ? "?" : AuthState.CurrentUser.FullName[..1].ToUpperInvariant();
+
+    private string CurrentPageTitle
+    {
+        get
+        {
+            var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/');
+            return PageTitles.TryGetValue(path, out var title) ? title : "NgoFund";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        AuthState.Changed += StateHasChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        EnforceAuthGate();
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ngoFundMotion.animatePageContent", "#page-content-root");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Navigating during app shutdown — nothing to animate.
+        }
+    }
+
+    private void LogPageError(Exception exception) => Logger.LogError(exception, "Unhandled exception rendering page content");
+
+    private void RecoverFromError() => _errorBoundary?.Recover();
+
+    protected override void OnParametersSet() => EnforceAuthGate();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var stored = await JS.InvokeAsync<string?>("ngoFundPrefs.get", SidebarCollapsedKey);
+            if (stored == "true")
+            {
+                _sidebarCollapsed = true;
+                StateHasChanged();
+            }
+
+            await JS.InvokeVoidAsync("ngoFundMotion.animateSidebarToggle", "#sidebar-toggle-btn .sidebar-toggle-icon", _sidebarCollapsed, true);
+            await JS.InvokeVoidAsync("ngoFundMotion.animateSidebarNav", "#sidebar-nav .nav-item");
+        }
+    }
+
+    private async Task ToggleSidebarAsync()
+    {
+        _sidebarCollapsed = !_sidebarCollapsed;
+        await JS.InvokeVoidAsync("ngoFundPrefs.set", SidebarCollapsedKey, _sidebarCollapsed ? "true" : "false");
+        await JS.InvokeVoidAsync("ngoFundMotion.animateSidebarToggle", "#sidebar-toggle-btn .sidebar-toggle-icon", _sidebarCollapsed, false);
+    }
+
+    private void EnforceAuthGate()
+    {
+        if (!AuthState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        if (AuthState.CurrentUser!.MustChangePassword)
+        {
+            Navigation.NavigateTo("/change-password", replace: true);
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        await ApiClient.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose()
+    {
+        AuthState.Changed -= StateHasChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

@@ -1,0 +1,197 @@
+@* Debounced typeahead — replaces the hand-rolled inline-styled "search box + card of results"
+   pattern duplicated in Payments.razor and Applications.razor. Purely a search-and-pick widget:
+   once OnSelect fires the caller is expected to clear/hide it and show the picked item itself
+   (matching how both call sites already display the current selection), so this component never
+   tracks "currently selected" state of its own. Intentionally placed outside any <EditForm> at
+   both call sites, so Enter's default browser action (form submit) never fires here.
+
+   The results menu is positioned via the shared ngoFundOverlay JS helper (position: fixed,
+   stretched to the input's width) rather than CSS position:absolute — inside a modal, an
+   absolutely-positioned menu can get clipped by .modal-body's own overflow-y:auto once the
+   combobox sits near the bottom of a scrollable form. See interop.js's ngoFundOverlay comment. *@
+@inject IJSRuntime JS
+@typeparam TItem
+
+<div class="combobox">
+    <div class="combobox-input-wrap" @ref="_triggerRef">
+        <Icon Name="search" Size="16" CssClass="combobox-search-icon" />
+        <input class="combobox-input" placeholder="@Placeholder" value="@_query" disabled="@Disabled"
+               @oninput="OnInputAsync" @onfocus="OnFocus" @onkeydown="OnKeyDownAsync" />
+        @if (_query.Length > 0)
+        {
+            <button type="button" class="combobox-clear" aria-label="Clear search" @onclick="ClearAsync">
+                <Icon Name="close" Size="14" />
+            </button>
+        }
+    </div>
+
+    @if (_isOpen)
+    {
+        <div class="combobox-menu" role="listbox" @ref="_panelRef">
+            @if (_isLoading)
+            {
+                <div class="combobox-status">Searching…</div>
+            }
+            else if (_options.Count == 0)
+            {
+                <div class="combobox-status">@NoResultsText</div>
+            }
+            else
+            {
+                @for (var i = 0; i < _options.Count; i++)
+                {
+                    var index = i;
+                    var option = _options[index];
+                    var disabledReason = OptionDisabledReason?.Invoke(option);
+                    <div class="combobox-option @(index == _highlightedIndex ? "highlighted" : "") @(disabledReason is not null ? "combobox-option-disabled" : "")"
+                         role="option" aria-selected="@(index == _highlightedIndex)"
+                         @onmouseenter="() => _highlightedIndex = index"
+                         @onclick="() => SelectAsync(option, disabledReason)">
+                        <span class="combobox-option-label">@OptionTemplate(option)</span>
+                        @if (disabledReason is not null)
+                        {
+                            <span class="combobox-option-reason">@disabledReason</span>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Func<string, Task<IReadOnlyList<TItem>>> SearchFunc { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> OptionTemplate { get; set; } = null!;
+    [Parameter, EditorRequired] public EventCallback<TItem> OnSelect { get; set; }
+    /// <summary>Return a non-null reason to render an option as disabled-with-explanation (e.g. "not payable").</summary>
+    [Parameter] public Func<TItem, string?>? OptionDisabledReason { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search…";
+    [Parameter] public string NoResultsText { get; set; } = "No results found.";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public int DebounceMs { get; set; } = 300;
+    [Parameter] public int MinChars { get; set; } = 1;
+
+    private string _query = "";
+    private bool _isOpen;
+    private bool _isLoading;
+    private IReadOnlyList<TItem> _options = [];
+    private int _highlightedIndex = -1;
+    private CancellationTokenSource? _debounceCts;
+    private ElementReference _triggerRef;
+    private ElementReference _panelRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Reposition on every render while open, not just once — the panel's height changes as
+        // results load in (spinner -> list), which would otherwise leave it anchored to a stale
+        // rect until the next keystroke.
+        if (_isOpen)
+        {
+            await JS.InvokeVoidAsync("ngoFundOverlay.show", _triggerRef, _panelRef, new { stretch = true });
+        }
+    }
+
+    private async Task ClosePanelAsync()
+    {
+        if (_isOpen)
+        {
+            await JS.InvokeVoidAsync("ngoFundOverlay.hide", _panelRef);
+        }
+
+        _isOpen = false;
+    }
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        _highlightedIndex = -1;
+
+        _debounceCts?.Cancel();
+
+        if (_query.Length < MinChars)
+        {
+            await ClosePanelAsync();
+            _options = [];
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+
+        _isOpen = true;
+        _isLoading = true;
+
+        try
+        {
+            await Task.Delay(DebounceMs, cts.Token);
+            var results = await SearchFunc(_query);
+
+            if (!cts.IsCancellationRequested)
+            {
+                _options = results;
+                _isLoading = false;
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer keystroke — its own call is already in flight.
+        }
+    }
+
+    private void OnFocus()
+    {
+        if (_options.Count > 0)
+        {
+            _isOpen = true;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _query = "";
+        _options = [];
+        await ClosePanelAsync();
+        _debounceCts?.Cancel();
+    }
+
+    private async Task SelectAsync(TItem option, string? disabledReason)
+    {
+        if (disabledReason is not null)
+        {
+            return;
+        }
+
+        _options = [];
+        _query = "";
+        await ClosePanelAsync();
+        await OnSelect.InvokeAsync(option);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (!_isOpen || _options.Count == 0)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _highlightedIndex = Math.Min(_highlightedIndex + 1, _options.Count - 1);
+                break;
+            case "ArrowUp":
+                _highlightedIndex = Math.Max(_highlightedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (_highlightedIndex >= 0 && _highlightedIndex < _options.Count)
+                {
+                    var option = _options[_highlightedIndex];
+                    await SelectAsync(option, OptionDisabledReason?.Invoke(option));
+                }
+                break;
+            case "Escape":
+                await ClosePanelAsync();
+                break;
+        }
+    }
+}

@@ -1,0 +1,54 @@
+@* Mounted once in MainLayout. Renders whatever ToastService.Items currently holds; pages never
+   touch the DOM directly, they just call ToastService.Success(...)/Error(...) after a
+   create/update/void/status-change action completes. The inline `.alert` block on each page stays
+   reserved for form-level validation/API failures — this is purely the fire-and-forget
+   confirmation layer. *@
+@implements IDisposable
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="toast-stack" aria-live="polite" aria-atomic="true">
+    @foreach (var toast in ToastService.Items)
+    {
+        <div class="toast toast-@(toast.Kind == ToastKind.Success ? "success" : "error")" id="@ElementId(toast.Id)" role="status">
+            <Icon Name="@(toast.Kind == ToastKind.Success ? "check-circle" : "alert-circle")" Size="18" CssClass="toast-icon" />
+            <span class="toast-text">@toast.Text</span>
+            <button type="button" class="toast-dismiss" aria-label="Dismiss notification" @onclick="() => ToastService.Dismiss(toast.Id)">
+                <Icon Name="close" Size="14" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly HashSet<Guid> _animated = [];
+
+    protected override void OnInitialized() => ToastService.Changed += OnChanged;
+
+    private async void OnChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component/circuit is already gone — nothing to update.
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        foreach (var toast in ToastService.Items)
+        {
+            if (_animated.Add(toast.Id))
+            {
+                await JS.InvokeVoidAsync("ngoFundToast.enter", $"#{ElementId(toast.Id)}");
+            }
+        }
+    }
+
+    private static string ElementId(Guid id) => $"toast-{id:N}";
+
+    public void Dispose() => ToastService.Changed -= OnChanged;
+}

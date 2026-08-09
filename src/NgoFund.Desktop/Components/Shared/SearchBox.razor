@@ -1,0 +1,53 @@
+@* Debounced search field with a leading icon and trailing clear button — replaces the
+   "type then press Enter" input duplicated across Donors/Applicants/Donations/Payments/Users/
+   Applications. Repeats 6x, so per 's DRY rule this belongs in Components/Shared, not
+   copy-pasted per page. *@
+<div class="search-field">
+    <Icon Name="search" Size="16" CssClass="search-icon" />
+    <input placeholder="@Placeholder" aria-label="@Placeholder" value="@Value" @oninput="OnInputAsync" />
+    @if (!string.IsNullOrEmpty(Value))
+    {
+        <button type="button" class="search-clear" aria-label="Clear search" @onclick="ClearAsync">
+            <Icon Name="close" Size="14" />
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>Fired ~DebounceMs after the user stops typing, and immediately on Clear.</summary>
+    [Parameter] public EventCallback OnSearch { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search…";
+    [Parameter] public int DebounceMs { get; set; } = 350;
+
+    private CancellationTokenSource? _debounceCts;
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? "";
+        await ValueChanged.InvokeAsync(Value);
+
+        _debounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+
+        try
+        {
+            await Task.Delay(DebounceMs, cts.Token);
+            await OnSearch.InvokeAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer keystroke.
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        _debounceCts?.Cancel();
+        Value = "";
+        await ValueChanged.InvokeAsync(Value);
+        await OnSearch.InvokeAsync();
+    }
+}

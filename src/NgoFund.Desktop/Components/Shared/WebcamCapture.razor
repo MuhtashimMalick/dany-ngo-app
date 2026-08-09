@@ -1,0 +1,113 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="webcam-capture">
+    @if (_capturedDataUrl is not null)
+    {
+        <img class="webcam-preview" src="@_capturedDataUrl" alt="Captured photo" />
+        <div class="webcam-actions">
+            <button type="button" class="btn btn-secondary" @onclick="RetakeAsync">Retake</button>
+        </div>
+    }
+    else
+    {
+        <div class="webcam-frame">
+            <video id="@_videoElementId" class="webcam-video" muted playsinline style="display:@(_isStreaming ? "block" : "none")"></video>
+            @if (!_isStreaming)
+            {
+                <div class="webcam-placeholder">No camera preview</div>
+            }
+        </div>
+        <canvas id="@_canvasElementId" style="display:none"></canvas>
+        <div class="webcam-actions">
+            @if (!_isStreaming)
+            {
+                <button type="button" class="btn btn-secondary" @onclick="StartAsync">Start Camera</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-primary" @onclick="CaptureAsync">Capture Photo</button>
+            }
+        </div>
+        @if (_errorMessage is not null)
+        {
+            <span class="field-error">@_errorMessage</span>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<byte[]> OnCaptured { get; set; }
+
+    private readonly string _videoElementId = $"webcam-video-{Guid.NewGuid():N}";
+    private readonly string _canvasElementId = $"webcam-canvas-{Guid.NewGuid():N}";
+    private bool _isStreaming;
+    private string? _capturedDataUrl;
+    private string? _errorMessage;
+
+    private async Task StartAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            await JS.InvokeVoidAsync("ngoFundWebcam.start", _videoElementId);
+            _isStreaming = true;
+        }
+        catch (JSException)
+        {
+            _errorMessage = "Could not access the camera. Check permissions and try again.";
+        }
+    }
+
+    private async Task CaptureAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            var dataUrl = await JS.InvokeAsync<string>("ngoFundWebcam.capture", _videoElementId, _canvasElementId);
+            var commaIndex = dataUrl.IndexOf(',');
+            if (commaIndex < 0)
+            {
+                throw new FormatException("Captured frame was not a valid data URL.");
+            }
+
+            var bytes = Convert.FromBase64String(dataUrl[(commaIndex + 1)..]);
+
+            await JS.InvokeVoidAsync("ngoFundWebcam.stop");
+            _isStreaming = false;
+            _capturedDataUrl = dataUrl;
+
+            await OnCaptured.InvokeAsync(bytes);
+        }
+        catch (Exception ex) when (ex is JSException or FormatException)
+        {
+            // No ErrorBoundary above this component — an uncaught exception here would freeze
+            // the whole app, not just the webcam control.
+            _errorMessage = "Could not capture a photo. Try again.";
+        }
+    }
+
+    private async Task RetakeAsync()
+    {
+        _capturedDataUrl = null;
+        await StartAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_isStreaming)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("ngoFundWebcam.stop");
+        }
+        catch (JSDisconnectedException)
+        {
+            // The WebView/circuit is already tearing down (e.g. app closing) — nothing to clean
+            // up JS-side at that point, and this must not throw during component disposal.
+        }
+    }
+}

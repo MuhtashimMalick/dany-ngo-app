@@ -1,0 +1,159 @@
+@page "/reports"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject IJSRuntime JS
+
+<FilterBar CssClass="no-print">
+    <div class="field filter-field-md mb-0">
+        <label for="fromDate">From</label>
+        <input id="fromDate" type="month" value="@_fromMonth" @onchange="e => _fromMonth = e.Value?.ToString() ?? _fromMonth" />
+    </div>
+    <div class="field filter-field-md mb-0">
+        <label for="toDate">To</label>
+        <input id="toDate" type="month" value="@_toMonth" @onchange="e => _toMonth = e.Value?.ToString() ?? _toMonth" />
+    </div>
+    <button class="btn btn-primary" @onclick="LoadAsync">Run Report</button>
+    <button class="btn btn-secondary" @onclick="PrintAsync"><Icon Name="printer" Size="16" />Print / Save as PDF</button>
+</FilterBar>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error no-print">@_errorMessage</div>
+}
+
+<div class="print-area">
+    <h3 class="section-heading">Monthly Donations (@_fromMonth to @_toMonth)</h3>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Year</th>
+                    <th>Month</th>
+                    <th>Fund</th>
+                    <th class="num">Total (PKR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_donations.Count == 0)
+                {
+                    <tr><td colspan="4">No donations in this range.</td></tr>
+                }
+                else
+                {
+                    @foreach (var row in _donations)
+                    {
+                        <tr>
+                            <td>@row.Year</td>
+                            <td>@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(row.Month)</td>
+                            <td>@row.FundCategoryName</td>
+                            <td class="num">@row.Total.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (AuthState.HasPermission("reports.export"))
+    {
+        <button class="btn btn-secondary no-print" @onclick="ExportDonationsAsync">Export CSV</button>
+    }
+
+    <h3 class="section-heading">Monthly Payments (@_fromMonth to @_toMonth)</h3>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Year</th>
+                    <th>Month</th>
+                    <th>Fund</th>
+                    <th class="num">Total (PKR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_payments.Count == 0)
+                {
+                    <tr><td colspan="4">No payments in this range.</td></tr>
+                }
+                else
+                {
+                    @foreach (var row in _payments)
+                    {
+                        <tr>
+                            <td>@row.Year</td>
+                            <td>@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(row.Month)</td>
+                            <td>@row.FundCategoryName</td>
+                            <td class="num">@row.Total.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (AuthState.HasPermission("reports.export"))
+    {
+        <button class="btn btn-secondary no-print" @onclick="ExportPaymentsAsync">Export CSV</button>
+    }
+</div>
+
+@code {
+    private string _fromMonth = DateTime.Today.AddMonths(-5).ToString("yyyy-MM");
+    private string _toMonth = DateTime.Today.ToString("yyyy-MM");
+    private IReadOnlyList<MonthlySummaryRowDto> _donations = [];
+    private IReadOnlyList<MonthlySummaryRowDto> _payments = [];
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private (DateOnly From, DateOnly To) ParseRange()
+    {
+        var from = DateOnly.ParseExact(_fromMonth + "-01", "yyyy-MM-dd");
+        var toMonthStart = DateOnly.ParseExact(_toMonth + "-01", "yyyy-MM-dd");
+        var to = toMonthStart.AddMonths(1).AddDays(-1);
+        return (from, to);
+    }
+
+    private async Task LoadAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            var (from, to) = ParseRange();
+            _donations = await ApiClient.GetMonthlyDonationsAsync(from, to);
+            _payments = await ApiClient.GetMonthlyPaymentsAsync(from, to);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private async Task ExportDonationsAsync()
+    {
+        try
+        {
+            var (from, to) = ParseRange();
+            var (bytes, fileName) = await ApiClient.ExportMonthlyDonationsAsync(from, to);
+            await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(bytes), fileName, "text/csv");
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private async Task ExportPaymentsAsync()
+    {
+        try
+        {
+            var (from, to) = ParseRange();
+            var (bytes, fileName) = await ApiClient.ExportMonthlyPaymentsAsync(from, to);
+            await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(bytes), fileName, "text/csv");
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("print");
+}

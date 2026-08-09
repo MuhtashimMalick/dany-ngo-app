@@ -1,0 +1,70 @@
+@* "⋯" row-action menu — houses destructive/secondary actions (Deactivate/Blacklist/Void) so a
+   25-row table doesn't show a red button on every row (the design review's exact "solid teal
+   fill on every row" complaint about badges, applied to buttons instead). A transparent backdrop
+   handles click-outside-to-close; the menu list itself also closes on any click inside it (via
+   native event bubbling), so picking an item both runs it and dismisses the menu.
+
+   The list is positioned via the shared ngoFundOverlay JS helper (position: fixed, computed from
+   the trigger button's own getBoundingClientRect()) rather than CSS position:absolute — an
+   absolutely-positioned dropdown inside a table row gets trapped by whatever stacking context the
+   row happens to have (e.g. a lingering animation transform) and painted over by later sibling
+   rows. See interop.js's ngoFundOverlay comment for the full root-cause writeup. *@
+@inject IJSRuntime JS
+
+<div class="overflow-menu">
+    <button type="button" class="icon-btn" aria-label="More actions" aria-haspopup="true" aria-expanded="@_isOpen"
+            @ref="_triggerRef" @onclick="ToggleAsync">
+        <Icon Name="more-horizontal" Size="16" />
+    </button>
+    @if (_isOpen)
+    {
+        <div class="overflow-menu-backdrop" @onclick="CloseAsync"></div>
+        <div class="overflow-menu-list" role="menu" @ref="_panelRef" @onclick="CloseAsync">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private ElementReference _triggerRef;
+    private ElementReference _panelRef;
+    private bool _isOpen;
+    private bool _pendingPosition;
+
+    private async Task ToggleAsync()
+    {
+        if (_isOpen)
+        {
+            // Route toggle-close through the same path as backdrop/item-click so the JS-side
+            // resize/scroll listener is always torn down — leaving it registered here (against a
+            // panel element that's about to be removed by the `@if` below) was a listener leak on
+            // every open/close cycle done via the trigger button itself.
+            await CloseAsync();
+            return;
+        }
+
+        _isOpen = true;
+        _pendingPosition = true;
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_isOpen)
+        {
+            await JS.InvokeVoidAsync("ngoFundOverlay.hide", _panelRef);
+        }
+
+        _isOpen = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingPosition)
+        {
+            _pendingPosition = false;
+            await JS.InvokeVoidAsync("ngoFundOverlay.show", _triggerRef, _panelRef, new { align = "end" });
+        }
+    }
+}

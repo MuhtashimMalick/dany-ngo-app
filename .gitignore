@@ -1,0 +1,35 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+publish/
+
+# Test results
+[Tt]est[Rr]esult*/
+coverage*/
+*.trx
+
+# Environment / secrets
+.env
+*.pfx
+*.pem
+
+# Docker
+docker/**/data/
+
+# Editor
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node (skills CLI tooling, if any local deps ever get installed)
+node_modules/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,29 @@
+@* Loading placeholder — used while a page's data is still in flight ("_page is null") so tables
+   never flash an empty/"no records" state before the real response arrives. Rendered as a set of
+   table-row-shaped bars when Rows is set (matches DataTable's row height), otherwise a single
+   block sized by Width/Height. Pure CSS shimmer, disabled under prefers-reduced-motion. *@
+@if (Rows > 0)
+{
+    <div class="skeleton-table" aria-hidden="true">
+        @for (var i = 0; i < Rows; i++)
+        {
+            <div class="skeleton-row">
+                @for (var c = 0; c < Columns; c++)
+                {
+                    <span class="skeleton skeleton-cell"></span>
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
+    <span class="skeleton" style="width:@Width; height:@Height;" aria-hidden="true"></span>
+}
+
+@code {
+    [Parameter] public int Rows { get; set; }
+    [Parameter] public int Columns { get; set; } = 4;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "1em";
+}

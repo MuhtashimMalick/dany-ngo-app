@@ -1,0 +1,15 @@
+@* One consistent search/filter toolbar wrapper for every list page. Before this existed, 6 of
+   the 7 pages that use SearchBox rendered it bare (no container) while Applications wrapped it
+   plus three extra filter controls in a hand-rolled `<div class="filter-bar">` — two different UI
+   languages for the same concept. Every list page now composes SearchBox (and any extra
+   select/date filters) inside this component instead, whether it's a single search box or a full
+   filter cluster, so the next page built reaches for this instead of reinventing the wrapper. *@
+<div class="filter-bar @CssClass">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Extra classes appended alongside "filter-bar" (e.g. "no-print" on Reports).</summary>
+    [Parameter] public string CssClass { get; set; } = "";
+}

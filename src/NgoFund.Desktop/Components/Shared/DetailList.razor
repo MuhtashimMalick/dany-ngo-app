@@ -1,0 +1,10 @@
+@* Two-column label/value grid — replaces the "<strong>Label:</strong> value" colon-run pattern
+   used across the Donors/Applicants/Applications detail views (per the design review, the single
+   strongest "beginner" tell in the app). Compose with <DetailItem> children. *@
+<div class="detail-list">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

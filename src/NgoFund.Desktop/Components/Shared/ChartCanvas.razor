@@ -1,0 +1,67 @@
+@* Shared chart measuring frame — the fix for the dashboard chart-scaling bug (a viewBox stretched
+   by CSS width:100% scales axis <text> and stroke-width right along with it, since 1 SVG user
+   unit no longer equals 1 CSS pixel). This component owns nothing about what's drawn; it just
+   measures its own box via ResizeObserver and hands the caller an exact CSS-pixel width so every
+   chart can render its SVG at `viewBox="0 0 {width} {height}"` — always 1:1.
+
+   Hard rule this exists to satisfy: never put <text> inside a viewBox whose container can be
+   resized by CSS. Either guarantee 1:1 scaling (this component), or position labels as HTML
+   absolutely over the SVG instead. *@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="chart-canvas" id="@_id" style="height:@(Height)px;">
+    @if (_width > 0)
+    {
+        @ChildContent((_width, Height))
+    }
+</div>
+
+@code {
+    [Parameter] public double Height { get; set; } = 200;
+    [Parameter, EditorRequired] public RenderFragment<(double Width, double Height)> ChildContent { get; set; } = null!;
+
+    private readonly string _id = $"chart-{Guid.NewGuid():N}";
+    private double _width;
+    private DotNetObjectReference<ChartCanvas>? _selfRef;
+    private bool _observing;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ngoFundCharts.observeWidth", _id, _selfRef);
+            _observing = true;
+        }
+    }
+
+    [JSInvokable]
+    public void OnChartWidthChanged(double width)
+    {
+        if (Math.Abs(width - _width) < 0.5)
+        {
+            return;
+        }
+
+        _width = width;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_observing)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ngoFundCharts.unobserve", _id);
+            }
+            catch (JSDisconnectedException)
+            {
+                // App/page is tearing down — nothing left to clean up client-side.
+            }
+        }
+
+        _selfRef?.Dispose();
+    }
+}

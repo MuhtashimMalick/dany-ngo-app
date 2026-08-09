@@ -1,0 +1,295 @@
+@page "/users"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("users.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">New User</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by name or email…" />
+</FilterBar>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="UserSummaryDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="users-rows" EmptyText="No users found."
+           EmptyDescription="Users you invite will appear here." EmptyIcon="users">
+    <HeaderRow>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Roles</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="user">
+        <tr>
+            <td>@user.FullName</td>
+            <td>@user.Email</td>
+            <td>@string.Join(", ", user.Roles)</td>
+            <td><StatusBadge Status="@(user.IsActive ? "Active" : "Inactive")" /></td>
+            <td class="table-actions">
+                @if (AuthState.HasPermission("users.edit"))
+                {
+                    <button class="icon-btn" aria-label="Edit user" @onclick="() => OpenEditModal(user)"><Icon Name="pencil" Size="16" /></button>
+                }
+                @if (AuthState.HasPermission("users.delete") && user.IsActive)
+                {
+                    <OverflowMenu>
+                        <button type="button" class="overflow-menu-item destructive" @onclick="() => RequestDeactivate(user)">
+                            <Icon Name="trash" Size="15" />Deactivate
+                        </button>
+                    </OverflowMenu>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showForm)
+{
+    <Modal Title="@(_editingUserId is null ? "New User" : "Edit User")" Size="md" OnClose="CloseForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="user-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormField Label="Full Name" For="fullName" ValidationFor="() => _form.FullName">
+                <InputText id="fullName" @bind-Value="_form.FullName" />
+            </FormField>
+
+            @if (_editingUserId is null)
+            {
+                <FormField Label="Email" For="email" ValidationFor="() => _form.Email">
+                    <InputText id="email" @bind-Value="_form.Email" />
+                </FormField>
+                <FormField Label="Temporary Password" For="tempPassword" Hint="At least 8 characters. The user must change it on first login.">
+                    <InputText id="tempPassword" type="password" @bind-Value="_form.TemporaryPassword" />
+                </FormField>
+            }
+
+            <FormField Label="Designation" For="designation">
+                <InputText id="designation" @bind-Value="_form.Designation" />
+            </FormField>
+
+            <div class="field">
+                <label>Roles</label>
+                @foreach (var role in _availableRoles)
+                {
+                    <label class="checkbox-label">
+                        <input type="checkbox" checked="@_form.Roles.Contains(role.Name)"
+                               @onchange="e => ToggleRole(role.Name, (bool)e.Value!)" />
+                        @role.Name
+                    </label>
+                }
+            </div>
+
+            @if (_editingUserId is not null)
+            {
+                <div class="field">
+                    <label class="checkbox-label">
+                        <input type="checkbox" @bind="_form.IsActive" />
+                        Active
+                    </label>
+                </div>
+            }
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="submit" form="user-form" class="btn btn-primary" disabled="@_isSaving">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+<ConfirmDialog @bind-IsOpen="_confirmOpen" Title="Deactivate user?"
+               Message="@($"Deactivate {_userPendingDeactivation?.FullName}? They will no longer be able to sign in.")"
+               ConfirmText="Deactivate" IsDestructive="true" OnConfirmed="DeactivateConfirmedAsync" />
+
+@code {
+    private const int PageSize = 25;
+    private PagedResult<UserSummaryDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private IReadOnlyList<RoleDto> _availableRoles = [];
+
+    private bool _showForm;
+    private bool _isSaving;
+    private string? _formError;
+    private Guid? _editingUserId;
+    private UserFormModel _form = new();
+
+    private bool _confirmOpen;
+    private UserSummaryDto? _userPendingDeactivation;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRolesAsync();
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#users-rows tr");
+        }
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        try
+        {
+            _availableRoles = await ApiClient.GetRolesAsync();
+        }
+        catch (ApiException)
+        {
+            // Roles are only needed for the create/edit form — the user list itself still works.
+        }
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _errorMessage = null;
+        try
+        {
+            _page = await ApiClient.GetUsersAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingUserId = null;
+        _form = new UserFormModel { IsActive = true };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEditModal(UserSummaryDto user)
+    {
+        _editingUserId = user.Id;
+        _form = new UserFormModel
+        {
+            FullName = user.FullName,
+            Designation = user.Designation,
+            IsActive = user.IsActive,
+            Roles = user.Roles.ToList(),
+        };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private void ToggleRole(string roleName, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!_form.Roles.Contains(roleName))
+            {
+                _form.Roles.Add(roleName);
+            }
+        }
+        else
+        {
+            _form.Roles.Remove(roleName);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form.Roles.Count == 0)
+        {
+            _formError = "At least one role must be selected.";
+            return;
+        }
+
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            if (_editingUserId is null)
+            {
+                var created = await ApiClient.CreateUserAsync(new CreateUserRequest(_form.Email, _form.FullName, _form.Designation, _form.TemporaryPassword, _form.Roles));
+                Toast.Success($"User created · {created.FullName}");
+            }
+            else
+            {
+                var updated = await ApiClient.UpdateUserAsync(_editingUserId.Value, new UpdateUserRequest(_form.FullName, _form.Designation, _form.IsActive, _form.Roles));
+                Toast.Success($"User updated · {updated.FullName}");
+            }
+
+            _showForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void RequestDeactivate(UserSummaryDto user)
+    {
+        _userPendingDeactivation = user;
+        _confirmOpen = true;
+    }
+
+    private async Task DeactivateConfirmedAsync()
+    {
+        if (_userPendingDeactivation is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApiClient.DeactivateUserAsync(_userPendingDeactivation.Id);
+            Toast.Success($"User deactivated · {_userPendingDeactivation.FullName}");
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private class UserFormModel
+    {
+        [Required, EmailAddress] public string Email { get; set; } = "";
+        [Required] public string FullName { get; set; } = "";
+        public string? Designation { get; set; }
+        public string TemporaryPassword { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public List<string> Roles { get; set; } = [];
+    }
+}

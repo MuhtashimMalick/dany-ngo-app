@@ -1,0 +1,96 @@
+@page "/settings"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+@if (_settings is null)
+{
+    <div class="card" style="padding: var(--space-5); max-width: 640px;">
+        <Skeleton Rows="4" Columns="1" />
+    </div>
+}
+else
+{
+    <div class="card" style="padding: var(--space-5); max-width: 640px;">
+        @foreach (var setting in _settings)
+        {
+            <div class="field">
+                <label for="@setting.Key">@setting.Key</label>
+                <input id="@setting.Key" value="@GetEditedValue(setting.Key)"
+                       disabled="@(!setting.IsEditable || !AuthState.HasPermission("settings.manage"))"
+                       @onchange="e => _edited[setting.Key] = e.Value?.ToString() ?? string.Empty" />
+                @if (!string.IsNullOrEmpty(setting.Description))
+                {
+                    <span class="field-hint">@setting.Description</span>
+                }
+            </div>
+        }
+
+        @if (AuthState.HasPermission("settings.manage"))
+        {
+            <div style="margin-top: var(--space-3);">
+                <button class="btn btn-primary" disabled="@_isSaving" @onclick="SaveAsync">@(_isSaving ? "Saving..." : "Save Changes")</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<AppSettingDto>? _settings;
+    private readonly Dictionary<string, string> _edited = new();
+    private string? _errorMessage;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            _settings = await ApiClient.GetSettingsAsync();
+            _edited.Clear();
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private string GetEditedValue(string key) =>
+        _edited.TryGetValue(key, out var value) ? value : _settings?.SingleOrDefault(s => s.Key == key)?.Value ?? "";
+
+    private async Task SaveAsync()
+    {
+        if (_edited.Count == 0)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _errorMessage = null;
+        try
+        {
+            foreach (var (key, value) in _edited)
+            {
+                await ApiClient.UpdateSettingAsync(key, value);
+            }
+
+            Toast.Success("Settings saved.");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

@@ -1,0 +1,2871 @@
+/* Fonts are self-hosted — see fonts.css (loaded separately in index.html) — so this file no
+   longer reaches out to a CDN. A desktop app has to render correctly with zero internet access
+   (an NGO field office may have none). */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbars — thin, tokenized, consistent across every scrollable surface (WebView2 otherwise
+   renders the bulky default OS scrollbar, which reads as dated). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+  background-clip: padding-box;
+}
+
+/* ---------- Blazor's built-in unhandled-error banner ----------
+   The blazor.webview.js runtime looks for this exact #blazor-error-ui id and toggles its
+   display/wires up .dismiss — but it never supplies the CSS itself, so without this block the
+   element sits in normal document flow (hidden only by being off-screen until scrolled to)
+   instead of being hidden until an actual unhandled exception occurs. */
+#blazor-error-ui {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1000;
+  padding: var(--space-3) var(--space-5);
+  background: var(--status-rejected-bg);
+  color: var(--status-rejected-fg);
+  box-shadow: var(--shadow-lg);
+}
+
+#blazor-error-ui .reload {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  margin-left: var(--space-2);
+}
+
+#blazor-error-ui .dismiss {
+  cursor: pointer;
+  position: absolute;
+  right: var(--space-4);
+  top: var(--space-3);
+  font-weight: 700;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0 0 var(--space-3);
+}
+
+a {
+  color: var(--color-primary);
+}
+
+/* Focus ring — never removed, only restyled (WCAG 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* ---------- Utility classes ----------
+   A handful of layout primitives so pages stop hand-rolling `style="display:flex; gap:..."`
+   inline. Not a full utility framework — just the handful of shapes this app's forms/toolbars
+   actually repeat. */
+
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-end { align-items: flex-end; }
+.justify-between { justify-content: space-between; }
+.flex-1 { flex: 1; min-width: 0; }
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+.payment-summary-card {
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Fixed-width filter-bar fields — replaces per-page `style="max-width: ...px"` inline styles
+   (a handful of filter bars need a narrower field than the form default). Kept as general-purpose
+   width utilities (also used outside filter bars, e.g. the Applications status-change modal) —
+   see `.filter-field-sm/md/lg` below for the semantic set scoped specifically to filter-bar
+   controls. */
+.w-170 { max-width: 170px; }
+.w-200 { max-width: 200px; }
+.w-220 { max-width: 220px; }
+.min-w-200 { min-width: 200px; }
+
+/* Filter-bar field width scale — a real 3-step token set (sm/md/lg) for the non-search controls
+   that sit next to SearchBox inside a `.filter-bar` (status/category selects, date-range inputs).
+   Same pixel values as `.w-170/.w-200/.w-220` above on purpose (no behavior change from the
+   previous per-page usage) but named by role instead of by number, so the next filter bar reaches
+   for "the medium filter field" instead of picking a new arbitrary width. */
+.filter-field-sm { max-width: 170px; }
+.filter-field-md { max-width: 200px; }
+.filter-field-lg { max-width: 220px; }
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.card-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.card-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.card-list-item:last-child {
+  border-bottom: none;
+}
+
+.card-list-item:hover {
+  background: var(--color-muted);
+}
+
+.card-list-item.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.card-list-item.disabled:hover {
+  background: none;
+}
+
+/* Right-aligned, tabular-figure money/number columns — used on every amount column across
+   Payments, Donations, Applications, Reports and the Dashboard so digits line up between rows. */
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard),
+              transform var(--duration-fast) var(--ease-standard);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98) translateY(0);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  border-color: var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-muted);
+  border-color: var(--color-muted-foreground);
+}
+
+.btn-destructive {
+  background: var(--color-surface);
+  color: var(--color-destructive);
+  border-color: var(--color-border);
+}
+
+.btn-destructive:hover:not(:disabled) {
+  background: var(--color-destructive);
+  color: var(--color-on-primary);
+  border-color: var(--color-destructive);
+}
+
+.btn-sm {
+  height: 30px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* ---------- Forms ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+/* Utility overrides for .field's own margin-bottom — must come after the rule above (same
+   specificity, source order decides). Used to zero out spacing when a .field sits inline inside
+   a .filter-bar next to a bare SearchBox/button that has no margin of its own; without this the
+   .field's margin-bottom silently won by being declared later, making every filter row's fields
+   sit visibly higher than the SearchBox/buttons beside them. */
+.mb-0 { margin-bottom: 0; }
+.mb-3 { margin-bottom: var(--space-3); }
+
+.field label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+/* Child combinator, not descendant — deliberately. A shared component that renders its own bare
+   <input> (Combobox, SearchBox, future ones) but happens to sit inside a page's .field wrapper
+   should own its own input styling; a descendant selector here (specificity 0,1,1) would beat a
+   shared component's own class-scoped rule (0,1,0) purely by nesting depth, regardless of which
+   one is "more specific" to the actual element. This was the root cause of the Combobox
+   placeholder/icon overlap — .field input was silently winning over .combobox-input's padding. */
+.field > input,
+.field > select,
+.field > textarea {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.field > textarea {
+  height: auto;
+  padding: var(--space-3);
+  min-height: 80px;
+  resize: vertical;
+}
+
+.field > input:focus,
+.field > select:focus,
+.field > textarea:focus {
+  border-color: var(--color-primary);
+}
+
+/* Blazor's InputText/InputNumber/InputSelect/InputDate/InputTextArea apply these classes to
+   themselves automatically once a DataAnnotationsValidator is present — no per-field C# wiring
+   needed. Previously unstyled, so an invalid field looked identical to a valid one right up until
+   a silently-refused submit. */
+.field > input.modified.invalid,
+.field > select.modified.invalid,
+.field > textarea.modified.invalid,
+.field > input[aria-invalid="true"],
+.field > select[aria-invalid="true"] {
+  border-color: var(--color-destructive);
+}
+
+.field > input.modified.invalid:focus,
+.field > select.modified.invalid:focus,
+.field > textarea.modified.invalid:focus {
+  border-color: var(--color-destructive);
+}
+
+/* Checkbox / radio reset — with no reset at all, `.field > input` above (36px tall, bordered,
+   padded) applied to every checkbox in the app too, rendering each as a stretched 36px box
+   instead of a normal control. Explicit regardless of the child-combinator fix above, since a
+   checkbox is still a literal `.field > input` match — this scopes it back down by type. */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.field-error {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-destructive);
+}
+
+.field-hint {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+/* One ValidationSummary per EditForm — a plain bullet list so a rejected submit always explains
+   itself instead of just... not doing anything. */
+.validation-summary {
+  list-style: disc;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  background: var(--status-rejected-bg);
+  color: var(--status-rejected-fg);
+  font-size: var(--text-sm);
+}
+
+.validation-summary:empty {
+  display: none;
+}
+
+/* ---------- Search / filter ---------- */
+
+.search-field {
+  position: relative;
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.search-field .search-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+}
+
+/* Bug fix: this rule used to set only padding/width, so any page using SearchBox stand-alone
+   (Applicants/AuditLogs/Donations/Donors/Payments/Users) rendered a bare, unstyled native
+   <input> — no height/border/background/radius/font at all — since `.field > input` (the rule
+   that normally supplies those) is a child combinator and never matches SearchBox's own markup.
+   Mirrors `.combobox-input`, the equivalent bare-input pattern that was already styled correctly. */
+.search-field input {
+  width: 100%;
+  height: 36px;
+  padding-left: calc(var(--space-3) * 2 + 16px);
+  padding-right: var(--space-6);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+/* Long placeholders ("Search by payment no., application no., applicant…") were clipping mid-word
+   at the old 320px width. Widened the field above and shrink just the placeholder text (not the
+   typed value) so the hint still reads in full at a glance. */
+.search-field input::placeholder {
+  font-size: var(--text-sm);
+}
+
+.search-field input:focus {
+  border-color: var(--color-primary);
+}
+
+.search-field .search-clear {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.search-field .search-clear:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
+/* One toolbar treatment for every list page's search/filter row — previously this was a bare
+   flex row with no border/background/padding, so a page with a single SearchBox read as "just an
+   input sitting on the page" while Applications' multi-filter row read as a different, denser
+   control cluster right next to it. Border + surface + padding (same recipe as `.card`, no
+   shadow per the design review) gives both cases one consistent "toolbar" identity regardless of
+   how many controls are inside — a page with just SearchBox is now a variation of the same
+   container, not a different UI language. */
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 26px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-radius: 999px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.filter-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 999px;
+}
+
+.filter-chip button:hover {
+  color: var(--color-foreground);
+  background: var(--color-border);
+}
+
+.filter-clear-all {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ---------- Alerts ---------- */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+.alert-error {
+  background: var(--status-rejected-bg);
+  color: var(--status-rejected-fg);
+}
+
+.alert-success {
+  background: var(--status-approved-bg);
+  color: var(--status-approved-fg);
+}
+
+/* Softer than .alert-error — used when a supplementary section fails to load but the rest of the
+   page (already fetched) is still fully usable, e.g. the dashboard's extended-insights fetch. */
+.alert-warning {
+  background: var(--status-pending-bg);
+  color: var(--status-pending-fg);
+}
+
+/* ---------- Cards ----------
+   Border, not shadow — shadow is reserved for true overlays (modals, dropdowns, toasts) per the
+   design review. An in-page container sitting in normal document flow doesn't need to look like
+   it's floating above the page. */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- Status badges ----------
+   Weight 600 (not 700), 20px tall (not 24px), a small leading dot instead of relying on
+   background color alone to carry meaning (color-only status is an accessibility anti-pattern —
+   the dot plus the text label both still work if a user can't distinguish the hue). Every
+   PaymentStatus/DonationStatus/ApplicationStatus value has a matching class; anything unmatched
+   falls back to --status-neutral rather than rendering invisibly. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.badge-active,   .badge-approved, .badge-completed, .badge-confirmed {
+  background: var(--status-approved-bg); color: var(--status-approved-fg);
+}
+.badge-pending                          { background: var(--status-pending-bg); color: var(--status-pending-fg); }
+.badge-underreview                      { background: var(--status-under-review-bg); color: var(--status-under-review-fg); }
+.badge-inactive, .badge-rejected        { background: var(--status-rejected-bg); color: var(--status-rejected-fg); }
+.badge-paid                             { background: var(--status-paid-bg); color: var(--status-paid-fg); }
+.badge-partiallypaid                    { background: var(--status-partially-paid-bg); color: var(--status-partially-paid-fg); }
+.badge-onhold, .badge-voided            { background: var(--status-on-hold-bg); color: var(--status-on-hold-fg); }
+
+/* ---------- Auth layout (login / change password) ---------- */
+
+.auth-layout {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-background);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+  margin: var(--space-5);
+}
+
+.auth-card .auth-brand-mark {
+  text-align: center;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: var(--color-foreground);
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-5);
+}
+
+.auth-card h1 {
+  font-size: var(--text-xl);
+  text-align: center;
+}
+
+.auth-card .subtitle {
+  text-align: center;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+}
+
+/* Unscoped fallback for the two-pane Login form (left-aligned, not inside .auth-card). */
+.subtitle {
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+}
+
+/* Two-pane login: org identity on the left (brand + one line of context), the compact sign-in
+   form on the right. Falls back to the single centered card above at narrow widths. */
+.auth-split {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  background: var(--color-surface);
+}
+
+.auth-split-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-6) calc(var(--space-6) * 1.5);
+  background: var(--color-foreground);
+  color: #ffffff;
+}
+
+.auth-split-logo {
+  width: 180px;
+  max-width: 60%;
+  height: auto;
+  margin-bottom: var(--space-5);
+}
+
+.auth-split-wordmark {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: var(--text-2xl);
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-3);
+}
+
+.auth-split-tagline {
+  font-size: var(--text-base);
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 34ch;
+  line-height: 1.6;
+}
+
+.auth-split-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-6) calc(var(--space-6) * 1.5);
+}
+
+.auth-split-form-inner {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.auth-meta-line {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-size: var(--text-2xs);
+  color: var(--color-muted-foreground);
+}
+
+.auth-forgot {
+  display: block;
+  text-align: right;
+  font-size: var(--text-xs);
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+}
+
+@media (max-width: 860px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-split-brand {
+    padding: var(--space-6) var(--space-5) var(--space-4);
+  }
+}
+
+/* ---------- App shell ----------
+   Fixed-height shell — only .page-content scrolls, so the sidebar and topbar stay put no matter
+   how long a table gets. Previously `.app-shell` was only min-height:100vh, so a tall page just
+   grew the whole window's scroll area and dragged the sidebar off along with it. */
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Collapsible sidebar: width is a plain CSS transition, not a GSAP tween. This is a two-state,
+   always-reversible toggle with no sequencing, no runtime scrubbing, and no JS-computed value —
+   exactly the case gsap-core's own guidance says to leave to CSS. It also has to be a real width
+   change (not a transform-based visual trick): `.sidebar` is a flex sibling of `.main-content` in
+   `.app-shell`, and only an actual width change makes the flex layout reflow `.main-content` in
+   the same frame. GSAP is still used, but scoped to the toggle chevron's rotation (see
+   ngoFundMotion.animateSidebarToggle in interop.js) — a transform, which is the one part of this
+   interaction GSAP is the right tool for. */
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: width var(--duration-base) var(--ease-standard),
+              padding var(--duration-base) var(--ease-standard);
+}
+
+.sidebar.collapsed {
+  width: var(--sidebar-width-collapsed);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.sidebar.collapsed .sidebar-header {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  letter-spacing: -0.01em;
+  color: var(--color-foreground);
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+}
+
+.sidebar.collapsed .sidebar-brand {
+  padding-left: 0;
+}
+
+.sidebar-brand-mark {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.sidebar-brand-text {
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.sidebar.collapsed .sidebar-brand-text {
+  opacity: 0;
+  width: 0;
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.sidebar-toggle:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.sidebar-toggle-icon {
+  transition: transform var(--duration-base) var(--ease-standard);
+  transform: rotate(90deg);
+}
+
+.sidebar.collapsed .sidebar-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.nav-group-label {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted-foreground);
+  white-space: nowrap;
+}
+
+.nav-group-label:first-of-type {
+  padding-top: var(--space-1);
+}
+
+.sidebar.collapsed .nav-group-label {
+  height: 1px;
+  padding: 0;
+  margin: var(--space-3) var(--space-2) var(--space-2);
+  overflow: hidden;
+  text-indent: -9999px;
+  background: var(--color-border);
+}
+
+.nav-group-label:first-of-type.sidebar.collapsed,
+.sidebar.collapsed .nav-group-label:first-of-type {
+  margin-top: 0;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-muted-foreground);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.nav-item .nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.nav-item .nav-label {
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.sidebar.collapsed .nav-item .nav-label {
+  display: none;
+}
+
+.sidebar.collapsed .nav-item.active::before {
+  left: calc(-1 * var(--space-2));
+}
+
+.nav-item:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.nav-item.active {
+  background: var(--color-muted);
+  color: var(--color-primary);
+}
+
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
+.nav-count {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-border);
+  color: var(--color-foreground);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.nav-item.active .nav-count {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.topbar-title {
+  font-size: var(--text-lg);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.topbar-actions {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.topbar .user-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  flex-shrink: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border);
+}
+
+.user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  color: var(--color-primary);
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.page-content {
+  padding: var(--space-5);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: var(--space-4);
+  min-height: 0;
+}
+
+.page-header:empty {
+  display: none;
+}
+
+/* ---------- Data table ---------- */
+
+.table-wrapper {
+  /* Horizontal scroll only — wide tables still need it. (A previous pass also set an explicit
+     `overflow-y: visible` here on the theory that omitting it would let the browser default
+     overflow-y to 'auto' and create an unwanted second scroll container; per the CSS Overflow L3
+     spec that's backwards — when one axis is a non-visible value, the *other* axis's `visible`
+     computes to `auto` regardless, so the declaration was a no-op and this wrapper still clipped
+     vertically. Row/dropdown overlays now escape that clipping entirely by rendering
+     `position: fixed` via ngoFundOverlay instead of depending on this element not clipping them.) */
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: var(--space-2) var(--space-4);
+  font-weight: 600;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted-foreground);
+  background: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.data-table th.num {
+  text-align: right;
+}
+
+.data-table td {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr {
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.data-table tbody tr:hover {
+  /* A lighter wash than the header's solid --color-muted so the two are visually distinct —
+     otherwise a sticky header sitting above hovered rows optically merges with them. */
+  background: rgba(15, 23, 42, 0.035);
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.icon-btn:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-btn-destructive:hover {
+  background: var(--status-rejected-bg);
+  color: var(--color-destructive);
+}
+
+/* Row overflow menu — houses destructive/secondary row actions (Deactivate/Blacklist/Void) so a
+   table of 25 rows doesn't show 25 red buttons at once. */
+.overflow-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.overflow-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 176px;
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.overflow-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.overflow-menu-item:hover {
+  background: var(--color-muted);
+}
+
+.overflow-menu-item.destructive {
+  color: var(--color-destructive);
+}
+
+.overflow-menu-item.destructive:hover {
+  background: var(--status-rejected-bg);
+}
+
+.overflow-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+/* ---------- Empty state ---------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-muted-foreground);
+}
+
+.empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-title {
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin: 0;
+}
+
+.empty-state-description {
+  font-size: var(--text-sm);
+  max-width: 42ch;
+  margin: 0 0 var(--space-2);
+}
+
+/* ---------- Skeleton loading ---------- */
+
+.skeleton {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-muted) 25%, var(--color-border) 37%, var(--color-muted) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.skeleton-table {
+  padding: var(--space-2) var(--space-4);
+}
+
+.skeleton-row {
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.skeleton-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-cell {
+  height: 14px;
+  flex: 1;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--color-muted);
+  }
+}
+
+/* ---------- Modal ----------
+   Header/body/footer as a real grid — header and footer stay put, only the body scrolls, and the
+   whole dialog is capped well inside the viewport regardless of content length (this is the fix
+   for the applicant modal that used to run off-screen with no way to scroll to its own Save
+   button). Every modal in the app goes through Components/Shared/Modal.razor now — no more
+   per-page inline max-width/max-height. */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-5);
+}
+
+.modal {
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-height: calc(100vh - var(--space-6) * 2);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.modal-sm { max-width: 420px; }
+.modal-md { max-width: 560px; }
+.modal-lg { max-width: 760px; }
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.modal-header h3 {
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+/* Section headings inside a modal body sit directly under the body's own top padding — this is
+   the fix for History/Remarks/Documents headings colliding with the content above them. */
+.modal-body > *:first-child {
+  margin-top: 0;
+}
+
+.modal-body h4 {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-muted-foreground);
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  background: var(--color-surface);
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.modal-close:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+/* Legacy alias kept only for ConfirmDialog/DocumentViewer, which still render their own
+   header/footer markup directly rather than going through Modal.razor's grid (they're small
+   fixed-shape dialogs that don't need the full component). */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---------- Toasts ---------- */
+
+.toast-stack {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 320px;
+  max-width: calc(100vw - var(--space-6));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.toast-success .toast-icon { color: var(--status-approved-fg); }
+.toast-error .toast-icon { color: var(--color-destructive); }
+
+.toast-text {
+  flex: 1;
+  color: var(--color-foreground);
+}
+
+.toast-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.toast-dismiss:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+/* ---------- Combobox (typeahead) ---------- */
+
+.combobox {
+  position: relative;
+}
+
+.combobox-input-wrap {
+  position: relative;
+}
+
+.combobox-search-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+}
+
+.combobox-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-6) 0 calc(var(--space-3) * 2 + 16px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+}
+
+.combobox-input:focus {
+  border-color: var(--color-primary);
+}
+
+.combobox-clear {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.combobox-clear:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
+.combobox-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+}
+
+.combobox-status {
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-muted-foreground);
+  text-align: center;
+}
+
+.combobox-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.combobox-option.highlighted {
+  background: var(--color-muted);
+}
+
+.combobox-option-reason {
+  font-size: var(--text-2xs);
+  color: var(--color-muted-foreground);
+  flex-shrink: 0;
+}
+
+.combobox-option-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.combobox-option-disabled:hover,
+.combobox-option-disabled.highlighted {
+  background: none;
+}
+
+/* ---------- File drop ---------- */
+
+.file-drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-muted);
+  transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard);
+}
+
+.file-drop-active {
+  border-color: var(--color-primary);
+  background: var(--status-paid-bg);
+}
+
+.file-drop-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-drop-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+}
+
+.file-drop-icon {
+  margin-bottom: var(--space-1);
+}
+
+.file-drop-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.file-drop-title span {
+  color: var(--color-primary);
+}
+
+.file-drop-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.file-drop-selected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.file-drop-selected-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-drop-selected-size {
+  color: var(--color-muted-foreground);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.file-drop-selected-check {
+  color: var(--status-approved-fg);
+  flex-shrink: 0;
+}
+
+/* ---------- Stat / metric tiles (dashboard) ----------
+   Compact, non-interactive tiles — no accent bar, no hover-lift (these aren't clickable, so a
+   hover affordance would be a lie), value size dialed back from --text-3xl. */
+
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.metric-tile {
+  padding: var(--space-4);
+}
+
+.metric-label {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-2);
+}
+
+.metric-value {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-hint {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-top: var(--space-1);
+}
+
+/* Legacy alias — StatCard.razor still targets `.stat-card`/`.stat-value` etc; kept as a plain
+   alias of the metric-tile styling above rather than duplicating rules. */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
+.stat-card { padding: var(--space-4); }
+.stat-label { font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; color: var(--color-muted-foreground); margin-bottom: var(--space-2); }
+.stat-value { font-family: var(--font-heading); font-size: 1.5rem; font-weight: 600; color: var(--color-foreground); font-variant-numeric: tabular-nums; }
+.stat-hint { font-size: var(--text-xs); color: var(--color-muted-foreground); margin-top: var(--space-1); }
+
+.section-heading {
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-base);
+}
+
+/* Needs-attention list — clickable rows of pending/under-review applications. */
+.needs-attention {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.needs-attention-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-foreground);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.needs-attention-item:hover {
+  background: var(--color-muted);
+}
+
+.needs-attention li:last-child .needs-attention-item {
+  border-bottom: none;
+}
+
+.needs-attention-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.needs-attention-name {
+  font-weight: 600;
+}
+
+.needs-attention-meta {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+.needs-attention-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Segmented status bar — replaces seven equal-weight status-count cards with one compact bar +
+   legend so relative proportions are visible at a glance instead of read one number at a time. */
+.status-segmented {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--color-muted);
+  margin-bottom: var(--space-3);
+}
+
+.status-segmented-part {
+  height: 100%;
+}
+
+.status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.status-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+.status-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.status-legend-count {
+  font-weight: 700;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hand-built inline-SVG charts (no charting package — see dashboard chart guardrail). */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.chart-card {
+  padding: var(--space-4);
+}
+
+.chart-card h3 {
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-4);
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-bar {
+  fill: var(--color-primary);
+}
+
+.chart-bar-secondary {
+  fill: var(--color-muted-foreground);
+  opacity: 0.45;
+}
+
+.chart-axis-label {
+  font-size: 9px;
+  fill: var(--color-muted-foreground);
+  font-family: var(--font-body);
+}
+
+.chart-value-label {
+  font-size: 9px;
+  fill: var(--color-foreground);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-gridline {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+}
+
+.chart-line-secondary {
+  fill: none;
+  stroke: var(--color-muted-foreground);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
+.chart-dot {
+  fill: var(--color-primary);
+}
+
+.chart-dot-secondary {
+  fill: var(--color-muted-foreground);
+}
+
+.chart-legend {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart-legend-swatch {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ---------- Printable receipt ----------
+   A real financial-document layout — org header block, tabular key/value rows, amount in words,
+   signature lines — instead of the previous dashed-border "shopping receipt" look. */
+
+.receipt {
+  padding: var(--space-5) var(--space-6);
+  max-width: 480px;
+}
+
+.receipt-header {
+  text-align: center;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 2px solid var(--color-foreground);
+}
+
+.receipt-header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.receipt-header .receipt-org-meta {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-top: var(--space-1);
+}
+
+.receipt-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.receipt-title h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted-foreground);
+}
+
+.receipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+
+.receipt-table td {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.receipt-table td:first-child {
+  width: 40%;
+  color: var(--color-muted-foreground);
+  font-weight: 600;
+}
+
+.receipt-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-amount {
+  padding: var(--space-4);
+  margin: var(--space-4) 0;
+  border-radius: var(--radius-md);
+  background: var(--color-muted);
+}
+
+.receipt-amount .label {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-1);
+}
+
+.receipt-amount .value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-amount .words {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-top: var(--space-1);
+  font-style: italic;
+}
+
+.receipt-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
+}
+
+.receipt-signature-line {
+  border-top: 1px solid var(--color-foreground);
+  padding-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  text-align: center;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt, .receipt *,
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+
+  .receipt,
+  .print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+    border: none;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* ---------- Detail views (application manage modal, etc.) ---------- */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.plain-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plain-list li:last-child {
+  border-bottom: none;
+}
+
+/* ---------- Status timeline (Applications manage modal) ----------
+   Replaces the concatenated "yyyy-MM-dd HH:mm — From → To (remarks)" string with a real vertical
+   timeline: a status pill for the transition, relative time, and remarks broken out on their own
+   line — the single strongest "beginner" tell in the app per the design review, applied to the
+   app's most-used modal. */
+.timeline {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.timeline-item {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.timeline-marker {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-transition {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.timeline-meta {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-top: 2px;
+}
+
+.timeline-remarks {
+  font-size: var(--text-sm);
+  color: var(--color-foreground);
+  margin-top: var(--space-1);
+}
+
+/* ---------- Remarks list ---------- */
+
+.remark-item {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.remark-item:last-child {
+  border-bottom: none;
+}
+
+.remark-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+.remark-body {
+  font-size: var(--text-sm);
+  color: var(--color-foreground);
+}
+
+.badge-internal {
+  background: var(--status-on-hold-bg);
+  color: var(--status-on-hold-fg);
+}
+
+.remark-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* ---------- Applicant form layout ----------
+   Photo/webcam moves to a narrow right column beside Identity, rather than dominating the top of
+   the modal before the user has typed a single field — the applicant's name/CNIC/etc. are the
+   primary task; the photo is secondary.
+
+   The photo column used to be 200px while its children (.webcam-frame/.webcam-preview) were
+   hardcoded to 240px wide — a grid item's default `min-width: auto` lets an oversized intrinsic
+   child blow the track out to its own width, so the "two column" layout never actually held
+   together (fields rendered *below* the photo, and .btn-block inside it rendered at the resulting
+   full-modal-width track). Fixed at the root: every image/frame in this column is sized in
+   relative terms (`width: 100%` + `aspect-ratio`) instead of a fixed px width, and the grid item
+   gets an explicit `min-width: 0` as a second line of defence. */
+.applicant-form-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+/* Card-treated like FundBalanceCard/StatCard (border + radius-lg + surface bg, no shadow — see
+   the ".card" rule above) so the photo slot reads as one deliberate panel instead of loose
+   controls floating next to the form, and the "Photo" legend matches the uppercase/muted/
+   hairline-divider rhythm FormSection uses for Identity/Contact/Livelihood. */
+.applicant-form-photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  min-width: 0; /* see comment above .applicant-form-layout */
+}
+
+@media (max-width: 640px) {
+  .applicant-form-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Webcam capture ----------
+   .webcam-frame (live camera / empty state), .webcam-preview (just-captured image) and the
+   DocumentThumbnail override used for an already-saved photo (see Applicants.razor) all share
+   this exact recipe — same aspect ratio, border, radius — so switching between "before capture" →
+   "just captured" → "saved and reopened" doesn't visibly jump around. */
+
+.webcam-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: stretch;
+  min-width: 0; /* Without this, the flex column's default min-width:auto lets the <video>'s
+                   intrinsic getUserMedia size (480x360, set in interop.js) propagate straight up
+                   through this container to .applicant-form-photo's grid track, even though
+                   .webcam-frame/.webcam-video are themselves sized in relative terms below — the
+                   same blowout bug as before, just one level deeper. min-width:0 has to be applied
+                   at every flex/grid level between the grid item and the replaced element, not
+                   just at the outermost one. */
+}
+
+.webcam-frame,
+.webcam-preview {
+  width: 100%;
+  min-width: 0; /* .webcam-frame is itself a flex item of .webcam-capture — its own width is a
+                   percentage (not a literal length), so it's just as exposed to the same
+                   auto-min-size fallback as .webcam-capture above. Belt-and-braces alongside the
+                   fix on .webcam-video: with the video's own floor already removed, this alone
+                   would likely be redundant, but a percentage-width flex item is cheap insurance
+                   against the exact bug this whole section exists to prevent. */
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-muted);
+  overflow: hidden;
+}
+
+.webcam-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.webcam-video,
+.webcam-preview {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-width: 0; /* Replaced elements (video/img) are exactly where automatic minimum size in a
+                   flex/grid formatting context falls back to intrinsic size unless this
+                   explicitly overrides it — belt-and-braces alongside .webcam-capture's
+                   min-width:0 above, since this is the actual replaced element carrying the
+                   480x360 intrinsic size from the getUserMedia constraint. */
+  object-fit: cover;
+}
+
+.webcam-placeholder {
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  padding: 0 var(--space-3);
+  text-align: center;
+}
+
+.webcam-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.webcam-actions .btn {
+  flex: 1;
+}
+
+/* ---------- Applicant photo (View/Detail modal) ----------
+   A labelled, click-to-enlarge tile (not a bare thumbnail with an undiscoverable click handler —
+   the hover/focus overlay makes the affordance visible) opening a lightbox Modal with the
+   full-size image. Sized comfortably above the 44x44 touch-target minimum. */
+
+.applicant-photo-tile {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-muted);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.applicant-photo-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.applicant-photo-tile-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(15, 23, 42, 0.6);
+  color: #fff;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  opacity: 0;
+  visibility: hidden;
+  /* No transition here — the fade + slight scale on this overlay/tile is driven by real GSAP
+     tweens (ngoFundMotion.animatePhotoTileHover in interop.js), not a CSS :hover transition,
+     so it stays consistent with every other motion moment in the app and respects
+     prefers-reduced-motion via the same gsap.matchMedia() guard. */
+}
+
+.applicant-photo-tile:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.applicant-photo-tile-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted-foreground);
+  cursor: default;
+}
+
+.applicant-photo-lightbox {
+  display: flex;
+  justify-content: center;
+}
+
+.applicant-photo-lightbox img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  display: block;
+}
+
+/* ---------- Pagination ----------
+   Deliberately outside .table-wrapper in the markup (DataTable.razor) so Previous/Next can never
+   scroll off-screen on a wide table — .table-wrapper is the horizontally-scrolling element. */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-muted-foreground);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Form sections / two-column form grid ----------
+   FormSection.razor + .form-grid turn a flat wall of 100%-width fields into grouped, scannable
+   rows — a 560px modal with twelve full-width 36px inputs is *low* density (lots of margin, one
+   fact per row); a two-column grid raises both density and legibility at the same time. */
+
+.form-section {
+  margin-bottom: var(--space-5);
+}
+
+.form-section:last-child {
+  margin-bottom: 0;
+}
+
+.form-section-legend {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-1);
+}
+
+.form-section-description {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin: 0 0 var(--space-3);
+}
+
+.form-section-divider {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 0 0 var(--space-4);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4);
+}
+
+.form-grid > .field {
+  margin-bottom: var(--space-4);
+}
+
+.form-grid > .span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Detail list ----------
+   Replaces the "<strong>Label:</strong> value" colon-run pattern (the single strongest "beginner"
+   tell per the design review) — label above value in small uppercase muted text, value below at
+   normal weight/size, tabular-nums when it's a money/number value. */
+
+.detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.detail-item.span-2 {
+  grid-column: 1 / -1;
+}
+
+.detail-item-label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted-foreground);
+  margin-bottom: 2px;
+}
+
+.detail-item-value {
+  font-size: var(--text-sm);
+  color: var(--color-foreground);
+}
+
+.detail-item-value.num {
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+@media (max-width: 480px) {
+  .detail-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Fund balance card ----------
+   Fund balance is a *stock*; "this month" figures are a *flow* — they don't belong in the same
+   grid of equal-weight tiles. Used on both the Dashboard's fund-position band and the Funds page
+   so a fund's headline numbers read identically everywhere ('s shared-component rule). */
+
+.fund-balance-card {
+  padding: var(--space-4);
+}
+
+.fund-balance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.fund-balance-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.fund-balance-value {
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: var(--space-3);
+}
+
+.fund-balance-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.fund-balance-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999px;
+}
+
+.fund-balance-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.fund-balance-col-label {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted-foreground);
+  margin-bottom: 2px;
+}
+
+.fund-balance-col-value {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+
+/* Optional fund-commitment + runway add-ons (F4) — only rendered when Dashboard.razor supplies
+   Committed/MonthlyBurn; the Funds page never passes them, so its cards are unaffected. */
+.fund-balance-runway {
+  font-size: var(--text-2xs);
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-3);
+}
+
+.fund-balance-commitment {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+}
+
+.fund-balance-commitment strong {
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ---------- This-month flow strip ---------- */
+
+.month-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-5);
+}
+
+.month-strip-cell {
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--color-border);
+}
+
+.month-strip-cell:first-child {
+  border-left: none;
+}
+
+.month-strip-label {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--color-muted-foreground);
+  margin-bottom: var(--space-1);
+}
+
+.month-strip-value {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.month-strip-delta {
+  font-size: var(--text-xs);
+  color: var(--color-muted-foreground);
+  margin-top: 2px;
+}
+
+.month-strip-delta.up { color: var(--status-approved-fg); }
+.month-strip-delta.down { color: var(--color-destructive); }
+
+@media (max-width: 720px) {
+  .month-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .month-strip-cell:nth-child(3) {
+    border-left: none;
+  }
+}
+
+/* ---------- Chart canvas (ResizeObserver-measured) ----------
+   ChartCanvas.razor measures this element's real content-box width via ResizeObserver and hands
+   it to the caller so an SVG can be rendered at an exact 1:1 viewBox — never a viewBox stretched
+   by CSS width:100%, which would scale axis <text> along with everything else. */
+
+.chart-canvas {
+  width: 100%;
+}
+
+.chart-tooltip-rect {
+  fill: transparent;
+}
+
+/* Inline per-row micro-bar — replaces the standalone "Applications by Category" bar chart, which
+   duplicated the Count column this table already has right next to it. */
+.micro-bar-track {
+  display: inline-block;
+  width: 48px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.micro-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999px;
+}
+
+/* BreakdownBars.razor — a ranked list (donations/payments by method) built from the same
+   micro-bar primitive above, just laid out as full rows instead of a table cell. */
+.breakdown-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.breakdown-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.breakdown-bar-label {
+  flex: 0 0 110px;
+  color: var(--color-muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-bar-row .micro-bar-track {
+  flex: 1;
+  width: auto;
+}
+
+.breakdown-bar-value {
+  flex-shrink: 0;
+  min-width: 64px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground);
+}
+
+/* ---------- Status breakdown (stacked bar) ----------
+   Replaces the plain hairline .status-segmented-part fills (tuned for badge text, muddy at full
+   width) with the dedicated -solid fill tokens, plus a count label inside any segment wide enough
+   to hold one. */
+
+.status-stack {
+  display: flex;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.status-stack-part {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #ffffff;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---------- Needs attention (dashboard) redesign ----------
+   Days-waiting first — that's the real urgency signal (an aging pending application), not the
+   requested amount, which used to be the only thing set apart visually. */
+
+.age-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-fg);
+}
+
+.age-pill.warn {
+  background: var(--status-pending-bg);
+  color: var(--status-pending-fg);
+}
+
+.age-pill.critical {
+  background: var(--status-rejected-bg);
+  color: var(--status-rejected-fg);
+}
+
+.priority-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--status-partially-paid-bg);
+  color: var(--status-partially-paid-fg);
+}
+
+/* Section heading with an inline chip group (e.g. open applications by priority next to "Needs
+   Attention") — moves the heading's own top/bottom margin onto the row wrapper so spacing is
+   unchanged versus a bare <h3 class="section-heading">. */
+.section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-3);
+}
+
+.section-heading-row .section-heading {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.priority-chip-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- Reports: picker + filter bar + pivot table ---------- */
+
+.report-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.report-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.report-rail-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.report-rail-item:hover {
+  background: var(--color-muted);
+  color: var(--color-foreground);
+}
+
+.report-rail-item.active {
+  background: var(--color-muted);
+  color: var(--color-primary);
+}
+
+.report-rail-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.report-rail-item:disabled:hover {
+  background: transparent;
+  color: var(--color-muted-foreground);
+}
+
+.report-filter-bar {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.report-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-4);
+}
+
+.report-summary-cell {
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--color-border);
+}
+
+.report-summary-cell:first-child {
+  border-left: none;
+}
+
+.pivot-table tfoot td {
+  font-weight: 700;
+  border-top: 2px solid var(--color-foreground);
+  border-bottom: none;
+  background: var(--color-muted);
+}
+
+.pivot-table tbody tr.avg-row td {
+  font-style: italic;
+  color: var(--color-muted-foreground);
+}
+
+@media (max-width: 860px) {
+  .report-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .report-rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------- Print header (reports) ---------- */
+
+.print-header {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  .print-header {
+    display: block;
+    margin-bottom: var(--space-5);
+    text-align: center;
+  }
+
+  .print-header h2 {
+    margin: 0 0 var(--space-1);
+  }
+
+  .print-header .print-meta {
+    font-size: var(--text-xs);
+    color: var(--color-muted-foreground);
+  }
+
+  .print-footer {
+    display: block;
+    margin-top: var(--space-5);
+    font-size: var(--text-2xs);
+    color: var(--color-muted-foreground);
+    text-align: center;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
+
+.print-footer {
+  display: none;
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

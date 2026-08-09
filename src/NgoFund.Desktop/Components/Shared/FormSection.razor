@@ -1,0 +1,18 @@
+@* Groups related fields inside a modal form under an uppercase legend + hairline divider — turns
+   a flat wall of N full-width fields into a handful of scannable, labelled groups. Pair with the
+   `.form-grid` CSS class (two columns, `.span-2` to break out) on the content wrapper inside. *@
+<div class="form-section">
+    <div class="form-section-legend">@Title</div>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <p class="form-section-description">@Description</p>
+    }
+    <hr class="form-section-divider" />
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

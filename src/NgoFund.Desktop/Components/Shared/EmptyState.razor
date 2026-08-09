@@ -1,0 +1,23 @@
+@* Generic "nothing here" panel — icon + heading + short explanation + optional primary action.
+   Used by DataTable when a query returns zero rows, so every list screen explains an empty
+   result the same way instead of a bare "No records found." table row. *@
+<div class="empty-state">
+    <div class="empty-state-icon"><Icon Name="@Icon" Size="28" StrokeWidth="1.5" /></div>
+    <p class="empty-state-title">@Title</p>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <p class="empty-state-description">@Description</p>
+    }
+    @if (ActionText is not null && OnAction.HasDelegate)
+    {
+        <button type="button" class="btn btn-primary" @onclick="OnAction">@ActionText</button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "inbox";
+    [Parameter, EditorRequired] public string Title { get; set; } = "Nothing here yet";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? ActionText { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
+}

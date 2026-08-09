@@ -1,0 +1,84 @@
+@* A fund's balance is a *stock*, not a *flow* — it gets its own visual treatment (prominent
+   balance + utilization bar + three labelled sub-figures) distinct from flow-style KPI tiles, and
+   is shared between the Dashboard's fund-position band and the Funds page so the same fund's
+   headline numbers always read identically ('s shared-component-first rule). *@
+<div class="card fund-balance-card">
+    <div class="fund-balance-header">
+        <span class="fund-balance-name">@Balance.Name</span>
+        <span class="badge @(Balance.IsZakat ? "badge-underreview" : "")">@(Balance.IsZakat ? "Zakat" : "General")</span>
+    </div>
+    <div class="fund-balance-value" data-countup="@Balance.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-countup-decimals="2">
+        @Balance.Balance.ToString("N2")
+    </div>
+    <div class="fund-balance-bar" role="img" aria-label="@($"{UtilizationPercent:N0}% of collected funds utilized")">
+        <div class="fund-balance-bar-fill" style="width:@(UtilizationPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></div>
+    </div>
+    @if (MonthlyBurn is not null)
+    {
+        <div class="fund-balance-runway">@RunwayHint(Balance.Balance, MonthlyBurn.Value)</div>
+    }
+    <div class="fund-balance-columns">
+        <div>
+            <div class="fund-balance-col-label">Collected</div>
+            <div class="fund-balance-col-value">@Balance.TotalCollected.ToString("N2")</div>
+        </div>
+        <div>
+            <div class="fund-balance-col-label">Utilized</div>
+            <div class="fund-balance-col-value">@Balance.TotalUtilized.ToString("N2")</div>
+        </div>
+        <div>
+            <div class="fund-balance-col-label">Available</div>
+            <div class="fund-balance-col-value">@Balance.Balance.ToString("N2")</div>
+        </div>
+    </div>
+    @if (Committed is not null)
+    {
+        var availableAfterCommitments = Math.Max(0m, Balance.Balance - Committed.Value);
+        <div class="fund-balance-commitment">
+            <span>Committed (approved, unpaid) <strong>@Committed.Value.ToString("N2")</strong></span>
+            <span>Available after commitments <strong>@availableAfterCommitments.ToString("N2")</strong></span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FundBalanceDto Balance { get; set; } = null!;
+
+    /// <summary>Approved-but-unpaid amount already committed against this fund. Optional — when
+    /// omitted (e.g. on the Funds page, which doesn't fetch dashboard insights) the card renders
+    /// exactly as it did before this parameter existed.</summary>
+    [Parameter] public decimal? Committed { get; set; }
+
+    /// <summary>Average monthly disbursement from this fund over a recent trailing window, used
+    /// only to derive the "runway" hint below the utilization bar. Optional for the same reason
+    /// as <see cref="Committed"/>.</summary>
+    [Parameter] public decimal? MonthlyBurn { get; set; }
+
+    private double UtilizationPercent =>
+        Balance.TotalCollected <= 0
+            ? 0
+            : (double)Math.Min(1m, Math.Max(0m, Balance.TotalUtilized / Balance.TotalCollected)) * 100;
+
+    // Guarded against both "∞" (zero/near-zero burn) and a technically-correct but meaningless
+    // multi-decade estimate — trailing-window burn rates are too noisy to project that far out.
+    private static string RunwayHint(decimal balance, decimal monthlyBurn)
+    {
+        if (balance <= 0)
+        {
+            return "No balance remaining";
+        }
+
+        if (monthlyBurn <= 0.01m)
+        {
+            return "No recent disbursements — runway not applicable";
+        }
+
+        var months = balance / monthlyBurn;
+        return months switch
+        {
+            > 120 => "10+ years of runway at recent burn rate",
+            < 1 => "Less than 1 month of runway at recent burn rate",
+            _ => $"~{months:N0} months of runway at recent burn rate",
+        };
+    }
+}

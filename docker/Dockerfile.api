@@ -1,0 +1,36 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY src/NgoFund.Domain/NgoFund.Domain.csproj src/NgoFund.Domain/
+COPY src/NgoFund.Contracts/NgoFund.Contracts.csproj src/NgoFund.Contracts/
+COPY src/NgoFund.Application/NgoFund.Application.csproj src/NgoFund.Application/
+COPY src/NgoFund.Infrastructure/NgoFund.Infrastructure.csproj src/NgoFund.Infrastructure/
+COPY src/NgoFund.Api/NgoFund.Api.csproj src/NgoFund.Api/
+RUN dotnet restore src/NgoFund.Api/NgoFund.Api.csproj
+
+COPY src/NgoFund.Domain src/NgoFund.Domain
+COPY src/NgoFund.Contracts src/NgoFund.Contracts
+COPY src/NgoFund.Application src/NgoFund.Application
+COPY src/NgoFund.Infrastructure src/NgoFund.Infrastructure
+COPY src/NgoFund.Api src/NgoFund.Api
+
+RUN dotnet publish src/NgoFund.Api/NgoFund.Api.csproj -c Release -o /app/publish --no-restore
+
+# Runtime stage — the smaller ASP.NET runtime image, non-root user, no SDK.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+
+# curl is needed for docker-compose's own HTTP healthcheck against /health; not in the base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r appgroup && useradd -r -g appgroup appuser \
+    && mkdir -p /app/storage && chown -R appuser:appgroup /app
+
+COPY --from=build --chown=appuser:appgroup /app/publish .
+
+USER appuser
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "NgoFund.Api.dll"]

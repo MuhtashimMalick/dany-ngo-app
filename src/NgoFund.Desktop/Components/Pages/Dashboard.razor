@@ -1,0 +1,572 @@
+@page "/"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="page-header"></div>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+else if (_summary is null)
+{
+    @* Skeleton mirrors the real layout below (fund cards, month strip, chart grid, table) instead
+       of two generic gray blocks — so the loading state doesn't visually "jump" once data lands. *@
+    <div class="metric-row">
+        @for (var i = 0; i < 2; i++)
+        {
+            <div class="card fund-balance-card"><Skeleton Height="6rem" /></div>
+        }
+    </div>
+    <div class="card" style="padding: var(--space-4); margin-bottom: var(--space-5);"><Skeleton Rows="1" Columns="4" /></div>
+    <div class="stat-grid">
+        @for (var i = 0; i < 4; i++)
+        {
+            <div class="card stat-card"><Skeleton Height="4.5rem" /></div>
+        }
+    </div>
+    <div class="chart-grid">
+        <div class="card chart-card"><Skeleton Height="220px" /></div>
+        <div class="card chart-card"><Skeleton Height="220px" /></div>
+    </div>
+    <div class="chart-grid">
+        <div class="card chart-card"><Skeleton Height="160px" /></div>
+        <div class="card chart-card"><Skeleton Height="160px" /></div>
+    </div>
+    <div class="card" style="padding: var(--space-4);"><Skeleton Rows="4" Columns="4" /></div>
+}
+else
+{
+    <div class="metric-row" id="dashboard-fund-cards">
+        @foreach (var fund in _summary.FundBalances)
+        {
+            <FundBalanceCard Balance="fund" Committed="CommittedFor(fund.FundCategoryId)" MonthlyBurn="MonthlyBurnFor(fund.FundCategoryId)" />
+        }
+    </div>
+
+    <div class="card month-strip" id="dashboard-month-strip">
+        <div class="month-strip-cell">
+            <div class="month-strip-label">Donations Received</div>
+            <div class="month-strip-value">@_summary.DonationsThisMonth.ToString("N2")</div>
+            <div class="month-strip-delta @DonationsDelta.CssClass">@DonationsDelta.Text</div>
+        </div>
+        <div class="month-strip-cell">
+            <div class="month-strip-label">Disbursed</div>
+            <div class="month-strip-value">@_summary.PaymentsThisMonth.ToString("N2")</div>
+            <div class="month-strip-delta @PaymentsDelta.CssClass">@PaymentsDelta.Text</div>
+        </div>
+        <div class="month-strip-cell">
+            <div class="month-strip-label">Applications Received</div>
+            <div class="month-strip-value">@_appsReceivedThisMonth</div>
+            <div class="month-strip-delta @ApplicationsDelta.CssClass">@ApplicationsDelta.Text</div>
+        </div>
+        <div class="month-strip-cell">
+            <div class="month-strip-label">Pending Review</div>
+            <div class="month-strip-value">@PendingReviewCount</div>
+            <div class="month-strip-delta">Awaiting decision now</div>
+        </div>
+    </div>
+
+    @if (_insights is null)
+    {
+        <div class="alert alert-warning" id="dashboard-insights-unavailable">Extended insights (approval rate, processing time, donor and method breakdowns) couldn't be loaded right now. The rest of the dashboard is unaffected.</div>
+    }
+    else
+    {
+        <div class="stat-grid" id="dashboard-perf-stats">
+            <StatCard Label="Approval Rate"
+                      Value="@ApprovalRateValue"
+                      Hint="@ApprovalRateHint"
+                      CountUp="@ApprovalRateCountUp"
+                      CountUpDecimals="0"
+                      CountUpSuffix="%" />
+            <StatCard Label="Median Days to Decision"
+                      Value="@ProcessingTimeValue"
+                      Hint="@ProcessingTimeHint"
+                      CountUp="@ProcessingTimeCountUp"
+                      CountUpDecimals="1"
+                      CountUpSuffix=" d" />
+            <StatCard Label="Avg Donation Size"
+                      Value="@AvgDonationSizeValue"
+                      Hint="@AvgDonationSizeHint"
+                      CountUp="@AvgDonationSizeCountUp"
+                      CountUpDecimals="2" />
+            <StatCard Label="Active Donors"
+                      Value="@_insights.Donors.Active.ToString("N0")"
+                      Hint="@NewDonorsHint(_insights.Donors.NewThisMonth, _insights.Donors.NewLastMonth)"
+                      CountUp="@_insights.Donors.Active"
+                      CountUpDecimals="0" />
+        </div>
+    }
+
+    <div class="chart-grid">
+        <div class="card chart-card">
+            <h3>Applications by Status</h3>
+            @if (_summary.ApplicationsByStatus.Count == 0 || StatusTotal == 0)
+            {
+                <EmptyState Icon="applications" Title="No applications yet" />
+            }
+            else
+            {
+                <div class="status-stack" role="img" aria-label="Applications by status">
+                    @foreach (var status in _summary.ApplicationsByStatus.Where(s => s.Count > 0))
+                    {
+                        var percent = (double)status.Count / StatusTotal * 100;
+                        <div class="status-stack-part" title="@($"{status.Status}: {status.Count}")"
+                             style="width:@(percent.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))%; background:@StatusSolidColor(status.Status);">
+                            @if (percent >= 8)
+                            {
+                                @status.Count
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="status-legend">
+                    @foreach (var status in _summary.ApplicationsByStatus.Where(s => s.Count > 0))
+                    {
+                        <span class="status-legend-item">
+                            <span class="status-legend-dot" style="background:@StatusSolidColor(status.Status);"></span>
+                            @status.Status <span class="status-legend-count">@status.Count</span>
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="card chart-card">
+            <h3>Donations vs Disbursements — Last 6 Months</h3>
+            @if (_monthlyTrend.Count == 0 || _monthlyTrend.All(p => p.Donations == 0 && p.Payments == 0))
+            {
+                <EmptyState Icon="reports" Title="No activity in this range" />
+            }
+            else
+            {
+                <div class="chart-legend">
+                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--color-primary);"></span>Donations</span>
+                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--color-muted-foreground); opacity:.6;"></span>Disbursements</span>
+                </div>
+                <ChartCanvas Height="200" Context="size">
+                    @RenderTrendLineChart(size.Width, size.Height)
+                </ChartCanvas>
+            }
+        </div>
+    </div>
+
+    @if (_insights is not null)
+    {
+        <div class="chart-grid">
+            <div class="card chart-card">
+                <h3>Donations by Method</h3>
+                @if (_insights.DonationsByMethodLast12Months.Count == 0)
+                {
+                    <EmptyState Icon="donations" Title="No donations recorded yet" Description="Last 12 months." />
+                }
+                else
+                {
+                    <BreakdownBars Items="_insights.DonationsByMethodLast12Months" CurrencyFormat="true" />
+                }
+            </div>
+            <div class="card chart-card">
+                <h3>Disbursements by Method</h3>
+                @if (_insights.PaymentsByMethodLast12Months.Count == 0)
+                {
+                    <EmptyState Icon="payments" Title="No disbursements recorded yet" Description="Last 12 months." />
+                }
+                else
+                {
+                    <BreakdownBars Items="_insights.PaymentsByMethodLast12Months" CurrencyFormat="true" />
+                }
+            </div>
+        </div>
+    }
+
+    <div class="section-heading-row">
+        <h3 class="section-heading">Needs Attention</h3>
+        @if (_insights is not null && _insights.OpenApplicationsByPriority.Count > 0)
+        {
+            <div class="priority-chip-group" aria-label="Open applications by priority">
+                @foreach (var priority in _insights.OpenApplicationsByPriority)
+                {
+                    <span class="priority-chip">@priority.Label &middot; @priority.Count</span>
+                }
+            </div>
+        }
+    </div>
+    <div class="card">
+        @if (_needsAttention.Count == 0)
+        {
+            <EmptyState Icon="check-circle" Title="Nothing waiting" Description="No pending or under-review applications right now." />
+        }
+        else
+        {
+            <ul class="needs-attention">
+                @foreach (var application in _needsAttention)
+                {
+                    var days = DaysWaiting(application.ApplicationDate);
+                    <li>
+                        <button type="button" class="needs-attention-item" @onclick="() => GoToApplication(application.Id)">
+                            <span class="age-pill @AgePillClass(days)">@days d</span>
+                            @if (application.Priority is "Urgent" or "High")
+                            {
+                                <span class="priority-chip">@application.Priority</span>
+                            }
+                            <span class="needs-attention-primary flex-1">
+                                <span class="needs-attention-name">@application.ApplicantName &middot; @application.ApplicationNumber</span>
+                                <span class="needs-attention-meta">@application.ApplicationCategoryName &middot; <StatusBadge Status="@application.Status" /></span>
+                            </span>
+                            <span class="needs-attention-amount">@application.RequestedAmount.ToString("N2") PKR</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <h3 class="section-heading">Applications by Category — Detail</h3>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th class="num">Count</th>
+                    <th class="num">Requested (PKR)</th>
+                    <th class="num">Approved (PKR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_summary.ApplicationsByCategory.Count == 0)
+                {
+                    <tr><td colspan="4"><EmptyState Icon="applications" Title="No applications yet" /></td></tr>
+                }
+                else
+                {
+                    var maxCount = Math.Max(1, _summary.ApplicationsByCategory.Max(c => c.Count));
+                    @foreach (var category in _summary.ApplicationsByCategory)
+                    {
+                        <tr>
+                            <td>@category.CategoryName</td>
+                            <td class="num">
+                                <span class="flex items-center gap-2 justify-between">
+                                    <span class="micro-bar-track"><span class="micro-bar-fill" style="width:@((category.Count * 100.0 / maxCount).ToString("F0", System.Globalization.CultureInfo.InvariantCulture))%;"></span></span>
+                                    @category.Count
+                                </span>
+                            </td>
+                            <td class="num">@category.RequestedTotal.ToString("N2")</td>
+                            <td class="num">@category.ApprovedTotal.ToString("N2")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private DashboardSummaryDto? _summary;
+    private string? _errorMessage;
+    private IReadOnlyList<ApplicationDto> _needsAttention = [];
+    private List<MonthPoint> _monthlyTrend = [];
+    private int _appsReceivedThisMonth;
+    private int _appsReceivedLastMonth;
+    private bool _pendingStatCardAnimation;
+
+    // Extended KPIs (F1-F5) — fetched and failure-isolated independently of everything above, so a
+    // slow/broken insights endpoint never blanks the dashboard sections that already worked before
+    // this feature existed (see LoadInsightsSafeAsync below).
+    private DashboardInsightsDto? _insights;
+    private Dictionary<Guid, decimal> _fundMonthlyBurn = [];
+
+    private int StatusTotal => _summary?.ApplicationsByStatus.Sum(s => s.Count) ?? 0;
+
+    private int PendingReviewCount => _summary?.ApplicationsByStatus
+        .Where(s => s.Status is "Pending" or "UnderReview")
+        .Sum(s => s.Count) ?? 0;
+
+    private (string Text, string CssClass) DonationsDelta =>
+        Delta(_summary!.DonationsThisMonth, _monthlyTrend.Count >= 2 ? _monthlyTrend[^2].Donations : 0);
+
+    private (string Text, string CssClass) PaymentsDelta =>
+        Delta(_summary!.PaymentsThisMonth, _monthlyTrend.Count >= 2 ? _monthlyTrend[^2].Payments : 0);
+
+    private (string Text, string CssClass) ApplicationsDelta => Delta(_appsReceivedThisMonth, _appsReceivedLastMonth);
+
+    // ---- F2 performance stat strip — each guarded against the "fresh install" zero/null case ----
+
+    private (int Good, int Denom) ApprovalRateCounts
+    {
+        get
+        {
+            var byStatus = _insights!.ApplicationsByStatusLast12Months;
+            var good = byStatus.Where(s => s.Status is "Approved" or "Paid" or "PartiallyPaid").Sum(s => s.Count);
+            var rejected = byStatus.Where(s => s.Status == "Rejected").Sum(s => s.Count);
+            return (good, good + rejected);
+        }
+    }
+
+    private string ApprovalRateValue
+    {
+        get
+        {
+            var (good, denom) = ApprovalRateCounts;
+            return denom == 0 ? "No decisions yet" : $"{(double)good / denom * 100:N0}%";
+        }
+    }
+
+    private string ApprovalRateHint
+    {
+        get
+        {
+            var (good, denom) = ApprovalRateCounts;
+            return denom == 0 ? "Awaiting first approval or rejection" : $"{good} of {denom} decided · last 12 months";
+        }
+    }
+
+    private decimal? ApprovalRateCountUp
+    {
+        get
+        {
+            var (good, denom) = ApprovalRateCounts;
+            return denom == 0 ? null : (decimal)good / denom * 100;
+        }
+    }
+
+    private string ProcessingTimeValue =>
+        _insights!.ProcessingTime is { DecidedCount: > 0, MedianDays: { } median } ? $"{median:N1} d" : "Not enough data";
+
+    private string ProcessingTimeHint =>
+        _insights!.ProcessingTime is { DecidedCount: > 0 } pt
+            ? $"{pt.DecidedCount} decided · last {pt.WindowDays} days"
+            : "No decided applications in this window yet";
+
+    private decimal? ProcessingTimeCountUp =>
+        _insights!.ProcessingTime is { DecidedCount: > 0, MedianDays: { } median } ? (decimal)median : null;
+
+    private string AvgDonationSizeValue =>
+        _insights!.DonationCountThisMonth == 0 ? "—" : (_summary!.DonationsThisMonth / _insights.DonationCountThisMonth).ToString("N2");
+
+    private string AvgDonationSizeHint =>
+        _insights!.DonationCountThisMonth == 0
+            ? "No donations this month"
+            : $"{_insights.DonationCountThisMonth} donation{(_insights.DonationCountThisMonth == 1 ? "" : "s")} this month";
+
+    private decimal? AvgDonationSizeCountUp =>
+        _insights!.DonationCountThisMonth == 0 ? null : _summary!.DonationsThisMonth / _insights.DonationCountThisMonth;
+
+    // Mirrors the shape of Delta() above (zero-previous special case, then a signed percentage)
+    // but phrased for "new donors" rather than a raw amount/count comparison.
+    private static string NewDonorsHint(int newThisMonth, int newLastMonth)
+    {
+        if (newLastMonth == 0)
+        {
+            return newThisMonth == 0 ? "No new donors last month" : $"+{newThisMonth} new this month";
+        }
+
+        var pct = (newThisMonth - newLastMonth) / (double)newLastMonth * 100;
+        var arrow = pct >= 0 ? "▲" : "▼";
+        return $"{arrow} {Math.Abs(pct):N0}% new donors vs last month";
+    }
+
+    // ---- F4 fund commitment + runway ----
+
+    private decimal? CommittedFor(Guid fundCategoryId) =>
+        _insights?.OutstandingCommitments.FirstOrDefault(c => c.FundCategoryId == fundCategoryId) is { } commitment
+            ? commitment.ApprovedOutstanding
+            : null;
+
+    private decimal? MonthlyBurnFor(Guid fundCategoryId) =>
+        _fundMonthlyBurn.TryGetValue(fundCategoryId, out var burn) ? burn : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var to = DateOnly.FromDateTime(DateTime.Today);
+            var trendFrom = to.AddMonths(-5).AddDays(1 - to.Day);
+            var thisMonthStart = new DateOnly(to.Year, to.Month, 1);
+            var lastMonthEnd = thisMonthStart.AddDays(-1);
+            var lastMonthStart = new DateOnly(lastMonthEnd.Year, lastMonthEnd.Month, 1);
+
+            // All independent reads fired together instead of five serial round-trips — the
+            // dashboard's slowest single call now bounds total load time instead of their sum.
+            var summaryTask = ApiClient.GetDashboardSummaryAsync();
+            var pendingTask = ApiClient.GetApplicationsAsync(1, 10, status: "Pending");
+            var underReviewTask = ApiClient.GetApplicationsAsync(1, 10, status: "UnderReview");
+            var donationsTrendTask = ApiClient.GetMonthlyDonationsAsync(trendFrom, to);
+            var paymentsTrendTask = ApiClient.GetMonthlyPaymentsAsync(trendFrom, to);
+            var appsThisMonthTask = ApiClient.GetApplicationsAsync(1, 1, dateFrom: thisMonthStart, dateTo: to);
+            var appsLastMonthTask = ApiClient.GetApplicationsAsync(1, 1, dateFrom: lastMonthStart, dateTo: lastMonthEnd);
+
+            // Wrapped so a faulted insights call never surfaces through Task.WhenAll into the
+            // catch block below — that block is the "blank the whole page" path, and the extended
+            // KPIs are supplementary: everything the dashboard already did must keep working even
+            // if this one endpoint is slow, missing, or erroring (F5).
+            var insightsTask = LoadInsightsSafeAsync();
+
+            await Task.WhenAll(summaryTask, pendingTask, underReviewTask, donationsTrendTask, paymentsTrendTask, appsThisMonthTask, appsLastMonthTask, insightsTask);
+
+            _summary = summaryTask.Result;
+            _insights = insightsTask.Result;
+
+            // Sorted by age descending (oldest-waiting first) — days-waiting is the real urgency
+            // signal for a pending/under-review application, not the requested amount.
+            _needsAttention = pendingTask.Result.Items.Concat(underReviewTask.Result.Items)
+                .OrderByDescending(a => DaysWaiting(a.ApplicationDate))
+                .Take(6)
+                .ToList();
+
+            var months = Enumerable.Range(0, 6).Select(i => trendFrom.AddMonths(i)).Select(d => (d.Year, d.Month)).ToList();
+            var donations = donationsTrendTask.Result;
+            var payments = paymentsTrendTask.Result;
+            _monthlyTrend = months.Select(m => new MonthPoint(
+                m.Year,
+                m.Month,
+                donations.Where(r => r.Year == m.Year && r.Month == m.Month).Sum(r => r.Total),
+                payments.Where(r => r.Year == m.Year && r.Month == m.Month).Sum(r => r.Total)
+            )).ToList();
+
+            // Per-fund average monthly burn for the FundBalanceCard runway hint (F4) — derived from
+            // the same trend rows already fetched for the chart above (MonthlySummaryRowDto carries
+            // FundCategoryId even though the chart's own MonthPoint aggregates it away), so this
+            // costs no extra API call.
+            _fundMonthlyBurn = payments
+                .GroupBy(p => p.FundCategoryId)
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.Total) / months.Count);
+
+            _appsReceivedThisMonth = appsThisMonthTask.Result.TotalCount;
+            _appsReceivedLastMonth = appsLastMonthTask.Result.TotalCount;
+
+            _pendingStatCardAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingStatCardAnimation)
+        {
+            _pendingStatCardAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateStatCards", "#dashboard-fund-cards .fund-balance-card");
+
+            if (_insights is not null)
+            {
+                await JS.InvokeVoidAsync("ngoFundMotion.animateStatCards", "#dashboard-perf-stats .stat-card");
+            }
+        }
+    }
+
+    // Insights are a "nice to have" layered on top of an already-working dashboard — any failure
+    // here (endpoint down, timeout, bad response) must not propagate into the Task.WhenAll above
+    // and trip the single catch(ApiException) that blanks the whole page (F5).
+    private async Task<DashboardInsightsDto?> LoadInsightsSafeAsync()
+    {
+        try
+        {
+            return await ApiClient.GetDashboardInsightsAsync();
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    private void GoToApplication(Guid applicationId) => Navigation.NavigateTo($"/applications?applicationId={applicationId}");
+
+    private static int DaysWaiting(DateOnly applicationDate) =>
+        Math.Max(0, DateOnly.FromDateTime(DateTime.Today).DayNumber - applicationDate.DayNumber);
+
+    private static string AgePillClass(int days) => days > 14 ? "critical" : days > 7 ? "warn" : "";
+
+    private static (string Text, string CssClass) Delta(decimal current, decimal previous)
+    {
+        if (previous == 0)
+        {
+            return current == 0 ? ("No change vs last month", "") : ("New this month", "up");
+        }
+
+        var pct = (current - previous) / previous * 100;
+        var arrow = pct >= 0 ? "▲" : "▼";
+        return ($"{arrow} {Math.Abs(pct):N0}% vs last month", pct >= 0 ? "up" : "down");
+    }
+
+    private static (string Text, string CssClass) Delta(int current, int previous) => Delta((decimal)current, previous);
+
+    private static string StatusSolidColor(string status) => status switch
+    {
+        "Pending" => "var(--status-pending-solid)",
+        "UnderReview" => "var(--status-under-review-solid)",
+        "Approved" => "var(--status-approved-solid)",
+        "Rejected" => "var(--status-rejected-solid)",
+        "Paid" => "var(--status-paid-solid)",
+        "PartiallyPaid" => "var(--status-partially-paid-solid)",
+        "OnHold" => "var(--status-on-hold-solid)",
+        _ => "var(--status-neutral-solid)",
+    };
+
+    // Hand-built inline SVG — no charting package (see 's "prefer the framework/standard
+    // library" rule). Rendered at the exact pixel size ChartCanvas measures via ResizeObserver, so
+    // 1 SVG user unit is always 1 CSS pixel — axis text and gridline stroke-width never scale with
+    // the container (the fix for the previous "9px label renders at 18px" bug).
+    private RenderFragment RenderTrendLineChart(double width, double height) => builder =>
+    {
+        var points = _monthlyTrend;
+        const double pad = 36; // symmetric left/right slack — was 24px left / 12px right before
+        const double topPad = 14, bottomPad = 22;
+        var max = Math.Max(1m, points.Max(p => Math.Max(p.Donations, p.Payments)));
+        var plotWidth = Math.Max(1, width - pad * 2);
+        var plotHeight = Math.Max(1, height - topPad - bottomPad);
+        var stepX = points.Count <= 1 ? 0 : plotWidth / (points.Count - 1);
+
+        double X(int i) => pad + i * stepX;
+        double Y(decimal value) => topPad + plotHeight - (double)(value / max) * plotHeight;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<svg class=\"chart-svg\" width=\"{width:F0}\" height=\"{height:F0}\" viewBox=\"0 0 {width:F0} {height:F0}\">");
+
+        // 3 horizontal gridlines: 0 / 50% / max, each with an abbreviated Y label.
+        foreach (var fraction in new[] { 0m, 0.5m, 1m })
+        {
+            var y = Y(max * fraction);
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<line class=\"chart-gridline\" x1=\"{pad:F1}\" y1=\"{y:F1}\" x2=\"{width - pad:F1}\" y2=\"{y:F1}\" />");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<text class=\"chart-axis-label\" x=\"{pad - 6:F1}\" y=\"{y + 3:F1}\" text-anchor=\"end\">{ChartFormat.Abbreviate(max * fraction)}</text>");
+        }
+
+        string BuildPath(Func<MonthPoint, decimal> selector)
+        {
+            var path = new System.Text.StringBuilder();
+            for (var i = 0; i < points.Count; i++)
+            {
+                path.Append(System.Globalization.CultureInfo.InvariantCulture, $"{(i == 0 ? "M" : "L")}{X(i):F1},{Y(selector(points[i])):F1} ");
+            }
+            return path.ToString();
+        }
+
+        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<path class=\"chart-line-secondary\" d=\"{BuildPath(p => p.Payments)}\" />");
+        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<path class=\"chart-line\" d=\"{BuildPath(p => p.Donations)}\" />");
+
+        for (var i = 0; i < points.Count; i++)
+        {
+            var label = new DateOnly(points[i].Year, points[i].Month, 1).ToString("MMM");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<circle class=\"chart-dot-secondary\" cx=\"{X(i):F1}\" cy=\"{Y(points[i].Payments):F1}\" r=\"2.5\" />");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<circle class=\"chart-dot\" cx=\"{X(i):F1}\" cy=\"{Y(points[i].Donations):F1}\" r=\"2.5\" />");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"<text class=\"chart-axis-label\" x=\"{X(i):F1}\" y=\"{height - 4:F1}\" text-anchor=\"middle\">{label}</text>");
+
+            // Invisible full-height hit target with a native <title> — a free tooltip on hover
+            // without hand-rolling one, per the design review.
+            var hitWidth = points.Count <= 1 ? plotWidth : stepX;
+            var hitX = X(i) - hitWidth / 2;
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"<rect class=\"chart-tooltip-rect\" x=\"{hitX:F1}\" y=\"0\" width=\"{hitWidth:F1}\" height=\"{height:F0}\">" +
+                $"<title>{System.Net.WebUtility.HtmlEncode(label)} {points[i].Year} — Donations {points[i].Donations:N0}, Disbursements {points[i].Payments:N0}</title></rect>");
+        }
+
+        sb.Append("</svg>");
+        builder.AddMarkupContent(0, sb.ToString());
+    };
+
+    private record MonthPoint(int Year, int Month, decimal Donations, decimal Payments);
+}

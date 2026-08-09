@@ -1,0 +1,113 @@
+/*
+  Design tokens — single source of truth for color/spacing/type/radius/shadow.
+  Second redesign pass: the first pass (indigo/violet + gradients + glow shadows) read as
+  generic "AI-template" styling per direct client feedback. Replaced with a flat, restrained
+  slate + teal palette — no gradients anywhere, no colored glow shadows, true neutral grays for
+  surfaces/borders instead of color-tinted ones. Typography unchanged: Poppins (heading) + Inter
+  (body). Components reference these variables, never hardcode values.
+*/
+
+:root {
+  /* Phase 1 is light-mode only (client decision) — the half-built dark-mode media query that
+     used to live at the bottom of this file has been removed rather than finished, and this
+     declares that intent to the browser/OS instead of leaving it ambiguous. */
+  color-scheme: light;
+
+  /* Color — one confident accent (teal, ties thematically to funds/growth), flat and used
+     sparingly; everything else is a true neutral gray, not color-tinted. */
+  --color-primary: #0f766e;
+  --color-primary-hover: #0b5d56;
+  --color-on-primary: #ffffff;
+  --color-secondary: #334155;
+  --color-accent: #0f766e;
+  --color-accent-hover: #0b5d56;
+
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-foreground: #111827;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-border: #e2e8f0;
+  --color-destructive: #dc2626;
+  --color-destructive-hover: #b91c1c;
+  --color-ring: #0f766e;
+
+  /* Status colors — application/payment/donation workflow states. Hand-tuned, desaturated pairs
+     rather than raw Tailwind-100/700 swatches (the previous pass's badges read as an obvious
+     component-library default). "Paid" no longer fills solid teal — the brand accent is reserved
+     for the primary button, active nav indicator, focus rings and links per the design review;
+     a badge repeating on every row of a table is decorative use, not one of those four. */
+  --status-pending-bg: #fbe8c6;
+  --status-pending-fg: #8a5a15;
+  --status-under-review-bg: #dbe7f7;
+  --status-under-review-fg: #2c5282;
+  --status-approved-bg: #d8eee1;
+  --status-approved-fg: #1f6d4a;
+  --status-rejected-bg: #f6dcdc;
+  --status-rejected-fg: #9b3b3b;
+  --status-paid-bg: #d7efec;
+  --status-paid-fg: #0d5c54;
+  --status-partially-paid-bg: #f7e4cf;
+  --status-partially-paid-fg: #92501c;
+  --status-on-hold-bg: #e6e9ee;
+  --status-on-hold-fg: #4b5768;
+  --status-neutral-bg: #eceef1;
+  --status-neutral-fg: #525866;
+
+  /* Solid fill variants — the `-bg`/`-fg` pairs above are tuned for text-on-a-pale-background
+     (badges); used at full opacity as a 100%-width bar fill (dashboard status breakdown) they
+     read muddy/harsh. These are the same hues pulled to a fill-safe saturation/lightness instead
+     of being reused at reduced opacity. */
+  --status-pending-solid: #e0a83f;
+  --status-under-review-solid: #4d7bb5;
+  --status-approved-solid: #3f9468;
+  --status-rejected-solid: #c15c5c;
+  --status-paid-solid: #1f9186;
+  --status-partially-paid-solid: #c98a45;
+  --status-on-hold-solid: #8993a4;
+  --status-neutral-solid: #9aa1ad;
+
+  /* Typography */
+  --font-heading: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* Spacing scale — dense/dashboard (8-32px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Shape — dialed back a notch from the first pass (radius-lg 12→8, radius-md 8→6); large
+     radii on a dense data tool read as consumer/marketing rather than a working instrument. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Elevation — flat, neutral-toned shadows only, and reserved for true overlays (modals,
+     dropdowns, toasts). In-page containers (.card) use a border instead of a shadow. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.12);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Layout — sidebar width in both states, one source of truth for MainLayout's CSS and the
+     collapse toggle logic (nothing else hardcodes these two numbers). */
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 68px;
+}

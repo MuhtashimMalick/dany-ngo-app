@@ -1,0 +1,73 @@
+@typeparam TItem
+
+<div class="table-wrapper">
+    <table class="data-table">
+        <thead>
+            <tr>@HeaderRow</tr>
+        </thead>
+        @if (IsLoading)
+        {
+            <tbody>
+                <tr><td colspan="20" style="padding:0;"><Skeleton Rows="SkeletonRows" Columns="SkeletonColumns" /></td></tr>
+            </tbody>
+        }
+        else
+        {
+            <tbody id="@RowsContainerId">
+                @if (Items.Count == 0)
+                {
+                    <tr><td colspan="20"><EmptyState Icon="@EmptyIcon" Title="@EmptyText" Description="@EmptyDescription" ActionText="@EmptyActionText" OnAction="EmptyOnAction" /></td></tr>
+                }
+                else
+                {
+                    @foreach (var item in Items)
+                    {
+                        @RowTemplate(item)
+                    }
+                }
+            </tbody>
+        }
+    </table>
+</div>
+
+@if (ShowPagination && !IsLoading)
+{
+    <div class="pagination">
+        <span>
+            @if (TotalCount == 0)
+            {
+                <text>No records</text>
+            }
+            else
+            {
+                <text>Showing @(((Page - 1) * PageSize) + 1)-@(Math.Min(Page * PageSize, TotalCount)) of @TotalCount</text>
+            }
+        </span>
+        <div class="pagination-controls">
+            <button class="btn btn-secondary btn-sm" disabled="@(Page <= 1)" @onclick="() => OnPageChange.InvokeAsync(Page - 1)">Previous</button>
+            <button class="btn btn-secondary btn-sm" disabled="@(Page * PageSize >= TotalCount)" @onclick="() => OnPageChange.InvokeAsync(Page + 1)">Next</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = [];
+    [Parameter, EditorRequired] public RenderFragment HeaderRow { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> RowTemplate { get; set; } = null!;
+    [Parameter] public string EmptyText { get; set; } = "No records found.";
+    [Parameter] public string? EmptyDescription { get; set; }
+    [Parameter] public string EmptyIcon { get; set; } = "inbox";
+    [Parameter] public string? EmptyActionText { get; set; }
+    [Parameter] public EventCallback EmptyOnAction { get; set; }
+    /// <summary>When true, renders a Skeleton in place of rows — pass e.g. `_page is null` so a
+    /// table never flashes "no records" before the first real response arrives.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public int SkeletonRows { get; set; } = 6;
+    [Parameter] public int SkeletonColumns { get; set; } = 5;
+    [Parameter] public bool ShowPagination { get; set; }
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    [Parameter] public string RowsContainerId { get; set; } = "data-table-rows";
+}

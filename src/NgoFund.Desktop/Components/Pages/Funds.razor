@@ -1,0 +1,226 @@
+@page "/funds"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("fundcategories.manage"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">New Fund Category</button>
+        </SectionContent>
+    }
+</div>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<div class="metric-row" id="fund-balance-cards">
+    @foreach (var balance in _balances)
+    {
+        <div class="card metric-tile">
+            <div class="flex justify-between items-center gap-2">
+                <span class="metric-label">@balance.Name</span>
+                @if (balance.IsZakat)
+                {
+                    <span class="badge badge-underreview">Zakat</span>
+                }
+            </div>
+            <div class="metric-value">@balance.Balance.ToString("N2")</div>
+            <div class="metric-hint">Collected @balance.TotalCollected.ToString("N2") &middot; Utilized @balance.TotalUtilized.ToString("N2")</div>
+        </div>
+    }
+</div>
+
+<DataTable TItem="FundCategoryDto" Items="_categories" IsLoading="_isLoading" RowsContainerId="fund-rows"
+           EmptyText="No fund categories yet." EmptyDescription="Fund categories you create will appear here." EmptyIcon="funds">
+    <HeaderRow>
+        <th>Code</th>
+        <th>Name</th>
+        <th>Zakat?</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="fund">
+        <tr>
+            <td>@fund.Code</td>
+            <td>@fund.Name</td>
+            <td>@(fund.IsZakat ? "Yes" : "No")</td>
+            <td><StatusBadge Status="@(fund.IsActive ? "Active" : "Inactive")" /></td>
+            <td class="table-actions">
+                @if (AuthState.HasPermission("fundcategories.manage"))
+                {
+                    <button class="icon-btn" aria-label="Edit fund" @onclick="() => OpenEditModal(fund)"><Icon Name="pencil" Size="16" /></button>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showForm)
+{
+    <Modal Title="@(_editingId is null ? "New Fund Category" : "Edit Fund Category")" Size="sm" OnClose="CloseForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="fund-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            @if (_editingId is null)
+            {
+                <FormField Label="Code" For="code" Hint="Short stable code, e.g. ZAKAT." ValidationFor="() => _form.Code">
+                    <InputText id="code" @bind-Value="_form.Code" />
+                </FormField>
+            }
+
+            <FormField Label="Name" For="name" ValidationFor="() => _form.Name">
+                <InputText id="name" @bind-Value="_form.Name" />
+            </FormField>
+
+            <FormField Label="Description" For="description">
+                <InputText id="description" @bind-Value="_form.Description" />
+            </FormField>
+
+            @if (_editingId is null)
+            {
+                <div class="field">
+                    <label class="checkbox-label">
+                        <input type="checkbox" @bind="_form.IsZakat" />
+                        Zakat fund (only Zakat-eligible categories may draw from it)
+                    </label>
+                </div>
+            }
+            else
+            {
+                <div class="field">
+                    <label class="checkbox-label">
+                        <input type="checkbox" @bind="_form.IsActive" />
+                        Active
+                    </label>
+                </div>
+            }
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="submit" form="fund-form" class="btn btn-primary" disabled="@_isSaving">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<FundBalanceDto> _balances = [];
+    private IReadOnlyList<FundCategoryDto> _categories = [];
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private bool _showForm;
+    private bool _isSaving;
+    private string? _formError;
+    private Guid? _editingId;
+    private FundFormModel _form = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#fund-balance-cards > div");
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            _balances = await ApiClient.GetFundBalancesAsync();
+            _categories = await ApiClient.GetFundCategoriesAsync();
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingId = null;
+        _form = new FundFormModel { IsActive = true };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEditModal(FundCategoryDto fund)
+    {
+        _editingId = fund.Id;
+        _form = new FundFormModel
+        {
+            Code = fund.Code,
+            Name = fund.Name,
+            Description = fund.Description,
+            IsZakat = fund.IsZakat,
+            IsActive = fund.IsActive,
+            DisplayOrder = fund.DisplayOrder,
+        };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            if (_editingId is null)
+            {
+                var created = await ApiClient.CreateFundCategoryAsync(new CreateFundCategoryRequest(_form.Code, _form.Name, _form.Description, _form.IsZakat, _form.DisplayOrder));
+                Toast.Success($"Fund category created · {created.Name}");
+            }
+            else
+            {
+                var updated = await ApiClient.UpdateFundCategoryAsync(_editingId.Value, new UpdateFundCategoryRequest(_form.Name, _form.Description, _form.IsActive, _form.DisplayOrder));
+                Toast.Success($"Fund category updated · {updated.Name}");
+            }
+
+            _showForm = false;
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private class FundFormModel
+    {
+        [Required] public string Code { get; set; } = "";
+        [Required] public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public bool IsZakat { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int DisplayOrder { get; set; }
+    }
+}

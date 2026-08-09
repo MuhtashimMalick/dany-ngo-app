@@ -1,0 +1,111 @@
+@inject ApiClient ApiClient
+@inject IJSRuntime JS
+@inject ILogger<DocumentViewer> Logger
+@implements IAsyncDisposable
+
+@if (Document is not null)
+{
+    <Modal Title="@Document.FileName" Size="lg" OnClose="CloseAsync">
+        <ChildContent>
+        @if (_isLoading)
+        {
+            <p class="field-hint">Loading preview...</p>
+        }
+        else if (_errorMessage is not null)
+        {
+            <div class="alert alert-error">@_errorMessage</div>
+        }
+        else if (_objectUrl is not null)
+        {
+            @if (Document.ContentType.StartsWith("image/"))
+            {
+                <img src="@_objectUrl" alt="@Document.FileName" style="max-width:100%; max-height:70vh; display:block; margin:0 auto;" />
+            }
+            else if (Document.ContentType == "application/pdf")
+            {
+                <iframe title="@Document.FileName" src="@_objectUrl" style="width:100%; height:70vh; border:none;"></iframe>
+            }
+            else
+            {
+                <p class="field-hint">Preview isn't available for this file type (@Document.ContentType) — use Download instead.</p>
+            }
+        }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseAsync">Close</button>
+            <button type="button" class="btn btn-primary" disabled="@(_bytes is null)" @onclick="DownloadAsync">Download</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public DocumentDto? Document { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _isLoading;
+    private string? _errorMessage;
+    private string? _objectUrl;
+    private byte[]? _bytes;
+    private Guid? _loadedForId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Document is null || _loadedForId == Document.Id)
+        {
+            return;
+        }
+
+        await ClearObjectUrlAsync();
+        _loadedForId = Document.Id;
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var (bytes, contentType) = await ApiClient.DownloadDocumentAsync(Document.Id);
+            _bytes = bytes;
+            _objectUrl = await JS.InvokeAsync<string>("ngoFundFiles.createObjectUrl", Convert.ToBase64String(bytes), contentType);
+        }
+        catch (Exception ex) when (ex is ApiException or JSException)
+        {
+            // No ErrorBoundary above this component — an uncaught exception here would freeze
+            // the whole app, not just this modal.
+            _errorMessage = ex is ApiException ? ex.Message : "Couldn't render a preview for this file.";
+            Logger.LogWarning(ex, "Failed to load preview for document {DocumentId}", Document.Id);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (Document is null || _bytes is null)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(_bytes), Document.FileName, Document.ContentType);
+    }
+
+    private async Task ClearObjectUrlAsync()
+    {
+        if (_objectUrl is not null)
+        {
+            await JS.InvokeVoidAsync("ngoFundFiles.revokeObjectUrl", _objectUrl);
+            _objectUrl = null;
+        }
+
+        _bytes = null;
+    }
+
+    private async Task CloseAsync()
+    {
+        await ClearObjectUrlAsync();
+        _loadedForId = null;
+        await OnClose.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync() => await ClearObjectUrlAsync();
+}

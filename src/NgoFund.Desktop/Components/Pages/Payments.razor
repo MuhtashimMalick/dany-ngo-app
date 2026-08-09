@@ -1,0 +1,577 @@
+@page "/payments"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("payments.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">Record Payment</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by payment no., application no., applicant…" />
+    <div class="field filter-field-sm mb-0">
+        <label for="statusFilter">Status</label>
+        <select id="statusFilter" @bind="_statusFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All statuses</option>
+            @foreach (var status in Statuses)
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-md mb-0">
+        <label for="methodFilter">Method</label>
+        <select id="methodFilter" @bind="_methodFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All methods</option>
+            @foreach (var method in Methods)
+            {
+                <option value="@method">@method</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-md mb-0">
+        <label for="fundFilter">Fund</label>
+        <select id="fundFilter" @bind="_fundFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All funds</option>
+            @foreach (var fund in _funds)
+            {
+                <option value="@fund.Id">@fund.Name</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-sm mb-0">
+        <label for="dateFromFilter">From</label>
+        <input id="dateFromFilter" type="date" @bind="_dateFromFilter" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+    <div class="field filter-field-sm mb-0">
+        <label for="dateToFilter">To</label>
+        <input id="dateToFilter" type="date" @bind="_dateToFilter" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+</FilterBar>
+
+<FilterChips Filters="ActiveFilters" OnClearAll="ClearAllFiltersAsync" />
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="PaymentDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="payments-rows" EmptyText="No payments found."
+           EmptyDescription="Payments you record will appear here." EmptyIcon="payments">
+    <HeaderRow>
+        <th>Number</th>
+        <th>Application</th>
+        <th>Applicant</th>
+        <th>Fund</th>
+        <th class="num">Amount (PKR)</th>
+        <th>Date</th>
+        <th>Method</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="payment">
+        <tr>
+            <td>@payment.PaymentNumber</td>
+            <td>@payment.ApplicationNumber</td>
+            <td>@payment.ApplicantName</td>
+            <td>@payment.FundCategoryName</td>
+            <td class="num">@payment.Amount.ToString("N2")</td>
+            <td>@payment.PaymentDate.ToString("yyyy-MM-dd")</td>
+            <td>@payment.PaymentMethod</td>
+            <td><StatusBadge Status="@payment.Status" /></td>
+            <td class="table-actions">
+                <button class="icon-btn" aria-label="Print receipt" @onclick="() => OpenReceipt(payment)"><Icon Name="printer" Size="16" /></button>
+                @if (AuthState.HasPermission("payments.void") && payment.Status != "Voided")
+                {
+                    <OverflowMenu>
+                        <button type="button" class="overflow-menu-item destructive" @onclick="() => OpenVoidModal(payment)">
+                            <Icon Name="trash" Size="15" />Void
+                        </button>
+                    </OverflowMenu>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showCreateForm)
+{
+    <Modal Title="Record Payment" Size="lg" OnClose="CloseCreateForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <FormSection Title="Application">
+            @if (_selectedApplication is not null)
+            {
+                <div class="flex items-center gap-3 flex-wrap mb-3">
+                    <span>@_selectedApplication.ApplicationNumber — @_selectedApplication.ApplicantName</span>
+                    <StatusBadge Status="@_selectedApplication.Status" />
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _selectedApplication = null">Change</button>
+                </div>
+                <div class="card payment-summary-card">
+                    <div>
+                        <div class="fund-balance-col-label">Approved</div>
+                        <div class="fund-balance-col-value">@(_selectedApplication.ApprovedAmount?.ToString("N2") ?? "-")</div>
+                    </div>
+                    <div>
+                        <div class="fund-balance-col-label">Paid to date</div>
+                        <div class="fund-balance-col-value">@PaidToDate.ToString("N2")</div>
+                    </div>
+                    <div>
+                        <div class="fund-balance-col-label">Remaining</div>
+                        <div class="fund-balance-col-value">@_remainingAmount.ToString("N2")</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <Combobox TItem="ApplicationDto" SearchFunc="SearchApplicationsAsync" OnSelect="SelectApplicationAsync"
+                          Placeholder="Search by application #, applicant name or CNIC"
+                          NoResultsText="No matching applications."
+                          OptionDisabledReason="@(a => a.Status is "Approved" or "PartiallyPaid" ? null : "not payable")">
+                    <OptionTemplate Context="application">
+                        <span>@application.ApplicationNumber — @application.ApplicantName (@application.ApplicantCnic)</span>
+                        <StatusBadge Status="@application.Status" />
+                    </OptionTemplate>
+                </Combobox>
+            }
+        </FormSection>
+
+        <EditForm Model="_form" OnValidSubmit="CreateAsync" id="payment-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormSection Title="Payment">
+                <div class="form-grid">
+                    <FormField Label="Amount" For="amount" ValidationFor="() => _form.Amount">
+                        <InputNumber id="amount" @bind-Value="_form.Amount" />
+                    </FormField>
+
+                    <FormField Label="Payment Date" For="paymentDate">
+                        <InputDate id="paymentDate" @bind-Value="_form.PaymentDate" />
+                    </FormField>
+
+                    <FormField Label="Payment Method" For="paymentMethod" CssClass="span-2">
+                        <InputSelect id="paymentMethod" @bind-Value="_form.PaymentMethod">
+                            <option value="Cash">Cash</option>
+                            <option value="BankTransfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Online">Online</option>
+                        </InputSelect>
+                    </FormField>
+                </div>
+            </FormSection>
+
+            @if (_form.PaymentMethod != "Cash")
+            {
+                <FormSection Title="Instrument" Description="Recorded for non-cash payment methods.">
+                    <div class="form-grid">
+                        <FormField Label="Instrument Number" For="instrumentNumber">
+                            <InputText id="instrumentNumber" @bind-Value="_form.InstrumentNumber" />
+                        </FormField>
+
+                        <FormField Label="Bank Name" For="bankName">
+                            <InputText id="bankName" @bind-Value="_form.BankName" />
+                        </FormField>
+                    </div>
+                </FormSection>
+            }
+
+            <FormSection Title="Recipient">
+                <div class="form-grid">
+                    <FormField Label="Paid To (Name)" For="paidToName">
+                        <InputText id="paidToName" @bind-Value="_form.PaidToName" />
+                    </FormField>
+
+                    <FormField Label="Paid To (CNIC)" For="paidToCnic">
+                        <InputText id="paidToCnic" @bind-Value="_form.PaidToCnic" />
+                    </FormField>
+
+                    <FormField Label="Relation to Applicant" For="paidToRelation" CssClass="span-2">
+                        <InputText id="paidToRelation" @bind-Value="_form.PaidToRelation" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Remarks">
+                <div class="form-grid">
+                    <FormField Label="Remarks" For="remarks" CssClass="span-2">
+                        <InputTextArea id="remarks" @bind-Value="_form.Remarks" />
+                    </FormField>
+                </div>
+            </FormSection>
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseCreateForm">Cancel</button>
+            <button type="submit" form="payment-form" class="btn btn-primary" disabled="@(_isSaving || _selectedApplication is null)">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_showVoidModal)
+{
+    <Modal Title="@($"Void Payment {_paymentPendingVoid?.PaymentNumber}")" Size="sm" OnClose="CloseVoidModal">
+        <ChildContent>
+        <p class="field-hint">This posts a reversing entry to the fund ledger and may move the application back to Approved/PartiallyPaid — the original record is kept for audit purposes.</p>
+
+        @if (_voidError is not null)
+        {
+            <div class="alert alert-error">@_voidError</div>
+        }
+
+        <div class="field">
+            <label for="voidReason">Reason</label>
+            <textarea id="voidReason" @bind="_voidReason"></textarea>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseVoidModal">Cancel</button>
+            <button type="button" class="btn btn-destructive" disabled="@_isVoiding" @onclick="ConfirmVoidAsync">@(_isVoiding ? "Voiding..." : "Void Payment")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_receiptPayment is not null)
+{
+    <Modal Title="Payment Receipt" Size="sm" OnClose="CloseReceipt">
+        <ChildContent>
+        <div class="receipt" id="payment-receipt">
+            <div class="receipt-header">
+                <h3>NGO Fund Management</h3>
+                <div class="receipt-org-meta">Official Payment Receipt</div>
+            </div>
+
+            <table class="receipt-table">
+                <tbody>
+                    <tr><td>Receipt No.</td><td>@_receiptPayment.PaymentNumber</td></tr>
+                    <tr><td>Application No.</td><td>@_receiptPayment.ApplicationNumber</td></tr>
+                    <tr><td>Paid To</td><td>@(_receiptPayment.PaidToName ?? _receiptPayment.ApplicantName)</td></tr>
+                    <tr><td>Fund</td><td>@_receiptPayment.FundCategoryName</td></tr>
+                    <tr><td>Date</td><td>@_receiptPayment.PaymentDate.ToString("yyyy-MM-dd")</td></tr>
+                    <tr><td>Method</td><td>@_receiptPayment.PaymentMethod</td></tr>
+                    @if (!string.IsNullOrEmpty(_receiptPayment.InstrumentNumber))
+                    {
+                        <tr><td>Instrument #</td><td>@_receiptPayment.InstrumentNumber</td></tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="receipt-amount">
+                <div class="label">Amount Paid</div>
+                <div class="value">PKR @_receiptPayment.Amount.ToString("N2")</div>
+                <div class="words">@AmountInWords(_receiptPayment.Amount) rupees only</div>
+            </div>
+
+            <div class="receipt-signatures">
+                <div class="receipt-signature-line">Recipient Signature</div>
+                <div class="receipt-signature-line">Authorized Signature</div>
+            </div>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary no-print" @onclick="CloseReceipt">Close</button>
+            <button type="button" class="btn btn-primary no-print" @onclick="PrintReceiptAsync"><Icon Name="printer" Size="16" />Print</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private static readonly string[] Statuses = ["Completed", "Voided"];
+    private static readonly string[] Methods = ["Cash", "BankTransfer", "Cheque", "Online"];
+
+    private const int PageSize = 25;
+    private PagedResult<PaymentDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _methodFilter = "";
+    private string _fundFilter = "";
+    private DateOnly? _dateFromFilter;
+    private DateOnly? _dateToFilter;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private IReadOnlyList<FundCategoryDto> _funds = [];
+
+    private bool _showCreateForm;
+    private bool _isSaving;
+    private string? _formError;
+    private PaymentFormModel _form = new();
+    private ApplicationDto? _selectedApplication;
+    private decimal _remainingAmount;
+    private decimal PaidToDate => Math.Max(0m, (_selectedApplication?.ApprovedAmount ?? 0m) - _remainingAmount);
+
+    private bool _showVoidModal;
+    private bool _isVoiding;
+    private string? _voidError;
+    private string _voidReason = "";
+    private PaymentDto? _paymentPendingVoid;
+
+    private PaymentDto? _receiptPayment;
+
+    private List<(string Label, Func<Task> Clear)> ActiveFilters
+    {
+        get
+        {
+            var filters = new List<(string, Func<Task>)>();
+            if (!string.IsNullOrEmpty(_statusFilter))
+            {
+                filters.Add(($"Status: {_statusFilter}", async () => { _statusFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (!string.IsNullOrEmpty(_methodFilter))
+            {
+                filters.Add(($"Method: {_methodFilter}", async () => { _methodFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (!string.IsNullOrEmpty(_fundFilter))
+            {
+                var name = _funds.FirstOrDefault(f => f.Id.ToString() == _fundFilter)?.Name ?? _fundFilter;
+                filters.Add(($"Fund: {name}", async () => { _fundFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (_dateFromFilter is not null)
+            {
+                filters.Add(($"From: {_dateFromFilter:yyyy-MM-dd}", async () => { _dateFromFilter = null; await LoadPageAsync(1); }));
+            }
+            if (_dateToFilter is not null)
+            {
+                filters.Add(($"To: {_dateToFilter:yyyy-MM-dd}", async () => { _dateToFilter = null; await LoadPageAsync(1); }));
+            }
+            return filters;
+        }
+    }
+
+    private async Task ClearAllFiltersAsync()
+    {
+        _statusFilter = "";
+        _methodFilter = "";
+        _fundFilter = "";
+        _dateFromFilter = null;
+        _dateToFilter = null;
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _funds = await ApiClient.GetFundCategoriesAsync();
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#payments-rows tr");
+        }
+    }
+
+    private int _loadToken;
+
+    private async Task LoadPageAsync(int page)
+    {
+        var token = ++_loadToken;
+        _errorMessage = null;
+        try
+        {
+            var result = await ApiClient.GetPaymentsAsync(page, PageSize,
+                string.IsNullOrWhiteSpace(_search) ? null : _search,
+                applicationId: null,
+                status: string.IsNullOrWhiteSpace(_statusFilter) ? null : _statusFilter,
+                paymentMethod: string.IsNullOrWhiteSpace(_methodFilter) ? null : _methodFilter,
+                fundCategoryId: string.IsNullOrWhiteSpace(_fundFilter) ? null : Guid.Parse(_fundFilter),
+                dateFrom: _dateFromFilter,
+                dateTo: _dateToFilter);
+            if (token != _loadToken)
+            {
+                return; // a newer load superseded this one; discard
+            }
+            _page = result;
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            if (token != _loadToken)
+            {
+                return;
+            }
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _form = new PaymentFormModel { PaymentDate = DateOnly.FromDateTime(DateTime.Today) };
+        _selectedApplication = null;
+        _formError = null;
+        _showCreateForm = true;
+    }
+
+    private void CloseCreateForm() => _showCreateForm = false;
+
+    private async Task<IReadOnlyList<ApplicationDto>> SearchApplicationsAsync(string query)
+    {
+        // Show every match regardless of status (not just Approved/PartiallyPaid) so the user can
+        // see *why* an application isn't selectable instead of it silently vanishing.
+        var result = await ApiClient.GetApplicationsAsync(1, 25, query);
+        return result.Items;
+    }
+
+    private async Task SelectApplicationAsync(ApplicationDto application)
+    {
+        _selectedApplication = application;
+
+        try
+        {
+            var payments = await ApiClient.GetPaymentsAsync(1, 100, applicationId: application.Id);
+            var alreadyPaid = payments.Items.Where(p => p.Status == "Completed").Sum(p => p.Amount);
+            _remainingAmount = (application.ApprovedAmount ?? 0m) - alreadyPaid;
+            _form.Amount = _remainingAmount > 0 ? _remainingAmount : 0;
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_selectedApplication is null)
+        {
+            _formError = "Please select an application.";
+            return;
+        }
+
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            var created = await ApiClient.CreatePaymentAsync(new CreatePaymentRequest(
+                _selectedApplication.Id, _form.Amount, _form.PaymentDate, _form.PaymentMethod,
+                _form.InstrumentNumber, _form.BankName, _form.PaidToName, _form.PaidToCnic,
+                _form.PaidToRelation, _form.Remarks));
+
+            Toast.Success($"Payment recorded · {created.PaymentNumber}");
+            _showCreateForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void OpenVoidModal(PaymentDto payment)
+    {
+        _paymentPendingVoid = payment;
+        _voidReason = "";
+        _voidError = null;
+        _showVoidModal = true;
+    }
+
+    private void CloseVoidModal() => _showVoidModal = false;
+
+    private async Task ConfirmVoidAsync()
+    {
+        if (_paymentPendingVoid is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_voidReason))
+        {
+            _voidError = "A reason is required.";
+            return;
+        }
+
+        _isVoiding = true;
+        _voidError = null;
+        try
+        {
+            await ApiClient.VoidPaymentAsync(_paymentPendingVoid.Id, _voidReason);
+            Toast.Success($"Payment voided · {_paymentPendingVoid.PaymentNumber}");
+            _showVoidModal = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _voidError = ex.Message;
+        }
+        finally
+        {
+            _isVoiding = false;
+        }
+    }
+
+    private void OpenReceipt(PaymentDto payment) => _receiptPayment = payment;
+
+    private void CloseReceipt() => _receiptPayment = null;
+
+    private async Task PrintReceiptAsync() => await JS.InvokeVoidAsync("print");
+
+    /// <summary>Small, dependency-free number-to-words for the receipt's "amount in words" line —
+    /// good enough for typical disbursement amounts (up to hundreds of millions); not a general
+    /// currency-in-words library.</summary>
+    private static string AmountInWords(decimal amount)
+    {
+        var whole = (long)Math.Floor(amount);
+        if (whole == 0)
+        {
+            return "Zero";
+        }
+
+        string[] ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+        string[] tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+        string ConvertThreeDigit(long n)
+        {
+            var parts = new List<string>();
+            if (n >= 100) { parts.Add(ones[n / 100] + " Hundred"); n %= 100; }
+            if (n >= 20) { parts.Add(tens[n / 10]); n %= 10; }
+            if (n > 0) { parts.Add(ones[n]); }
+            return string.Join(" ", parts);
+        }
+
+        var segments = new List<string>();
+        long crore = whole / 10_000_000; whole %= 10_000_000;
+        long lakh = whole / 100_000; whole %= 100_000;
+        long thousand = whole / 1_000; whole %= 1_000;
+        long remainder = whole;
+
+        if (crore > 0) segments.Add($"{ConvertThreeDigit(crore)} Crore");
+        if (lakh > 0) segments.Add($"{ConvertThreeDigit(lakh)} Lakh");
+        if (thousand > 0) segments.Add($"{ConvertThreeDigit(thousand)} Thousand");
+        if (remainder > 0) segments.Add(ConvertThreeDigit(remainder));
+
+        return string.Join(" ", segments);
+    }
+
+    private class PaymentFormModel
+    {
+        [Range(0.01, double.MaxValue)] public decimal Amount { get; set; }
+        public DateOnly PaymentDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string PaymentMethod { get; set; } = "Cash";
+        public string? InstrumentNumber { get; set; }
+        public string? BankName { get; set; }
+        public string? PaidToName { get; set; }
+        public string? PaidToCnic { get; set; }
+        public string? PaidToRelation { get; set; }
+        public string? Remarks { get; set; }
+    }
+}

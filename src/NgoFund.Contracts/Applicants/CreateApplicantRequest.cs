@@ -1,0 +1,22 @@
+namespace NgoFund.Contracts.Applicants;
+
+public record CreateApplicantRequest(
+    string? MembershipNumber,
+    string FullName,
+    string? FatherOrHusbandName,
+    string Cnic,
+    string Gender,
+    DateOnly? DateOfBirth,
+    string? MaritalStatus,
+    string? Phone,
+    string? AlternatePhone,
+    string? Email,
+    string? Address,
+    string? City,
+    string? District,
+    string? Province,
+    string? Occupation,
+    decimal? MonthlyIncome,
+    int? DependentsCount,
+    int? HouseholdSize,
+    string? Notes);

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NgoFund.Api/NgoFund.Api.csproj" />
+    <Project Path="src/NgoFund.Application/NgoFund.Application.csproj" />
+    <Project Path="src/NgoFund.Contracts/NgoFund.Contracts.csproj" />
+    <Project Path="src/NgoFund.Desktop/NgoFund.Desktop.csproj" />
+    <Project Path="src/NgoFund.Domain/NgoFund.Domain.csproj" />
+    <Project Path="src/NgoFund.Infrastructure/NgoFund.Infrastructure.csproj" />
+    <Project Path="src/NgoFund.Migrator/NgoFund.Migrator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NgoFund.IntegrationTests/NgoFund.IntegrationTests.csproj" />
+    <Project Path="tests/NgoFund.UnitTests/NgoFund.UnitTests.csproj" />
+  </Folder>
+</Solution>

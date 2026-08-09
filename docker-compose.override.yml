@@ -1,0 +1,9 @@
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Serilog__MinimumLevel__Default: Debug

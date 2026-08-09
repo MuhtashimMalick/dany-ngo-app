@@ -1,0 +1,62 @@
+@* Drag-and-drop file target —  names this as a required shared component that was never
+   built; the Applications manage modal used a naked <InputFile> instead. The visible drop zone is
+   a styled div with a fully transparent <InputFile> stretched over it (the standard technique —
+   browsers deliver a native drop directly onto the file input underneath), so both dragging a
+   file in and clicking to browse go through the same one control. *@
+<div class="file-drop @(_isDragOver ? "file-drop-active" : "")"
+     @ondragenter="() => _isDragOver = true"
+     @ondragleave="() => _isDragOver = false"
+     @ondragover:preventDefault="true"
+     @ondrop="() => _isDragOver = false">
+    <InputFile OnChange="OnChangeAsync" class="file-drop-input" accept="@Accept" />
+    <div class="file-drop-content">
+        <Icon Name="upload-cloud" Size="26" StrokeWidth="1.6" CssClass="file-drop-icon" />
+        <p class="file-drop-title">Drag a file here or <span>click to browse</span></p>
+        <p class="file-drop-hint">@Hint</p>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <p class="field-error">@_error</p>
+}
+
+@if (_selected is not null)
+{
+    <div class="file-drop-selected">
+        <Icon Name="file" Size="16" />
+        <span class="file-drop-selected-name">@_selected.Name</span>
+        <span class="file-drop-selected-size">@FormatSize(_selected.Size)</span>
+        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public EventCallback<IBrowserFile> OnFileSelected { get; set; }
+    [Parameter] public string Accept { get; set; } = "";
+    [Parameter] public long MaxSizeBytes { get; set; } = 10 * 1024 * 1024;
+    [Parameter] public string Hint { get; set; } = "PDF, JPG or PNG up to 10 MB";
+
+    private bool _isDragOver;
+    private string? _error;
+    private IBrowserFile? _selected;
+
+    private async Task OnChangeAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.File;
+
+        if (file.Size > MaxSizeBytes)
+        {
+            _error = $"{file.Name} is {FormatSize(file.Size)} — the limit is {FormatSize(MaxSizeBytes)}.";
+            _selected = null;
+            return;
+        }
+
+        _selected = file;
+        await OnFileSelected.InvokeAsync(file);
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes < 1024 * 1024 ? $"{bytes / 1024.0:N0} KB" : $"{bytes / (1024.0 * 1024):N1} MB";
+}

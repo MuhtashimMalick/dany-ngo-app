@@ -1,0 +1,37 @@
+@using System.Linq.Expressions
+
+<div class="field @CssClass">
+    <label for="@For">@Label</label>
+    @ChildContent
+    @if (ValidationFor is not null)
+    {
+        <ValidationMessage For="ValidationFor" class="field-error" />
+    }
+    else if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <span class="field-error">@ErrorMessage</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="field-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? For { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    /// <summary>Extra CSS class(es) on the field wrapper — e.g. "span-2" inside a .form-grid.</summary>
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Optional — pass e.g. <c>ValidationFor="() => _model.Email"</c> to render the
+    /// DataAnnotations validation message for that field in place of Hint/ErrorMessage. Blazor's
+    /// InputBase-derived components (InputText, InputNumber, ...) already apply
+    /// modified/invalid CSS classes to themselves automatically; this just surfaces the *text* of
+    /// what's wrong next to the field instead of the form silently refusing to submit.
+    /// </summary>
+    [Parameter] public Expression<Func<object>>? ValidationFor { get; set; }
+}

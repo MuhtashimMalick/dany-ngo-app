@@ -1,0 +1,30 @@
+<div class="card stat-card">
+    <div class="stat-label">@Label</div>
+    @if (CountUp is not null)
+    {
+        <div class="stat-value" data-countup="@CountUp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+             data-countup-decimals="@CountUpDecimals" data-countup-prefix="@CountUpPrefix" data-countup-suffix="@CountUpSuffix">@Value</div>
+    }
+    else
+    {
+        <div class="stat-value">@Value</div>
+    }
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <div class="stat-hint">@Hint</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>When set, the value animates in via a GSAP count-up instead of appearing static.</summary>
+    [Parameter] public decimal? CountUp { get; set; }
+    [Parameter] public int CountUpDecimals { get; set; }
+    [Parameter] public string? CountUpPrefix { get; set; }
+
+    /// <summary>Appended after the animated number (e.g. "%" for a rate, " d" for a day count).</summary>
+    [Parameter] public string? CountUpSuffix { get; set; }
+}

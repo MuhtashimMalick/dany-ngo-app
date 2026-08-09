@@ -1,0 +1,381 @@
+@page "/donors"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("donors.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">New Donor</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by name, CNIC, membership no…" />
+</FilterBar>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="DonorDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="donors-rows" EmptyText="No donors found."
+           EmptyDescription="Donors you record will appear here." EmptyIcon="donors">
+    <HeaderRow>
+        <th>Code</th>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Phone</th>
+        <th>CNIC</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="donor">
+        <tr>
+            <td>@donor.DonorCode</td>
+            <td>@donor.FullName</td>
+            <td>@donor.DonorType</td>
+            <td>@donor.Phone</td>
+            <td>@donor.Cnic</td>
+            <td><StatusBadge Status="@(donor.IsActive ? "Active" : "Inactive")" /></td>
+            <td class="table-actions">
+                <button class="icon-btn" aria-label="View donor" @onclick="() => OpenDetailModalAsync(donor)"><Icon Name="eye" Size="16" /></button>
+                @if (AuthState.HasPermission("donors.edit"))
+                {
+                    <button class="icon-btn" aria-label="Edit donor" @onclick="() => OpenEditModal(donor)"><Icon Name="pencil" Size="16" /></button>
+                }
+                @if (AuthState.HasPermission("donors.delete") && donor.IsActive)
+                {
+                    <OverflowMenu>
+                        <button type="button" class="overflow-menu-item destructive" @onclick="() => RequestDeactivate(donor)">
+                            <Icon Name="trash" Size="15" />Deactivate
+                        </button>
+                    </OverflowMenu>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showForm)
+{
+    <Modal Title="@(_editingId is null ? "New Donor" : "Edit Donor")" Size="md" OnClose="CloseForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="donor-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormSection Title="Identity">
+                <div class="form-grid">
+                    <FormField Label="Full Name" For="fullName" ValidationFor="() => _form.FullName" CssClass="span-2">
+                        <InputText id="fullName" @bind-Value="_form.FullName" />
+                    </FormField>
+
+                    <FormField Label="Donor Type" For="donorType">
+                        <InputSelect id="donorType" @bind-Value="_form.DonorType">
+                            <option value="Individual">Individual</option>
+                            <option value="Organization">Organization</option>
+                        </InputSelect>
+                    </FormField>
+
+                    <FormField Label="CNIC / NTN" For="cnic">
+                        <InputText id="cnic" @bind-Value="_form.Cnic" />
+                    </FormField>
+
+                    <FormField Label="Membership Number" For="membershipNumber">
+                        <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Contact">
+                <div class="form-grid">
+                    <FormField Label="Phone" For="phone">
+                        <InputText id="phone" @bind-Value="_form.Phone" />
+                    </FormField>
+
+                    <FormField Label="Email" For="email">
+                        <InputText id="email" @bind-Value="_form.Email" />
+                    </FormField>
+
+                    <FormField Label="Address" For="address" CssClass="span-2">
+                        <InputText id="address" @bind-Value="_form.Address" />
+                    </FormField>
+
+                    <FormField Label="City" For="city">
+                        <InputText id="city" @bind-Value="_form.City" />
+                    </FormField>
+                </div>
+            </FormSection>
+
+            <FormSection Title="Options">
+                <div class="flex gap-4 flex-wrap">
+                    <label class="checkbox-label">
+                        <input type="checkbox" @bind="_form.IsAnonymous" />
+                        Keep donor anonymous in reports
+                    </label>
+
+                    @if (_editingId is not null)
+                    {
+                        <label class="checkbox-label">
+                            <input type="checkbox" @bind="_form.IsActive" />
+                            Active
+                        </label>
+                    }
+                </div>
+            </FormSection>
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="submit" form="donor-form" class="btn btn-primary" disabled="@_isSaving">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_viewingDonor is not null)
+{
+    <Modal Title="@_viewingDonor.FullName" Size="lg" OnClose="() => _viewingDonor = null">
+        <ChildContent>
+        @if (_detailError is not null)
+        {
+            <div class="alert alert-error">@_detailError</div>
+        }
+
+        <DetailList>
+            <DetailItem Label="Donor Code" Value="@_viewingDonor.DonorCode" />
+            <DetailItem Label="Type" Value="@_viewingDonor.DonorType" />
+            <DetailItem Label="CNIC / NTN" Value="@(_viewingDonor.Cnic ?? "-")" />
+            <DetailItem Label="Membership #" Value="@(_viewingDonor.MembershipNumber ?? "-")" />
+            <DetailItem Label="Phone" Value="@(_viewingDonor.Phone ?? "-")" />
+            <DetailItem Label="Email" Value="@(_viewingDonor.Email ?? "-")" />
+            <DetailItem Label="Address" Value="@(_viewingDonor.Address ?? "-")" SpanFull="true" />
+            <DetailItem Label="City" Value="@(_viewingDonor.City ?? "-")" />
+            <DetailItem Label="Anonymous" Value="@(_viewingDonor.IsAnonymous ? "Yes" : "No")" />
+            <DetailItem Label="Status"><StatusBadge Status="@(_viewingDonor.IsActive ? "Active" : "Inactive")" /></DetailItem>
+        </DetailList>
+
+        <h4>Donation History</h4>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Number</th>
+                        <th>Fund</th>
+                        <th class="num">Amount (PKR)</th>
+                        <th>Date</th>
+                        <th>Method</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_donorDonations.Count == 0)
+                    {
+                        <tr><td colspan="6">No donations recorded.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var donation in _donorDonations)
+                        {
+                            <tr>
+                                <td>@donation.DonationNumber</td>
+                                <td>@donation.FundCategoryName</td>
+                                <td class="num">@donation.Amount.ToString("N2")</td>
+                                <td>@donation.DonationDate.ToString("yyyy-MM-dd")</td>
+                                <td>@donation.PaymentMethod</td>
+                                <td><StatusBadge Status="@donation.Status" /></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="() => _viewingDonor = null">Close</button>
+        </Footer>
+    </Modal>
+}
+
+<ConfirmDialog @bind-IsOpen="_confirmOpen" Title="Deactivate donor?"
+               Message="@($"Deactivate {_donorPendingDeactivation?.FullName}?")"
+               ConfirmText="Deactivate" IsDestructive="true" OnConfirmed="DeactivateConfirmedAsync" />
+
+@code {
+    private const int PageSize = 25;
+    private PagedResult<DonorDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private bool _showForm;
+    private bool _isSaving;
+    private string? _formError;
+    private Guid? _editingId;
+    private DonorFormModel _form = new();
+
+    private bool _confirmOpen;
+    private DonorDto? _donorPendingDeactivation;
+
+    private DonorDto? _viewingDonor;
+    private IReadOnlyList<DonationDto> _donorDonations = [];
+    private string? _detailError;
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#donors-rows tr");
+        }
+    }
+
+    private async Task OpenDetailModalAsync(DonorDto donor)
+    {
+        _viewingDonor = donor;
+        _detailError = null;
+        _donorDonations = [];
+
+        try
+        {
+            var page = await ApiClient.GetDonationsAsync(1, 100, null, donor.Id);
+            _donorDonations = page.Items;
+        }
+        catch (ApiException ex)
+        {
+            _detailError = ex.Message;
+        }
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _errorMessage = null;
+        try
+        {
+            _page = await ApiClient.GetDonorsAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingId = null;
+        _form = new DonorFormModel { IsActive = true };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEditModal(DonorDto donor)
+    {
+        _editingId = donor.Id;
+        _form = new DonorFormModel
+        {
+            FullName = donor.FullName,
+            DonorType = donor.DonorType,
+            Cnic = donor.Cnic,
+            MembershipNumber = donor.MembershipNumber,
+            Phone = donor.Phone,
+            Email = donor.Email,
+            Address = donor.Address,
+            City = donor.City,
+            IsAnonymous = donor.IsAnonymous,
+            IsActive = donor.IsActive,
+        };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            DonorDto saved;
+            if (_editingId is null)
+            {
+                saved = await ApiClient.CreateDonorAsync(new CreateDonorRequest(
+                    _form.FullName, _form.DonorType, _form.Cnic, null, _form.MembershipNumber,
+                    _form.Phone, null, _form.Email, _form.Address, _form.City, null, _form.IsAnonymous, null));
+                Toast.Success($"Donor created · {saved.DonorCode}");
+            }
+            else
+            {
+                saved = await ApiClient.UpdateDonorAsync(_editingId.Value, new UpdateDonorRequest(
+                    _form.FullName, _form.DonorType, _form.Cnic, null, _form.MembershipNumber,
+                    _form.Phone, null, _form.Email, _form.Address, _form.City, null, _form.IsAnonymous, _form.IsActive, null));
+                Toast.Success($"Donor updated · {saved.DonorCode}");
+            }
+
+            _showForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void RequestDeactivate(DonorDto donor)
+    {
+        _donorPendingDeactivation = donor;
+        _confirmOpen = true;
+    }
+
+    private async Task DeactivateConfirmedAsync()
+    {
+        if (_donorPendingDeactivation is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApiClient.DeactivateDonorAsync(_donorPendingDeactivation.Id);
+            Toast.Success($"Donor deactivated · {_donorPendingDeactivation.DonorCode}");
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private class DonorFormModel
+    {
+        [Required] public string FullName { get; set; } = "";
+        public string DonorType { get; set; } = "Individual";
+        public string? Cnic { get; set; }
+        public string? MembershipNumber { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public bool IsAnonymous { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

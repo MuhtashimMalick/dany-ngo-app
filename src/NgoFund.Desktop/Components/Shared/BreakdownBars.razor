@@ -1,0 +1,40 @@
+@* Reusable ranked breakdown list — one row per item: label, a normalized micro-bar, and a
+   formatted value. Reuses .micro-bar-track/.micro-bar-fill (the same bar primitive already used
+   by the "Applications by Category" detail table) instead of a second bar-chart implementation —
+   per ui-ux-pro-max's "Compare Categories" guidance (sorted bar, value label always visible,
+   category count kept low). Widths are normalized to the largest item in the list; an empty or
+   all-zero list renders zero-width bars instead of dividing by zero. *@
+<div class="breakdown-bars">
+    @foreach (var item in Items)
+    {
+        var width = _max <= 0 ? 0 : (double)(ValueFor(item) / _max) * 100;
+        <div class="breakdown-bar-row">
+            <span class="breakdown-bar-label" title="@item.Label">@item.Label</span>
+            <span class="micro-bar-track">
+                <span class="micro-bar-fill" style="width:@(width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></span>
+            </span>
+            <span class="breakdown-bar-value">@FormatValue(item)</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<LabeledAmountDto> Items { get; set; } = [];
+
+    /// <summary>True formats each row's <see cref="LabeledAmountDto.Total"/> as currency (N2);
+    /// false formats <see cref="LabeledAmountDto.Count"/> as a plain integer.</summary>
+    [Parameter] public bool CurrencyFormat { get; set; }
+
+    private decimal _max;
+
+    protected override void OnParametersSet()
+    {
+        _max = Items.Count == 0 ? 0 : Items.Max(ValueFor);
+    }
+
+    private decimal ValueFor(LabeledAmountDto item) => CurrencyFormat ? item.Total : item.Count;
+
+    private string FormatValue(LabeledAmountDto item) => CurrencyFormat
+        ? item.Total.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)
+        : item.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,574 @@
+@page "/applicants"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-header">
+    @if (AuthState.HasPermission("applicants.create"))
+    {
+        <SectionContent SectionName="page-actions">
+            <button class="btn btn-primary" @onclick="OpenCreateModal">New Applicant</button>
+        </SectionContent>
+    }
+</div>
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by name, CNIC, membership no…" />
+</FilterBar>
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="ApplicantDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="applicants-rows" EmptyText="No applicants found."
+           EmptyDescription="Applicants you register will appear here." EmptyIcon="applicants">
+    <HeaderRow>
+        <th>Membership #</th>
+        <th>Name</th>
+        <th>CNIC</th>
+        <th>Phone</th>
+        <th>City</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="applicant">
+        <tr>
+            <td>@applicant.MembershipNumber</td>
+            <td>@applicant.FullName</td>
+            <td>@applicant.Cnic</td>
+            <td>@applicant.Phone</td>
+            <td>@applicant.City</td>
+            <td><StatusBadge Status="@(applicant.IsBlacklisted ? "Rejected" : "Active")" Text="@(applicant.IsBlacklisted ? "Blacklisted" : "Active")" /></td>
+            <td class="table-actions">
+                <button class="icon-btn" aria-label="View applicant" @onclick="() => OpenDetailModalAsync(applicant)"><Icon Name="eye" Size="16" /></button>
+                @if (AuthState.HasPermission("applicants.edit"))
+                {
+                    <button class="icon-btn" aria-label="Edit applicant" @onclick="() => OpenEditModal(applicant)"><Icon Name="pencil" Size="16" /></button>
+                }
+                @if (AuthState.HasPermission("applicants.delete") && !applicant.IsBlacklisted)
+                {
+                    <OverflowMenu>
+                        <button type="button" class="overflow-menu-item destructive" @onclick="() => RequestBlacklist(applicant)">
+                            <Icon Name="trash" Size="15" />Blacklist
+                        </button>
+                    </OverflowMenu>
+                }
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@if (_showForm)
+{
+    <Modal Title="@(_editingId is null ? "New Applicant" : "Edit Applicant")" Size="lg" OnClose="CloseForm">
+        <ChildContent>
+        @if (_formError is not null)
+        {
+            <div class="alert alert-error">@_formError</div>
+        }
+
+        <div class="applicant-form-layout">
+            <div class="applicant-form-photo">
+                <div class="form-section-legend">Photo</div>
+                <hr class="form-section-divider" />
+                @if (_photoDocumentId is not null)
+                {
+                    <DocumentThumbnail DocumentId="_photoDocumentId.Value" Style="@PhotoSlotStyle" />
+                    <button type="button" class="btn btn-secondary btn-sm btn-block" @onclick="() => _photoDocumentId = null">Retake Photo</button>
+                }
+                else if (_pendingPhotoDataUrl is not null)
+                {
+                    <img class="webcam-preview" src="@_pendingPhotoDataUrl" alt="Captured photo" />
+                    <button type="button" class="btn btn-secondary btn-sm btn-block" @onclick="() => { _pendingPhotoBytes = null; _pendingPhotoDataUrl = null; }">Retake Photo</button>
+                }
+                else
+                {
+                    <WebcamCapture OnCaptured="OnPhotoCapturedAsync" />
+                }
+            </div>
+
+            <div class="applicant-form-fields">
+                <EditForm Model="_form" OnValidSubmit="SaveAsync" id="applicant-form">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="validation-summary" />
+
+                    <FormSection Title="Identity">
+                        <div class="form-grid">
+                            <FormField Label="Full Name" For="fullName" ValidationFor="() => _form.FullName">
+                                <InputText id="fullName" @bind-Value="_form.FullName" />
+                            </FormField>
+
+                            <FormField Label="Father / Husband Name" For="fatherOrHusbandName">
+                                <InputText id="fatherOrHusbandName" @bind-Value="_form.FatherOrHusbandName" />
+                            </FormField>
+
+                            <FormField Label="CNIC" For="cnic" ValidationFor="() => _form.Cnic">
+                                <InputText id="cnic" @bind-Value="_form.Cnic" />
+                            </FormField>
+
+                            <FormField Label="Gender" For="gender">
+                                <InputSelect id="gender" @bind-Value="_form.Gender">
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </InputSelect>
+                            </FormField>
+
+                            <FormField Label="Membership Number" For="membershipNumber">
+                                <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" />
+                            </FormField>
+                        </div>
+                    </FormSection>
+
+                    <FormSection Title="Contact">
+                        <div class="form-grid">
+                            <FormField Label="Phone" For="phone">
+                                <InputText id="phone" @bind-Value="_form.Phone" />
+                            </FormField>
+
+                            <FormField Label="Email" For="email">
+                                <InputText id="email" @bind-Value="_form.Email" />
+                            </FormField>
+
+                            <FormField Label="Address" For="address" CssClass="span-2">
+                                <InputText id="address" @bind-Value="_form.Address" />
+                            </FormField>
+
+                            <FormField Label="City" For="city">
+                                <InputText id="city" @bind-Value="_form.City" />
+                            </FormField>
+                        </div>
+                    </FormSection>
+
+                    <FormSection Title="Livelihood">
+                        <div class="form-grid">
+                            <FormField Label="Occupation" For="occupation">
+                                <InputText id="occupation" @bind-Value="_form.Occupation" />
+                            </FormField>
+
+                            <FormField Label="Monthly Income" For="monthlyIncome">
+                                <InputNumber id="monthlyIncome" @bind-Value="_form.MonthlyIncome" />
+                            </FormField>
+                        </div>
+                    </FormSection>
+
+                    @if (_editingId is not null)
+                    {
+                        <FormSection Title="Status">
+                            <label class="checkbox-label mb-3">
+                                <input type="checkbox" @bind="_form.IsBlacklisted" />
+                                Blacklisted
+                            </label>
+
+                            @if (_form.IsBlacklisted)
+                            {
+                                <div class="form-grid">
+                                    <FormField Label="Blacklist Reason" For="blacklistReason" CssClass="span-2">
+                                        <InputText id="blacklistReason" @bind-Value="_form.BlacklistReason" />
+                                    </FormField>
+                                </div>
+                            }
+                        </FormSection>
+                    }
+                </EditForm>
+            </div>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+            <button type="submit" form="applicant-form" class="btn btn-primary" disabled="@_isSaving">@(_isSaving ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_viewingApplicant is not null)
+{
+    <Modal Title="@_viewingApplicant.FullName" Size="lg" OnClose="() => _viewingApplicant = null">
+        <ChildContent>
+        @if (_detailError is not null)
+        {
+            <div class="alert alert-error">@_detailError</div>
+        }
+
+        <div class="flex gap-4 flex-wrap">
+            @if (_viewingApplicant.PhotoDocumentId is not null)
+            {
+                <button type="button" class="applicant-photo-tile" @ref="_photoTileRef"
+                        aria-label="@($"View full-size photo of {_viewingApplicant.FullName}")"
+                        @onclick="() => _showPhotoLightbox = true"
+                        @onmouseenter="() => AnimatePhotoTileHoverAsync(true)"
+                        @onmouseleave="() => AnimatePhotoTileHoverAsync(false)"
+                        @onfocus="() => AnimatePhotoTileHoverAsync(true)"
+                        @onblur="() => AnimatePhotoTileHoverAsync(false)">
+                    <DocumentThumbnail DocumentId="_viewingApplicant.PhotoDocumentId.Value" Style="width:100%;height:100%;object-fit:cover;display:block;" />
+                    <span class="applicant-photo-tile-overlay" @ref="_photoTileOverlayRef">
+                        <Icon Name="maximize" Size="16" />
+                        <span>View</span>
+                    </span>
+                </button>
+            }
+            else
+            {
+                <div class="applicant-photo-tile applicant-photo-tile-empty" aria-hidden="true">
+                    <Icon Name="applicants" Size="22" />
+                </div>
+            }
+            <div class="flex-1">
+                <DetailList>
+                    <DetailItem Label="Membership #" Value="@(_viewingApplicant.MembershipNumber ?? "-")" />
+                    <DetailItem Label="CNIC" Value="@_viewingApplicant.Cnic" />
+                    <DetailItem Label="Father/Husband" Value="@(_viewingApplicant.FatherOrHusbandName ?? "-")" />
+                    <DetailItem Label="Gender" Value="@_viewingApplicant.Gender" />
+                    <DetailItem Label="Phone" Value="@(_viewingApplicant.Phone ?? "-")" />
+                    <DetailItem Label="Email" Value="@(_viewingApplicant.Email ?? "-")" />
+                    <DetailItem Label="Address" Value="@(_viewingApplicant.Address ?? "-")" SpanFull="true" />
+                    <DetailItem Label="City" Value="@(_viewingApplicant.City ?? "-")" />
+                    <DetailItem Label="Occupation" Value="@(_viewingApplicant.Occupation ?? "-")" />
+                    <DetailItem Label="Monthly Income" Value="@(_viewingApplicant.MonthlyIncome?.ToString("N2") ?? "-")" IsNumeric="true" />
+                    <DetailItem Label="Status">
+                        <StatusBadge Status="@(_viewingApplicant.IsBlacklisted ? "Rejected" : "Active")" Text="@(_viewingApplicant.IsBlacklisted ? "Blacklisted" : "Active")" />
+                    </DetailItem>
+                </DetailList>
+            </div>
+        </div>
+
+        <h4>Application History</h4>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>App #</th>
+                        <th>Category</th>
+                        <th>Fund</th>
+                        <th class="num">Requested (PKR)</th>
+                        <th class="num">Approved (PKR)</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_applicantApplications.Count == 0)
+                    {
+                        <tr><td colspan="7">No applications yet.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var application in _applicantApplications)
+                        {
+                            <tr>
+                                <td>@application.ApplicationNumber</td>
+                                <td>@application.ApplicationCategoryName</td>
+                                <td>@application.FundCategoryName</td>
+                                <td class="num">@application.RequestedAmount.ToString("N2")</td>
+                                <td class="num">@(application.ApprovedAmount?.ToString("N2") ?? "-")</td>
+                                <td><StatusBadge Status="@application.Status" /></td>
+                                <td>@application.ApplicationDate.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="field-hint">To record a payment or review status/remarks/documents for one of these, find it by application # or CNIC on the Applications page.</p>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="() => _viewingApplicant = null">Close</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_showPhotoLightbox && _viewingApplicant?.PhotoDocumentId is not null)
+{
+    <Modal Title="@($"Photo — {_viewingApplicant.FullName}")" Size="sm" OnClose="() => _showPhotoLightbox = false">
+        <ChildContent>
+        <div class="applicant-photo-lightbox">
+            <DocumentThumbnail DocumentId="_viewingApplicant.PhotoDocumentId.Value" Style="max-width:100%;max-height:70vh;object-fit:contain;border-radius:var(--radius-md);display:block;" />
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="() => _showPhotoLightbox = false">Close</button>
+        </Footer>
+    </Modal>
+}
+
+<ConfirmDialog @bind-IsOpen="_confirmOpen" Title="Blacklist applicant?"
+               Message="@($"Blacklist {_applicantPendingBlacklist?.FullName}? They will no longer be eligible for new applications.")"
+               ConfirmText="Blacklist" IsDestructive="true" OnConfirmed="BlacklistConfirmedAsync" />
+
+@code {
+    private const int PageSize = 25;
+    private PagedResult<ApplicantDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private bool _showForm;
+    private bool _isSaving;
+    private string? _formError;
+    private Guid? _editingId;
+    private Guid? _photoDocumentId;
+    private byte[]? _pendingPhotoBytes;
+    private string? _pendingPhotoDataUrl;
+    private ApplicantFormModel _form = new();
+
+    private bool _confirmOpen;
+    private ApplicantDto? _applicantPendingBlacklist;
+
+    private ApplicantDto? _viewingApplicant;
+    private IReadOnlyList<ApplicationDto> _applicantApplications = [];
+    private string? _detailError;
+    private bool _showPhotoLightbox;
+    private ElementReference _photoTileRef;
+    private ElementReference _photoTileOverlayRef;
+
+    // Same box recipe as .webcam-frame/.webcam-preview in app.css (100% width, 4:3 aspect ratio,
+    // radius-md, 1px border) so a saved photo doesn't visibly jump size/shape relative to the
+    // "just captured" and "live camera" states in the same column — DocumentThumbnail's own
+    // default (max-width/max-height 160px) is intentionally overridden here per-usage.
+    private const string PhotoSlotStyle =
+        "display:block; width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:var(--radius-md); border:1px solid var(--color-border);";
+
+    // The "view full photo" tile's hover/focus overlay fade + slight scale is a real GSAP tween
+    // (not a CSS :hover transition) per this app's motion convention — see
+    // ngoFundMotion.animatePhotoTileHover in interop.js, which is itself wrapped in
+    // gsap.matchMedia() for prefers-reduced-motion.
+    private async Task AnimatePhotoTileHoverAsync(bool isEntering)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ngoFundMotion.animatePhotoTileHover", _photoTileOverlayRef, _photoTileRef, isEntering);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit tearing down (e.g. navigating away) — nothing left to animate.
+        }
+    }
+
+    private async Task OpenDetailModalAsync(ApplicantDto applicant)
+    {
+        _viewingApplicant = applicant;
+        _detailError = null;
+        _applicantApplications = [];
+        _showPhotoLightbox = false;
+
+        try
+        {
+            var page = await ApiClient.GetApplicationsAsync(1, 100, applicantId: applicant.Id);
+            _applicantApplications = page.Items;
+        }
+        catch (ApiException ex)
+        {
+            _detailError = ex.Message;
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#applicants-rows tr");
+        }
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _errorMessage = null;
+        try
+        {
+            _page = await ApiClient.GetApplicantsAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingId = null;
+        _photoDocumentId = null;
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+        _form = new ApplicantFormModel { Gender = "Male" };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEditModal(ApplicantDto applicant)
+    {
+        _editingId = applicant.Id;
+        _photoDocumentId = applicant.PhotoDocumentId;
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+        _form = new ApplicantFormModel
+        {
+            FullName = applicant.FullName,
+            FatherOrHusbandName = applicant.FatherOrHusbandName,
+            Cnic = applicant.Cnic,
+            Gender = applicant.Gender,
+            MembershipNumber = applicant.MembershipNumber,
+            Phone = applicant.Phone,
+            Email = applicant.Email,
+            Address = applicant.Address,
+            City = applicant.City,
+            Occupation = applicant.Occupation,
+            MonthlyIncome = applicant.MonthlyIncome,
+            IsBlacklisted = applicant.IsBlacklisted,
+            BlacklistReason = applicant.BlacklistReason,
+        };
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+    }
+
+    private async Task OnPhotoCapturedAsync(byte[] bytes)
+    {
+        if (_editingId is null)
+        {
+            // No applicant row exists yet, so there is nothing to attach the document to
+            // (the API requires exactly one owner id). Hold the bytes client-side and upload
+            // once the applicant is actually created in SaveAsync.
+            _pendingPhotoBytes = bytes;
+            _pendingPhotoDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
+            return;
+        }
+
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+
+        try
+        {
+            var document = await ApiClient.UploadDocumentAsync(bytes, "photo.jpg", "image/jpeg", "ApplicantPhoto",
+                applicantId: _editingId);
+            _photoDocumentId = document.Id;
+            await ApiClient.SetApplicantPhotoAsync(_editingId.Value, document.Id);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _formError = null;
+        try
+        {
+            if (_editingId is null)
+            {
+                var created = await ApiClient.CreateApplicantAsync(new CreateApplicantRequest(
+                    _form.MembershipNumber, _form.FullName, _form.FatherOrHusbandName, _form.Cnic, _form.Gender,
+                    null, null, _form.Phone, null, _form.Email, _form.Address, _form.City, null, null,
+                    _form.Occupation, _form.MonthlyIncome, null, null, null));
+
+                if (_pendingPhotoBytes is not null)
+                {
+                    // Own try/catch, independent of the applicant-creation error handling below:
+                    // a photo-attach failure here must not roll back or hide the fact that the
+                    // applicant itself was already created successfully.
+                    try
+                    {
+                        var document = await ApiClient.UploadDocumentAsync(_pendingPhotoBytes, "photo.jpg", "image/jpeg", "ApplicantPhoto",
+                            applicantId: created.Id);
+                        await ApiClient.SetApplicantPhotoAsync(created.Id, document.Id);
+                    }
+                    catch (ApiException)
+                    {
+                        Toast.Error("Applicant created, but the photo could not be saved — open Edit to retake.");
+                    }
+                }
+
+                Toast.Success($"Applicant created · {created.FullName}");
+            }
+            else
+            {
+                await ApiClient.UpdateApplicantAsync(_editingId.Value, new UpdateApplicantRequest(
+                    _form.MembershipNumber, _form.FullName, _form.FatherOrHusbandName, _form.Cnic, _form.Gender,
+                    null, null, _form.Phone, null, _form.Email, _form.Address, _form.City, null, null,
+                    _form.Occupation, _form.MonthlyIncome, null, null,
+                    _form.IsBlacklisted, _form.BlacklistReason, null));
+                Toast.Success($"Applicant updated · {_form.FullName}");
+            }
+
+            _showForm = false;
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void RequestBlacklist(ApplicantDto applicant)
+    {
+        _applicantPendingBlacklist = applicant;
+        _confirmOpen = true;
+    }
+
+    private async Task BlacklistConfirmedAsync()
+    {
+        if (_applicantPendingBlacklist is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApiClient.UpdateApplicantAsync(_applicantPendingBlacklist.Id, new UpdateApplicantRequest(
+                _applicantPendingBlacklist.MembershipNumber, _applicantPendingBlacklist.FullName,
+                _applicantPendingBlacklist.FatherOrHusbandName, _applicantPendingBlacklist.Cnic,
+                _applicantPendingBlacklist.Gender, _applicantPendingBlacklist.DateOfBirth,
+                _applicantPendingBlacklist.MaritalStatus, _applicantPendingBlacklist.Phone,
+                _applicantPendingBlacklist.AlternatePhone, _applicantPendingBlacklist.Email,
+                _applicantPendingBlacklist.Address, _applicantPendingBlacklist.City,
+                _applicantPendingBlacklist.District, _applicantPendingBlacklist.Province,
+                _applicantPendingBlacklist.Occupation, _applicantPendingBlacklist.MonthlyIncome,
+                _applicantPendingBlacklist.DependentsCount, _applicantPendingBlacklist.HouseholdSize,
+                true, "Blacklisted by admin", _applicantPendingBlacklist.Notes));
+            Toast.Success($"Applicant blacklisted · {_applicantPendingBlacklist.FullName}");
+            await LoadPageAsync(_currentPage);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private class ApplicantFormModel
+    {
+        [Required] public string FullName { get; set; } = "";
+        public string? FatherOrHusbandName { get; set; }
+        [Required] public string Cnic { get; set; } = "";
+        public string Gender { get; set; } = "Male";
+        public string? MembershipNumber { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string? Occupation { get; set; }
+        public decimal? MonthlyIncome { get; set; }
+        public bool IsBlacklisted { get; set; }
+        public string? BlacklistReason { get; set; }
+    }
+}

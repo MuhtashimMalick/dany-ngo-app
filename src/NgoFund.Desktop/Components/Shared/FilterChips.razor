@@ -1,0 +1,22 @@
+@* Dumb list-of-chips renderer for a page's active filter bar. Reuses the existing
+   .filter-chips / .filter-chip / .filter-clear-all classes verbatim — knows nothing about
+   what the filters mean, just how to render and clear them. Renders nothing when the list
+   is empty. *@
+@if (Filters.Count > 0)
+{
+    <div class="filter-chips">
+        @foreach (var (label, clear) in Filters)
+        {
+            <span class="filter-chip">
+                @label
+                <button type="button" aria-label="Remove filter" @onclick="clear"><Icon Name="close" Size="11" /></button>
+            </span>
+        }
+        <button type="button" class="filter-clear-all" @onclick="OnClearAll">Clear all</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<(string Label, Func<Task> Clear)> Filters { get; set; } = [];
+    [Parameter, EditorRequired] public Func<Task> OnClearAll { get; set; } = () => Task.CompletedTask;
+}

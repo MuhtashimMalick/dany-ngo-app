@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY src/NgoFund.Domain/NgoFund.Domain.csproj src/NgoFund.Domain/
+COPY src/NgoFund.Contracts/NgoFund.Contracts.csproj src/NgoFund.Contracts/
+COPY src/NgoFund.Application/NgoFund.Application.csproj src/NgoFund.Application/
+COPY src/NgoFund.Infrastructure/NgoFund.Infrastructure.csproj src/NgoFund.Infrastructure/
+COPY src/NgoFund.Migrator/NgoFund.Migrator.csproj src/NgoFund.Migrator/
+RUN dotnet restore src/NgoFund.Migrator/NgoFund.Migrator.csproj
+
+COPY src/NgoFund.Domain src/NgoFund.Domain
+COPY src/NgoFund.Contracts src/NgoFund.Contracts
+COPY src/NgoFund.Application src/NgoFund.Application
+COPY src/NgoFund.Infrastructure src/NgoFund.Infrastructure
+COPY src/NgoFund.Migrator src/NgoFund.Migrator
+
+RUN dotnet publish src/NgoFund.Migrator/NgoFund.Migrator.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+ENTRYPOINT ["dotnet", "NgoFund.Migrator.dll"]

@@ -1,0 +1,62 @@
+@inject ApiClient ApiClient
+@inject IJSRuntime JS
+@inject ILogger<DocumentThumbnail> Logger
+@implements IAsyncDisposable
+
+@if (_isLoading)
+{
+    <span class="field-hint">Loading photo...</span>
+}
+else if (_objectUrl is not null)
+{
+    <img src="@_objectUrl" alt="Photo" style="@Style" />
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid DocumentId { get; set; }
+    [Parameter] public string Style { get; set; } = "max-width:160px; max-height:160px; border-radius: var(--radius-md); object-fit: cover;";
+
+    private bool _isLoading;
+    private string? _objectUrl;
+    private Guid? _loadedForId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedForId == DocumentId)
+        {
+            return;
+        }
+
+        await ClearAsync();
+        _loadedForId = DocumentId;
+        _isLoading = true;
+
+        try
+        {
+            var (bytes, contentType) = await ApiClient.DownloadDocumentAsync(DocumentId);
+            _objectUrl = await JS.InvokeAsync<string>("ngoFundFiles.createObjectUrl", Convert.ToBase64String(bytes), contentType);
+        }
+        catch (Exception ex) when (ex is ApiException or JSException)
+        {
+            // A missing/broken thumbnail shouldn't block the surrounding form or page — there is
+            // no ErrorBoundary above this component, so an uncaught exception here would freeze
+            // the whole app, not just this thumbnail.
+            Logger.LogWarning(ex, "Failed to load thumbnail for document {DocumentId}", DocumentId);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        if (_objectUrl is not null)
+        {
+            await JS.InvokeVoidAsync("ngoFundFiles.revokeObjectUrl", _objectUrl);
+            _objectUrl = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync() => await ClearAsync();
+}
