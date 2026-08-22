@@ -1,0 +1,52 @@
+@* Wraps FormField, owning the input's own value/@oninput so format validity (red/green border +
+   example hint / error message) updates on every keystroke instead of on blur. @oninput is
+   deliberate over @bind/@bind-Value: those two commit on the input's `onchange` event (blur), but
+   the ask here is "as soon as value is being input." An empty field is always neutral — required-
+   ness is a separate, page-level concern (CurrentPageValid etc.), this component only reports
+   FORMAT correctness once something has actually been typed. *@
+@using System.Text.RegularExpressions
+@using NgoFund.Contracts.Common
+
+<FormField Label="@DisplayLabel" For="@For" CssClass="@CssClass" ErrorMessage="@ErrorMessage" Hint="@Hint">
+    <input id="@For" value="@Value" @oninput="OnInput" class="@InputCssClass" />
+</FormField>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? For { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public FieldFormat Format { get; set; }
+    [Parameter] public bool Required { get; set; }
+
+    // Matches the codebase's existing convention of the caller writing "Label *" directly (see
+    // GuarantorFields.razor etc.) — Required is only here to save a caller from having to do that
+    // by hand when it prefers to pass Required="true" instead.
+    private string DisplayLabel => Required && !Label.Contains('*') ? $"{Label} *" : Label;
+
+    private bool IsEmpty => string.IsNullOrEmpty(Value);
+    private bool IsValid => !IsEmpty && Regex.IsMatch(Value!, Pattern);
+
+    private string InputCssClass => IsEmpty ? "" : IsValid ? "is-valid" : "is-invalid";
+
+    private string? ErrorMessage => !IsEmpty && !IsValid ? Message : null;
+    private string? Hint => IsEmpty || IsValid ? Example : null;
+
+    private (string Pattern, string Message, string Example) FormatSpec => Format switch
+    {
+        FieldFormat.Cnic => (PakistaniFormats.CnicPattern, PakistaniFormats.CnicMessage, PakistaniFormats.CnicExample),
+        FieldFormat.MobilePhone => (PakistaniFormats.MobilePhonePattern, PakistaniFormats.MobilePhoneMessage, PakistaniFormats.MobilePhoneExample),
+        _ => throw new ArgumentOutOfRangeException(nameof(Format)),
+    };
+
+    private string Pattern => FormatSpec.Pattern;
+    private string Message => FormatSpec.Message;
+    private string Example => FormatSpec.Example;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

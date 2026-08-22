@@ -1,0 +1,169 @@
+@page "/loans"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+@* Outstanding-loans list — read-only overview across all General-fund installment plans. Reuses
+   the same FilterBar/DataTable/StatusBadge composition as Payments.razor/Applications.razor
+   instead of inventing new table markup, and deep-links into the Applications manage modal (via
+   its existing ?applicationId= query-param support) rather than duplicating the loan detail view
+   that already lives in LoanSchedulePanel. *@
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by loan #, application #, applicant…" />
+    <div class="field filter-field-md mb-0">
+        <label for="statusFilter">Status</label>
+        <select id="statusFilter" @bind="_statusFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All statuses</option>
+            @foreach (var status in Statuses)
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+    </div>
+    <div class="field filter-field-md mb-0">
+        <label for="fundFilter">Fund</label>
+        <select id="fundFilter" @bind="_fundFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All funds</option>
+            @foreach (var fund in _funds)
+            {
+                <option value="@fund.Id">@fund.Name</option>
+            }
+        </select>
+    </div>
+    <label class="checkbox-label">
+        <input type="checkbox" @bind="_overdueOnly" @bind:after="() => LoadPageAsync(1)" /> Overdue only
+    </label>
+</FilterBar>
+
+<FilterChips Filters="ActiveFilters" OnClearAll="ClearAllFiltersAsync" />
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="LoanAgreementDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="loans-rows" EmptyText="No loans found."
+           EmptyDescription="Installment plans created for General-fund applications will appear here." EmptyIcon="payments">
+    <HeaderRow>
+        <th>Loan #</th>
+        <th>Application</th>
+        <th>Applicant</th>
+        <th>Fund</th>
+        <th class="num">Principal</th>
+        <th class="num">Installment</th>
+        <th>Status</th>
+        <th></th>
+    </HeaderRow>
+    <RowTemplate Context="loan">
+        <tr>
+            <td>@loan.LoanNumber</td>
+            <td>@loan.ApplicationNumber</td>
+            <td>@loan.ApplicantName</td>
+            <td>@loan.FundCategoryName</td>
+            <td class="num">@loan.PrincipalAmount.ToString("N2")</td>
+            <td class="num">@loan.InstallmentAmount.ToString("N2")</td>
+            <td><StatusBadge Status="@loan.Status" /></td>
+            <td class="table-actions">
+                <button class="icon-btn" aria-label="View application" @onclick="() => GoToApplication(loan.ApplicationId)"><Icon Name="eye" Size="16" /></button>
+            </td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@code {
+    private static readonly string[] Statuses = ["Active", "Settled", "Cancelled", "WrittenOff"];
+
+    private const int PageSize = 25;
+    private PagedResult<LoanAgreementDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _fundFilter = "";
+    private bool _overdueOnly;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private IReadOnlyList<FundCategoryDto> _funds = [];
+
+    private List<(string Label, Func<Task> Clear)> ActiveFilters
+    {
+        get
+        {
+            var filters = new List<(string, Func<Task>)>();
+            if (!string.IsNullOrEmpty(_statusFilter))
+            {
+                filters.Add(($"Status: {_statusFilter}", async () => { _statusFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (!string.IsNullOrEmpty(_fundFilter))
+            {
+                var name = _funds.FirstOrDefault(f => f.Id.ToString() == _fundFilter)?.Name ?? _fundFilter;
+                filters.Add(($"Fund: {name}", async () => { _fundFilter = ""; await LoadPageAsync(1); }));
+            }
+            if (_overdueOnly)
+            {
+                filters.Add(("Overdue only", async () => { _overdueOnly = false; await LoadPageAsync(1); }));
+            }
+            return filters;
+        }
+    }
+
+    private async Task ClearAllFiltersAsync()
+    {
+        _statusFilter = "";
+        _fundFilter = "";
+        _overdueOnly = false;
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _funds = await ApiClient.GetFundCategoriesAsync();
+        await LoadPageAsync(1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#loans-rows tr");
+        }
+    }
+
+    private int _loadToken;
+
+    private async Task LoadPageAsync(int page)
+    {
+        var token = ++_loadToken;
+        _errorMessage = null;
+        try
+        {
+            var result = await ApiClient.GetLoanAgreementsAsync(page, PageSize,
+                string.IsNullOrWhiteSpace(_search) ? null : _search,
+                string.IsNullOrWhiteSpace(_statusFilter) ? null : _statusFilter,
+                fundCategoryId: string.IsNullOrWhiteSpace(_fundFilter) ? null : Guid.Parse(_fundFilter),
+                overdueOnly: _overdueOnly);
+            if (token != _loadToken)
+            {
+                return; // a newer load superseded this one; discard
+            }
+            _page = result;
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            if (token != _loadToken)
+            {
+                return;
+            }
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private void GoToApplication(Guid applicationId) => Navigation.NavigateTo($"/applications?applicationId={applicationId}");
+}

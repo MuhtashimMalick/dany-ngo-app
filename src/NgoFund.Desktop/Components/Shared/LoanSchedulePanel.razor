@@ -1,0 +1,710 @@
+@* Qard al-Hasan (interest-free loan) tracking panel for a General-fund application's manage
+   modal — General-fund applications must have an installment plan before disbursement; Zakat-fund
+   applications never show this panel at all (IsGeneralFundApplication gates it both here and at
+   the call site in Applications.razor, mirroring how the Zakat rule itself is enforced twice per
+   ). Composes the same shared primitives every other screen uses (FormSection,
+   StatusBadge, Modal, FormField, OverflowMenu, EmptyState) and the existing `payment-summary-card`
+   visual language for the summary strip instead of inventing a new card style. Zero interest
+   anywhere: schedules are pure principal division computed server-side (POST api/loans/preview) —
+   this component never computes or displays a rate. *@
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+@if (IsGeneralFundApplication)
+{
+    <FormSection Title="Installment Plan (Qard al-Hasan)" Description="Interest-free — the schedule is pure principal division; the final installment absorbs any rounding remainder.">
+        @if (_error is not null)
+        {
+            <div class="alert alert-error">@_error</div>
+        }
+
+        @if (_isLoading)
+        {
+            <Skeleton Rows="3" Columns="5" />
+        }
+        else if (_schedule?.Agreement is null)
+        {
+            <div class="alert alert-warning">Installment plan required before disbursement.</div>
+            @if (AuthState.HasPermission("loans.manage"))
+            {
+                <button type="button" class="btn btn-primary" @onclick="OpenCreatePlanModal">Create Installment Plan</button>
+            }
+        }
+        else
+        {
+            var agreement = _schedule.Agreement;
+            var canManage = AuthState.HasPermission("loans.manage");
+            var canRepay = AuthState.HasPermission("loans.repay");
+            var canVoidRepayment = AuthState.HasPermission("loans.void");
+            var canWriteOff = AuthState.HasPermission("loans.writeoff");
+            // "Settled" is deliberately not a stored LoanAgreementStatus value (per the domain
+            // comment on the enum, it's always derived from totals) — display it here instead of
+            // the raw "Active" status once the schedule reports IsSettled, and stop offering
+            // cancel/write-off/repay actions on a plan that's already fully repaid and disbursed.
+            var isAgreementOpen = agreement.Status == "Active" && !_schedule.IsSettled;
+            var displayStatus = _schedule.IsSettled ? "Settled" : agreement.Status;
+
+            <div class="flex items-center gap-3 flex-wrap mb-3">
+                <span>@agreement.LoanNumber</span>
+                <StatusBadge Status="@displayStatus" />
+                @if (isAgreementOpen && canRepay && _schedule.OutstandingBalance > 0)
+                {
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="OpenRecordRepaymentModal">Record Repayment</button>
+                }
+                @if (isAgreementOpen && (canWriteOff || canManage))
+                {
+                    <OverflowMenu>
+                        @if (canWriteOff)
+                        {
+                            <button type="button" class="overflow-menu-item destructive" @onclick="() => OpenReasonModal(LoanReasonAction.WriteOff)">
+                                <Icon Name="x-circle" Size="15" />Write Off
+                            </button>
+                        }
+                        @if (canManage)
+                        {
+                            <button type="button" class="overflow-menu-item destructive" @onclick="() => OpenReasonModal(LoanReasonAction.Cancel)">
+                                <Icon Name="trash" Size="15" />Cancel Plan
+                            </button>
+                        }
+                    </OverflowMenu>
+                }
+            </div>
+
+            <div class="card payment-summary-card">
+                <div>
+                    <div class="fund-balance-col-label">Principal Scheduled</div>
+                    <div class="fund-balance-col-value">@_schedule.PrincipalScheduled.ToString("N2")</div>
+                </div>
+                <div>
+                    <div class="fund-balance-col-label">Principal Disbursed</div>
+                    <div class="fund-balance-col-value">@_schedule.PrincipalDisbursed.ToString("N2")</div>
+                </div>
+                <div>
+                    <div class="fund-balance-col-label">Total Repaid</div>
+                    <div class="fund-balance-col-value">@_schedule.TotalRepaid.ToString("N2")</div>
+                </div>
+                <div>
+                    <div class="fund-balance-col-label">Outstanding</div>
+                    <div class="fund-balance-col-value">@_schedule.OutstandingBalance.ToString("N2")</div>
+                </div>
+                <div>
+                    <div class="fund-balance-col-label">Next Due</div>
+                    <div class="fund-balance-col-value">@(_schedule.NextDueDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+                </div>
+            </div>
+
+            @if (_schedule.Installments.Count == 0)
+            {
+                <EmptyState Icon="applications" Title="No installments yet" />
+            }
+            else
+            {
+                <div class="table-wrapper">
+                    <table class="data-table" id="loan-installments-rows">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Due Date</th>
+                                <th class="num">Amount Due</th>
+                                <th class="num">Allocated</th>
+                                <th class="num">Remaining</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var installment in _schedule.Installments.OrderBy(i => i.SequenceNumber))
+                            {
+                                <tr>
+                                    <td>@installment.SequenceNumber</td>
+                                    <td>@installment.DueDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="num">@installment.AmountDue.ToString("N2")</td>
+                                    <td class="num">@installment.AmountAllocated.ToString("N2")</td>
+                                    <td class="num">@installment.AmountRemaining.ToString("N2")</td>
+                                    <td><StatusBadge Status="@installment.Status" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <div class="form-section-legend" style="margin-top: var(--space-4);">Repayments</div>
+            @if (_schedule.Repayments.Count == 0)
+            {
+                <EmptyState Icon="payments" Title="No repayments recorded yet" />
+            }
+            else
+            {
+                <div class="table-wrapper">
+                    <table class="data-table" id="loan-repayments-rows">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Date</th>
+                                <th class="num">Amount</th>
+                                <th>Method</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var repayment in _schedule.Repayments.OrderByDescending(r => r.RepaymentDate))
+                            {
+                                <tr>
+                                    <td>@repayment.RepaymentNumber</td>
+                                    <td>@repayment.RepaymentDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="num">@repayment.Amount.ToString("N2")</td>
+                                    <td>@repayment.PaymentMethod</td>
+                                    <td><StatusBadge Status="@repayment.Status" /></td>
+                                    <td class="table-actions">
+                                        <button class="icon-btn" aria-label="Print receipt" @onclick="() => OpenReceipt(repayment)"><Icon Name="printer" Size="16" /></button>
+                                        @if (canVoidRepayment && repayment.Status != "Voided")
+                                        {
+                                            <OverflowMenu>
+                                                <button type="button" class="overflow-menu-item destructive" @onclick="() => OpenReasonModal(LoanReasonAction.VoidRepayment, repayment.Id)">
+                                                    <Icon Name="trash" Size="15" />Void
+                                                </button>
+                                            </OverflowMenu>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </FormSection>
+}
+
+@if (_showCreatePlanModal)
+{
+    <Modal Title="Create Installment Plan" Size="md" OnClose="CloseCreatePlanModal">
+        <ChildContent>
+        @if (_planFormError is not null)
+        {
+            <div class="alert alert-error">@_planFormError</div>
+        }
+
+        <EditForm Model="_planForm" OnValidSubmit="CreatePlanAsync" id="loan-plan-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <div class="form-grid">
+                <FormField Label="Installment Count" For="installmentCount" ValidationFor="() => _planForm.InstallmentCount">
+                    <InputNumber id="installmentCount" @bind-Value="_planForm.InstallmentCount" @bind-Value:after="SchedulePreviewAsync" />
+                </FormField>
+
+                <FormField Label="First Due Date" For="firstDueDate">
+                    <InputDate id="firstDueDate" @bind-Value="_planForm.FirstDueDate" @bind-Value:after="SchedulePreviewAsync" />
+                </FormField>
+
+                <FormField Label="Frequency" For="frequency" Hint="Only Monthly is supported right now.">
+                    <select id="frequency" disabled>
+                        <option>Monthly</option>
+                    </select>
+                </FormField>
+
+                <FormField Label="Notes" For="notes" CssClass="span-2">
+                    <InputTextArea id="notes" @bind-Value="_planForm.Notes" />
+                </FormField>
+            </div>
+        </EditForm>
+
+        <div class="form-section-legend" style="margin-top: var(--space-4);">Preview</div>
+        <p class="field-hint">Computed by the server — no rate, no interest, remainder absorbed by the final installment.</p>
+
+        @if (_previewError is not null)
+        {
+            <div class="alert alert-error">@_previewError</div>
+        }
+        else if (_isPreviewLoading)
+        {
+            <Skeleton Rows="3" Columns="3" />
+        }
+        else if (_preview.Count == 0)
+        {
+            <EmptyState Icon="applications" Title="Enter a count and first due date to preview the schedule" />
+        }
+        else
+        {
+            <div class="table-wrapper">
+                <table class="data-table" id="loan-preview-rows">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Due Date</th>
+                            <th class="num">Amount Due</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var installment in _preview.OrderBy(i => i.SequenceNumber))
+                        {
+                            <tr>
+                                <td>@installment.SequenceNumber</td>
+                                <td>@installment.DueDate.ToString("yyyy-MM-dd")</td>
+                                <td class="num">@installment.AmountDue.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseCreatePlanModal">Cancel</button>
+            <button type="submit" form="loan-plan-form" class="btn btn-primary" disabled="@(_isSavingPlan || _preview.Count == 0)">@(_isSavingPlan ? "Saving..." : "Create Plan")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_showRecordRepaymentModal && _schedule?.Agreement is not null)
+{
+    <Modal Title="Record Repayment" Size="lg" OnClose="CloseRecordRepaymentModal">
+        <ChildContent>
+        @if (_repaymentFormError is not null)
+        {
+            <div class="alert alert-error">@_repaymentFormError</div>
+        }
+
+        <div class="card payment-summary-card mb-3">
+            <div>
+                <div class="fund-balance-col-label">Loan</div>
+                <div class="fund-balance-col-value">@_schedule.Agreement.LoanNumber</div>
+            </div>
+            <div>
+                <div class="fund-balance-col-label">Outstanding</div>
+                <div class="fund-balance-col-value">@_schedule.OutstandingBalance.ToString("N2")</div>
+            </div>
+        </div>
+
+        <EditForm Model="_repaymentForm" OnValidSubmit="RecordRepaymentAsync" id="loan-repayment-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <FormSection Title="Repayment">
+                <div class="form-grid">
+                    <FormField Label="Amount" For="amount" ValidationFor="() => _repaymentForm.Amount">
+                        <InputNumber id="amount" @bind-Value="_repaymentForm.Amount" />
+                    </FormField>
+
+                    <FormField Label="Repayment Date" For="repaymentDate">
+                        <InputDate id="repaymentDate" @bind-Value="_repaymentForm.RepaymentDate" />
+                    </FormField>
+
+                    <FormField Label="Payment Method" For="paymentMethod" CssClass="span-2">
+                        <InputSelect id="paymentMethod" @bind-Value="_repaymentForm.PaymentMethod">
+                            <option value="Cash">Cash</option>
+                            <option value="BankTransfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Online">Online</option>
+                        </InputSelect>
+                    </FormField>
+                </div>
+            </FormSection>
+
+            @if (_repaymentForm.PaymentMethod != "Cash")
+            {
+                <FormSection Title="Instrument" Description="Recorded for non-cash payment methods.">
+                    <div class="form-grid">
+                        <FormField Label="Instrument Number" For="instrumentNumber">
+                            <InputText id="instrumentNumber" @bind-Value="_repaymentForm.InstrumentNumber" />
+                        </FormField>
+
+                        <FormField Label="Bank Name" For="bankName">
+                            <InputText id="bankName" @bind-Value="_repaymentForm.BankName" />
+                        </FormField>
+                    </div>
+                </FormSection>
+            }
+
+            <FormSection Title="Received From">
+                <div class="form-grid">
+                    <FormField Label="Name" For="receivedFromName" ValidationFor="() => _repaymentForm.ReceivedFromName">
+                        <InputText id="receivedFromName" @bind-Value="_repaymentForm.ReceivedFromName" />
+                    </FormField>
+
+                    <FormField Label="CNIC" For="receivedFromCnic">
+                        <InputText id="receivedFromCnic" @bind-Value="_repaymentForm.ReceivedFromCnic" />
+                    </FormField>
+
+                    <FormField Label="Notes" For="repaymentNotes" CssClass="span-2">
+                        <InputTextArea id="repaymentNotes" @bind-Value="_repaymentForm.Notes" />
+                    </FormField>
+                </div>
+            </FormSection>
+        </EditForm>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseRecordRepaymentModal">Cancel</button>
+            <button type="submit" form="loan-repayment-form" class="btn btn-primary" disabled="@_isSavingRepayment">@(_isSavingRepayment ? "Saving..." : "Save")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_reasonAction is not null)
+{
+    <Modal Title="@ReasonModalTitle" Size="sm" OnClose="CloseReasonModal">
+        <ChildContent>
+        <p class="field-hint">@ReasonModalHint</p>
+
+        @if (_reasonError is not null)
+        {
+            <div class="alert alert-error">@_reasonError</div>
+        }
+
+        <div class="field">
+            <label for="reasonText">Reason</label>
+            <textarea id="reasonText" @bind="_reasonText"></textarea>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseReasonModal">Cancel</button>
+            <button type="button" class="btn btn-destructive" disabled="@_isSubmittingReason" @onclick="ConfirmReasonActionAsync">@(_isSubmittingReason ? "Saving..." : "Confirm")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_receiptRepayment is not null && _schedule?.Agreement is not null)
+{
+    <Modal Title="Repayment Receipt" Size="sm" OnClose="CloseReceipt">
+        <ChildContent>
+        <div class="receipt" id="loan-repayment-receipt">
+            <div class="receipt-header">
+                <h3>NGO Fund Management</h3>
+                <div class="receipt-org-meta">Official Loan Repayment Receipt</div>
+            </div>
+
+            <table class="receipt-table">
+                <tbody>
+                    <tr><td>Receipt No.</td><td>@_receiptRepayment.RepaymentNumber</td></tr>
+                    <tr><td>Loan No.</td><td>@_schedule.Agreement.LoanNumber</td></tr>
+                    <tr><td>Received From</td><td>@_receiptRepayment.ReceivedFromName</td></tr>
+                    <tr><td>Fund</td><td>@_schedule.Agreement.FundCategoryName</td></tr>
+                    <tr><td>Date</td><td>@_receiptRepayment.RepaymentDate.ToString("yyyy-MM-dd")</td></tr>
+                    <tr><td>Method</td><td>@_receiptRepayment.PaymentMethod</td></tr>
+                    @if (!string.IsNullOrEmpty(_receiptRepayment.InstrumentNumber))
+                    {
+                        <tr><td>Instrument #</td><td>@_receiptRepayment.InstrumentNumber</td></tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="receipt-amount">
+                <div class="label">Amount Received</div>
+                <div class="value">PKR @_receiptRepayment.Amount.ToString("N2")</div>
+                <div class="words">@AmountInWordsFormatter.Convert(_receiptRepayment.Amount) rupees only</div>
+            </div>
+
+            <div class="receipt-signatures">
+                <div class="receipt-signature-line">Received By Signature</div>
+                <div class="receipt-signature-line">Authorized Signature</div>
+            </div>
+        </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary no-print" @onclick="CloseReceipt">Close</button>
+            <button type="button" class="btn btn-primary no-print" @onclick="PrintReceiptAsync"><Icon Name="printer" Size="16" />Print</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    /// <summary>The application this panel tracks a loan for. Required.</summary>
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+
+    /// <summary>
+    /// True for any General-fund application, whether or not it has a loan yet. NOT the same as
+    /// <c>ApplicationDto.RequiresLoanPlan</c> alone — that field flips to <c>false</c> the moment an
+    /// Active agreement exists (its purpose on the API side is gating payments, not gating this
+    /// panel's visibility — see <c>FundApplicationService</c>'s
+    /// <c>RequiresLoanPlan: !a.FundCategory.IsZakat &amp;&amp; activeLoanAgreementId is null</c>).
+    /// The caller must pass <c>application.RequiresLoanPlan || application.LoanAgreementId is not
+    /// null</c> so the panel keeps showing the schedule/repayments after a plan is created instead
+    /// of disappearing the moment it stops being "required". Gated here *and* at the call site in
+    /// Applications.razor (double enforcement, same pattern  mandates for the Zakat rule)
+    /// so this panel is safe to drop into any future screen without re-deriving the fund check.
+    /// </summary>
+    [Parameter, EditorRequired] public bool IsGeneralFundApplication { get; set; }
+
+    private LoanScheduleDto? _schedule;
+    private bool _isLoading = true;
+    private string? _error;
+
+    private bool _showCreatePlanModal;
+    private bool _isSavingPlan;
+    private string? _planFormError;
+    private LoanPlanFormModel _planForm = new();
+    private IReadOnlyList<LoanInstallmentDto> _preview = [];
+    private bool _isPreviewLoading;
+    private string? _previewError;
+    private int _previewToken;
+
+    private bool _showRecordRepaymentModal;
+    private bool _isSavingRepayment;
+    private string? _repaymentFormError;
+    private LoanRepaymentFormModel _repaymentForm = new();
+
+    private LoanReasonAction? _reasonAction;
+    private Guid? _reasonTargetRepaymentId;
+    private string _reasonText = "";
+    private string? _reasonError;
+    private bool _isSubmittingReason;
+
+    private LoanRepaymentDto? _receiptRepayment;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsGeneralFundApplication && _schedule is null)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _schedule = await ApiClient.GetLoanScheduleAsync(ApplicationId);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenCreatePlanModal()
+    {
+        _planForm = new LoanPlanFormModel { FirstDueDate = DateOnly.FromDateTime(DateTime.Today.AddMonths(1)) };
+        _preview = [];
+        _previewError = null;
+        _planFormError = null;
+        _showCreatePlanModal = true;
+    }
+
+    private void CloseCreatePlanModal() => _showCreatePlanModal = false;
+
+    // Debounced live preview — every keystroke/date change bumps _previewToken so a superseded
+    // request's response is discarded on arrival, same "last write wins" idiom LoadPageAsync uses
+    // elsewhere in this app. The schedule/rounding math itself is never computed here — only the
+    // server's POST api/loans/preview response is ever rendered, per the milestone's single-source
+    // rounding rule.
+    private async Task SchedulePreviewAsync()
+    {
+        var token = ++_previewToken;
+        _previewError = null;
+
+        if (_planForm.InstallmentCount < 1)
+        {
+            _preview = [];
+            return;
+        }
+
+        _isPreviewLoading = true;
+        try
+        {
+            await Task.Delay(400);
+            if (token != _previewToken)
+            {
+                return;
+            }
+
+            var result = await ApiClient.PreviewLoanScheduleAsync(
+                new PreviewLoanScheduleRequest(ApplicationId, _planForm.InstallmentCount, _planForm.FirstDueDate, "Monthly"));
+
+            if (token != _previewToken)
+            {
+                return;
+            }
+
+            _preview = result;
+        }
+        catch (ApiException ex)
+        {
+            if (token != _previewToken)
+            {
+                return;
+            }
+
+            _previewError = ex.Message;
+            _preview = [];
+        }
+        finally
+        {
+            if (token == _previewToken)
+            {
+                _isPreviewLoading = false;
+            }
+        }
+    }
+
+    private async Task CreatePlanAsync()
+    {
+        _isSavingPlan = true;
+        _planFormError = null;
+        try
+        {
+            await ApiClient.CreateLoanAgreementAsync(new CreateLoanAgreementRequest(
+                ApplicationId, _planForm.InstallmentCount, _planForm.FirstDueDate, "Monthly", _planForm.Notes));
+
+            Toast.Success("Installment plan created");
+            _showCreatePlanModal = false;
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _planFormError = ex.Message;
+        }
+        finally
+        {
+            _isSavingPlan = false;
+        }
+    }
+
+    private void OpenRecordRepaymentModal()
+    {
+        _repaymentForm = new LoanRepaymentFormModel { RepaymentDate = DateOnly.FromDateTime(DateTime.Today) };
+        _repaymentFormError = null;
+        _showRecordRepaymentModal = true;
+    }
+
+    private void CloseRecordRepaymentModal() => _showRecordRepaymentModal = false;
+
+    private async Task RecordRepaymentAsync()
+    {
+        if (_schedule?.Agreement is null)
+        {
+            return;
+        }
+
+        _isSavingRepayment = true;
+        _repaymentFormError = null;
+        try
+        {
+            var created = await ApiClient.RecordLoanRepaymentAsync(new RecordLoanRepaymentRequest(
+                _schedule.Agreement.Id, _repaymentForm.Amount, _repaymentForm.RepaymentDate, _repaymentForm.PaymentMethod,
+                _repaymentForm.InstrumentNumber, _repaymentForm.BankName, _repaymentForm.ReceivedFromName,
+                _repaymentForm.ReceivedFromCnic, _repaymentForm.Notes));
+
+            Toast.Success($"Repayment recorded · {created.RepaymentNumber}");
+            _showRecordRepaymentModal = false;
+            await LoadAsync();
+            _receiptRepayment = created;
+        }
+        catch (ApiException ex)
+        {
+            _repaymentFormError = ex.Message;
+        }
+        finally
+        {
+            _isSavingRepayment = false;
+        }
+    }
+
+    private void OpenReceipt(LoanRepaymentDto repayment) => _receiptRepayment = repayment;
+
+    private void CloseReceipt() => _receiptRepayment = null;
+
+    private async Task PrintReceiptAsync() => await JS.InvokeVoidAsync("print");
+
+    private void OpenReasonModal(LoanReasonAction action, Guid? repaymentId = null)
+    {
+        _reasonAction = action;
+        _reasonTargetRepaymentId = repaymentId;
+        _reasonText = "";
+        _reasonError = null;
+    }
+
+    private void CloseReasonModal() => _reasonAction = null;
+
+    private string ReasonModalTitle => _reasonAction switch
+    {
+        LoanReasonAction.Cancel => "Cancel Installment Plan",
+        LoanReasonAction.WriteOff => "Write Off Loan",
+        LoanReasonAction.VoidRepayment => "Void Repayment",
+        _ => "",
+    };
+
+    private string ReasonModalHint => _reasonAction switch
+    {
+        LoanReasonAction.Cancel => "Cancels the remaining, undisbursed schedule — already-disbursed installments are unaffected.",
+        LoanReasonAction.WriteOff => "Marks the outstanding balance as written off. This does not delete the repayment history.",
+        LoanReasonAction.VoidRepayment => "Posts a reversing entry — the original repayment record is kept for audit purposes.",
+        _ => "",
+    };
+
+    private async Task ConfirmReasonActionAsync()
+    {
+        if (_reasonAction is null || _schedule?.Agreement is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_reasonText))
+        {
+            _reasonError = "A reason is required.";
+            return;
+        }
+
+        _isSubmittingReason = true;
+        _reasonError = null;
+        try
+        {
+            switch (_reasonAction)
+            {
+                case LoanReasonAction.Cancel:
+                    await ApiClient.CancelLoanAgreementAsync(_schedule.Agreement.Id, _reasonText);
+                    Toast.Success("Installment plan cancelled");
+                    break;
+                case LoanReasonAction.WriteOff:
+                    await ApiClient.WriteOffLoanAgreementAsync(_schedule.Agreement.Id, _reasonText);
+                    Toast.Success("Loan written off");
+                    break;
+                case LoanReasonAction.VoidRepayment when _reasonTargetRepaymentId is { } repaymentId:
+                    await ApiClient.VoidLoanRepaymentAsync(repaymentId, _reasonText);
+                    Toast.Success("Repayment voided");
+                    break;
+            }
+
+            _reasonAction = null;
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _reasonError = ex.Message;
+        }
+        finally
+        {
+            _isSubmittingReason = false;
+        }
+    }
+
+    private enum LoanReasonAction { Cancel, WriteOff, VoidRepayment }
+
+    private class LoanPlanFormModel
+    {
+        [Range(1, 120)] public int InstallmentCount { get; set; } = 6;
+        public DateOnly FirstDueDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddMonths(1));
+        public string? Notes { get; set; }
+    }
+
+    private class LoanRepaymentFormModel
+    {
+        [Range(0.01, double.MaxValue)] public decimal Amount { get; set; }
+        public DateOnly RepaymentDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string PaymentMethod { get; set; } = "Cash";
+        public string? InstrumentNumber { get; set; }
+        public string? BankName { get; set; }
+        [Required] public string ReceivedFromName { get; set; } = "";
+        public string? ReceivedFromCnic { get; set; }
+        public string? Notes { get; set; }
+    }
+}

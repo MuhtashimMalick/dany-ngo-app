@@ -1,0 +1,50 @@
+@* One guarantor row's field grid + declaration checkbox — split out of GuarantorsEditor so the
+   same markup backs both its repeating-rows "edit everything" mode (manage modal) and the
+   wizard's single-row-per-page "Guarantor 1" / "Guarantor 2" pages. Deliberately carries no
+   document upload control: per the completeness milestone, guarantor documents are uploaded only
+   through the Documents wizard page's guarantor-grouped DocumentSlotList (and the manage modal's
+   Documents tab, same component) — never here. *@
+<div class="form-grid">
+    <FormField Label="Full Name *" For="@($"g{Row.ClientKey:N}-name")">
+        <input id="@($"g{Row.ClientKey:N}-name")" @bind="Row.FullName" />
+    </FormField>
+    <FormField Label="Membership Number *" For="@($"g{Row.ClientKey:N}-membership")">
+        <input id="@($"g{Row.ClientKey:N}-membership")" @bind="Row.MembershipNumber" maxlength="@PakistaniFormats.JamaatMembershipMaxLength" />
+    </FormField>
+    <FormField Label="Father Name" For="@($"g{Row.ClientKey:N}-father")">
+        <input id="@($"g{Row.ClientKey:N}-father")" @bind="Row.FatherName" />
+    </FormField>
+    <FormField Label="Grandfather Name" For="@($"g{Row.ClientKey:N}-grandfather")">
+        <input id="@($"g{Row.ClientKey:N}-grandfather")" @bind="Row.GrandfatherName" />
+    </FormField>
+    <FormField Label="Surname" For="@($"g{Row.ClientKey:N}-surname")">
+        <input id="@($"g{Row.ClientKey:N}-surname")" @bind="Row.Surname" />
+    </FormField>
+    <FormatField Label="CNIC *" For="@($"g{Row.ClientKey:N}-cnic")" Format="FieldFormat.Cnic"
+                 @bind-Value="Row.Cnic" />
+    <FormField Label="Residential Address" For="@($"g{Row.ClientKey:N}-raddr")" CssClass="span-2">
+        <textarea id="@($"g{Row.ClientKey:N}-raddr")" @bind="Row.ResidentialAddress"></textarea>
+    </FormField>
+    <FormField Label="Business Address" For="@($"g{Row.ClientKey:N}-baddr")" CssClass="span-2">
+        <textarea id="@($"g{Row.ClientKey:N}-baddr")" @bind="Row.BusinessAddress"></textarea>
+    </FormField>
+    <FormField Label="Business Nature" For="@($"g{Row.ClientKey:N}-bnature")">
+        <input id="@($"g{Row.ClientKey:N}-bnature")" @bind="Row.BusinessNature" />
+    </FormField>
+    <FormField Label="Phone (Home)" For="@($"g{Row.ClientKey:N}-phome")">
+        <input id="@($"g{Row.ClientKey:N}-phome")" @bind="Row.PhoneHome" />
+    </FormField>
+    <FormField Label="Phone (Office)" For="@($"g{Row.ClientKey:N}-poffice")">
+        <input id="@($"g{Row.ClientKey:N}-poffice")" @bind="Row.PhoneOffice" />
+    </FormField>
+    <FormatField Label="Phone (Mobile)" For="@($"g{Row.ClientKey:N}-pmobile")" Format="FieldFormat.MobilePhone"
+                 @bind-Value="Row.PhoneMobile" />
+</div>
+
+<label class="checkbox-label mb-3">
+    <input type="checkbox" @bind="Row.DeclarationAcceptedBool" /> Guarantor declaration accepted
+</label>
+
+@code {
+    [Parameter, EditorRequired] public GuarantorRowModel Row { get; set; } = null!;
+}

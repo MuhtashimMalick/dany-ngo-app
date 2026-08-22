@@ -1,3 +1,6 @@
+# Loaded automatically alongside docker-compose.yml for local development. Adds dev-only
+# conveniences (host port for direct psql/pgAdmin access, verbose logging) without touching the
+# base file that also describes the production shape.
 services:
   db:
     ports:

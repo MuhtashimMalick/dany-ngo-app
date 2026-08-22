@@ -23,4 +23,9 @@ public record ApplicantDto(
     Guid? PhotoDocumentId,
     bool IsBlacklisted,
     string? BlacklistReason,
-    string? Notes);
+    string? Notes,
+    string? GrandfatherName,
+    string? Surname,
+    string? AncestralVillage,
+    string? FatherMembershipNumber,
+    string? WhatsappNumber);

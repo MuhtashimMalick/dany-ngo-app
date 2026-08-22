@@ -7,4 +7,5 @@ public record DocumentDto(
     long SizeBytes,
     string DocumentType,
     string? Description,
-    DateTimeOffset UploadedAt);
+    DateTimeOffset UploadedAt,
+    string? SlotKey);

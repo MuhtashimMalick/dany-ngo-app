@@ -25,6 +25,19 @@ public class ApplicationCategory : BaseEntity, IUpdateAuditable, ISoftDeletable
 
     public int DisplayOrder { get; set; }
 
+    /// <summary>
+    /// How many <see cref="ApplicationGuarantor"/> rows an application in this category needs
+    /// before it can reach <see cref="Enums.ApplicationStatus.Approved"/>. Data-driven: 0 means no
+    /// gate at all (every category except ROZGAR, seeded at 2). See
+    /// <see cref="FundApplication"/>'s Approved-transition call site.
+    /// </summary>
+    public int RequiresGuarantors { get; set; }
+
+    /// <summary>Terms &amp; conditions text shown before an applicant/staff accepts on this category's application. Placeholder until the client supplies real copy — see docs/schema.md.</summary>
+    public string? TermsText { get; set; }
+
+    public string? TermsVersion { get; set; }
+
     public DateTimeOffset? UpdatedAt { get; set; }
     public Guid? UpdatedBy { get; set; }
     public bool IsDeleted { get; set; }

@@ -12,6 +12,8 @@ public class ApplicationCategoryConfiguration : IEntityTypeConfiguration<Applica
 
         builder.Property(e => e.Code).HasMaxLength(30).IsRequired();
         builder.Property(e => e.Name).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.TermsText).HasColumnType("text");
+        builder.Property(e => e.TermsVersion).HasMaxLength(20);
 
         builder.HasIndex(e => e.Code).IsUnique();
     }

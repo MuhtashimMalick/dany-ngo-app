@@ -1,0 +1,47 @@
+@* Guardian relationship + Bride field group, split out of MarriageDetailsSection so the same
+   markup backs both the manage modal's single-block editor and the wizard's "Guardian & Bride's
+   Information" page. See ApplicationDetailModels.cs's doc comment. *@
+<div class="form-grid">
+    <FormField Label="Guardian's Relationship to Bride" For="guardianRel" Hint="The applicant on this application is the guardian." CssClass="span-2">
+        <InputText id="guardianRel" @bind-Value="Model.GuardianRelationshipToBride" />
+    </FormField>
+</div>
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Bride</div>
+<div class="form-grid">
+    <FormField Label="Bride Name *" For="brideName" ValidationFor="() => Model.BrideName">
+        <InputText id="brideName" @bind-Value="Model.BrideName" />
+    </FormField>
+    <FormField Label="Bride Father Name" For="brideFather">
+        <InputText id="brideFather" @bind-Value="Model.BrideFatherName" />
+    </FormField>
+    <FormField Label="Bride Family Name" For="brideFamily">
+        <InputText id="brideFamily" @bind-Value="Model.BrideFamilyName" />
+    </FormField>
+    <FormatField Label="Bride CNIC" For="brideCnic" Format="FieldFormat.Cnic" @bind-Value="Model.BrideCnic" />
+    <FormField Label="Bride Marital Status" For="brideMaritalStatus">
+        <InputSelect id="brideMaritalStatus" @bind-Value="Model.BrideMaritalStatus">
+            <option value="">Select</option>
+            <option value="Single">First Marriage</option>
+            <option value="Married">Married</option>
+            <option value="Divorced">Divorced</option>
+            <option value="Widowed">Widowed</option>
+        </InputSelect>
+    </FormField>
+    @if (Model.BrideMaritalStatus is "Divorced" or "Widowed")
+    {
+        <FormField Label="Bride's Previous Husband Name" For="bridePrevHusband">
+            <InputText id="bridePrevHusband" @bind-Value="Model.BridePreviousHusbandName" />
+        </FormField>
+    }
+    <FormField Label="Bride Jamaat" For="brideJamaat">
+        <InputText id="brideJamaat" @bind-Value="Model.BrideJamaat" />
+    </FormField>
+    <FormField Label="Bride's Prior Trust Assistance" For="bridePriorAssist" CssClass="span-2">
+        <InputTextArea id="bridePriorAssist" @bind-Value="Model.BridePriorTrustAssistance" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MarriageDetailsFormModel Model { get; set; } = null!;
+}

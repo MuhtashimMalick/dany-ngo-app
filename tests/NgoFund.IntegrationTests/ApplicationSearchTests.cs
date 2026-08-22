@@ -47,14 +47,15 @@ public class ApplicationSearchTests(AuthApiFactory factory) : IClassFixture<Auth
         var fund = funds.Single(f => f.Code == "GENERAL");
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            "MBR-SEARCH-001", "Search Test Applicant", null, "11122-3344556-7", "Female", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            "SEARCH-001", "Search Test Applicant", null, "11122-3344556-7", "Female", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
             applicant.Id, category.Id, fund.Id, 4000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
-        var searchResponse = await client.GetAsync("/api/applications?search=MBR-SEARCH-001");
+        var searchResponse = await client.GetAsync("/api/applications?search=SEARCH-001");
         var page = await ReadOrFailAsync<PagedResult<ApplicationDto>>(searchResponse, HttpStatusCode.OK);
 
         Assert.Contains(page.Items, a => a.Id == application.Id);
@@ -71,7 +72,8 @@ public class ApplicationSearchTests(AuthApiFactory factory) : IClassFixture<Auth
         var generalFund = funds.Single(f => f.Code == "GENERAL");
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Filter Test Applicant", null, "22233-4455667-8", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Filter Test Applicant", null, "22233-4455667-8", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var oldDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2);

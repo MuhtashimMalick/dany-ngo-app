@@ -93,7 +93,8 @@ public class DashboardInsightsWorkflowTests(AuthApiFactory factory) : IClassFixt
             donor.Id, zakatFund.Id, 50000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null));
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Insights Test Applicant", null, "11111-2222222-3", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Insights Test Applicant", null, "11111-2222222-3", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(

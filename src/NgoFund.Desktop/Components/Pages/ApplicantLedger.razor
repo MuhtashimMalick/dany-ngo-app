@@ -1,0 +1,160 @@
+@page "/applicants/{ApplicantId:guid}/ledger"
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@* The ONE applicant-ledger view (F4) — reached only from Applicants.razor's detail modal ("View
+   Fund Ledger" action). Per client decision, the Funds page's per-fund applicant ledger tab
+   (formerly FundApplicantLedgerTable) was removed in favor of the chronological transaction
+   ledger, so this route is now the only way to reach applicant-level ledger history. A dedicated
+   route rather than a modal (F5): the existing applicant detail modal is already Size="lg" and
+   carries a photo tile + DetailList + an applications table, so stacking fund summaries plus a
+   full chronological entry list on top would either overflow that modal or force it taller than
+   any other modal in the app. A full page gives the entry table room to breathe and gets its own
+   scroll container instead of a nested one. *@
+
+<div class="page-header">
+    <SectionContent SectionName="page-actions">
+        <button type="button" class="btn btn-secondary" @onclick="GoBack"><Icon Name="chevron-left" Size="16" />Back</button>
+    </SectionContent>
+</div>
+
+@if (!CanView)
+{
+    <EmptyState Icon="applicants" Title="Access restricted"
+                Description="Viewing an applicant's fund ledger requires both the Payments and Loans view permissions." />
+}
+else if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+else if (_isLoading)
+{
+    <Skeleton Rows="6" Columns="6" />
+}
+else if (_ledger is not null)
+{
+    <div class="card" style="padding: var(--space-4); margin-bottom: var(--space-4);">
+        <h2 style="margin: 0 0 var(--space-1) 0;">@_ledger.FullName</h2>
+        <p class="field-hint mb-0">
+            CNIC @_ledger.Cnic
+            @if (!string.IsNullOrEmpty(_ledger.MembershipNumber))
+            {
+                <text> &middot; Membership # @_ledger.MembershipNumber</text>
+            }
+        </p>
+    </div>
+
+    <h3 class="section-heading">Fund Summary</h3>
+    @if (_ledger.FundSummaries.Count == 0)
+    {
+        <EmptyState Icon="funds" Title="No fund activity yet"
+                    Description="This applicant has no disbursements or repayments recorded against any fund." />
+    }
+    else
+    {
+        <div class="metric-row" id="applicant-ledger-summary">
+            @foreach (var summary in _ledger.FundSummaries)
+            {
+                <div class="card payment-summary-card">
+                    <div>
+                        <div class="fund-balance-col-label">@summary.FundCategoryName</div>
+                        <div class="fund-balance-col-value">@summary.TotalReceived.ToString("N2")</div>
+                    </div>
+                    @if (summary.RecoveryStatus != "NotApplicable")
+                    {
+                        <div>
+                            <div class="fund-balance-col-label">Repaid</div>
+                            <div class="fund-balance-col-value">@summary.TotalRepaid.ToString("N2")</div>
+                        </div>
+                        <div>
+                            <div class="fund-balance-col-label">Recovery Status</div>
+                            <div class="fund-balance-col-value"><RecoveryStatusBadge Row="summary" /></div>
+                        </div>
+                    }
+                    <div>
+                        <div class="fund-balance-col-label">Last Activity</div>
+                        <div class="fund-balance-col-value">@(summary.LastActivityDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <h3 class="section-heading">Entry History</h3>
+    <DataTable TItem="ApplicantLedgerEntryDto" Items="_ledger.Entries" RowsContainerId="applicant-ledger-entries-rows"
+               EmptyText="No entries yet." EmptyDescription="Disbursements and loan repayments for this applicant will appear here." EmptyIcon="payments">
+        <HeaderRow>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Reference #</th>
+            <th>Fund</th>
+            <th>Application #</th>
+            <th class="num">Amount (PKR)</th>
+            <th>Status</th>
+        </HeaderRow>
+        <RowTemplate Context="entry">
+            <tr class="@(entry.Status == "Voided" ? "ledger-entry-voided" : "")">
+                <td>@entry.Date.ToString("yyyy-MM-dd")</td>
+                <td>@entry.EntryType</td>
+                <td>@entry.ReferenceNumber</td>
+                <td>@entry.FundCategoryName</td>
+                <td>@entry.ApplicationNumber</td>
+                <td class="num">@entry.Amount.ToString("N2")</td>
+                <td><StatusBadge Status="@entry.Status" /></td>
+            </tr>
+        </RowTemplate>
+    </DataTable>
+    <p class="field-hint">Voided entries are kept visible for the record but are excluded from every total above.</p>
+}
+
+@code {
+    [Parameter] public Guid ApplicantId { get; set; }
+
+    private ApplicantLedgerDto? _ledger;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private bool CanView => AuthState.HasPermission("payments.view") && AuthState.HasPermission("loans.view");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!CanView)
+        {
+            _isLoading = false;
+            return;
+        }
+
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _ledger = await ApiClient.GetApplicantLedgerAsync(ApplicantId);
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#applicant-ledger-summary > div, #applicant-ledger-entries-rows tr");
+        }
+    }
+
+    // No prior page in this app's history is a safe universal "back" target (the ledger is reached
+    // from both Applicants.razor and a Funds.razor tab), so this defers to the browser/WebView2's
+    // own navigation stack rather than hardcoding one origin over the other.
+    private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
+}

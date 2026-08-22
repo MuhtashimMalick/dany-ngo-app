@@ -58,5 +58,6 @@ public class ApplicationCategoryService(AppDbContext dbContext) : IApplicationCa
     }
 
     private static ApplicationCategoryDto Map(ApplicationCategory c) =>
-        new(c.Id, c.Code, c.Name, c.IsZakatEligible, c.DefaultMaxAmount, c.IsActive, c.DisplayOrder);
+        new(c.Id, c.Code, c.Name, c.IsZakatEligible, c.DefaultMaxAmount, c.IsActive, c.DisplayOrder,
+            c.RequiresGuarantors, c.TermsText, c.TermsVersion);
 }

@@ -10,8 +10,8 @@
     <nav class="sidebar @(_sidebarCollapsed ? "collapsed" : "")" id="sidebar-nav">
         <div class="sidebar-header">
             <div class="sidebar-brand" title="NGO Fund Management">
-                <img src="images/logo-icon.png" alt="" class="sidebar-brand-mark" />
-                <span class="sidebar-brand-text">NGO Fund Management</span>
+                <img src="images/logo-icon.png" alt="NGO Fund Management" class="sidebar-brand-icon" />
+                <img src="images/logo-full.png" alt="NGO Fund Management" class="sidebar-brand-logo" />
             </div>
             <button type="button" class="sidebar-toggle" id="sidebar-toggle-btn" @onclick="ToggleSidebarAsync"
                     aria-expanded="@(!_sidebarCollapsed)" aria-controls="sidebar-nav"
@@ -41,7 +41,7 @@
             }
         }
 
-        @if (AuthState.HasPermission("applicants.view") || AuthState.HasPermission("applications.view") || AuthState.HasPermission("payments.view"))
+        @if (AuthState.HasPermission("applicants.view") || AuthState.HasPermission("applications.view") || AuthState.HasPermission("payments.view") || AuthState.HasPermission("loans.view"))
         {
             <div class="nav-group-label">Assistance</div>
             @if (AuthState.HasPermission("applicants.view"))
@@ -56,9 +56,13 @@
             {
                 <NavLink class="nav-item" href="payments" title="Payments"><Icon Name="payments" CssClass="nav-icon" /><span class="nav-label">Payments</span></NavLink>
             }
+            @if (AuthState.HasPermission("loans.view"))
+            {
+                <NavLink class="nav-item" href="loans" title="Loans"><Icon Name="payments" CssClass="nav-icon" /><span class="nav-label">Loans</span></NavLink>
+            }
         }
 
-        @if (AuthState.HasPermission("reports.view") || AuthState.HasPermission("users.view") || AuthState.HasPermission("auditlogs.view") || AuthState.HasPermission("settings.view"))
+        @if (AuthState.HasPermission("reports.view") || AuthState.HasPermission("users.view"))
         {
             <div class="nav-group-label">Administration</div>
             @if (AuthState.HasPermission("reports.view"))
@@ -68,14 +72,6 @@
             @if (AuthState.HasPermission("users.view"))
             {
                 <NavLink class="nav-item" href="users" title="Users"><Icon Name="users" CssClass="nav-icon" /><span class="nav-label">Users</span></NavLink>
-            }
-            @if (AuthState.HasPermission("auditlogs.view"))
-            {
-                <NavLink class="nav-item" href="audit-logs" title="Audit Log"><Icon Name="audit" CssClass="nav-icon" /><span class="nav-label">Audit Log</span></NavLink>
-            }
-            @if (AuthState.HasPermission("settings.view"))
-            {
-                <NavLink class="nav-item" href="settings" title="Settings"><Icon Name="settings" CssClass="nav-icon" /><span class="nav-label">Settings</span></NavLink>
             }
         }
     </nav>
@@ -121,6 +117,7 @@
         ["applicants"] = "Applicants",
         ["applications"] = "Applications",
         ["payments"] = "Payments",
+        ["loans"] = "Loans",
         ["reports"] = "Reports",
         ["users"] = "Users",
         ["audit-logs"] = "Audit Log",
@@ -139,7 +136,16 @@
         get
         {
             var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/');
-            return PageTitles.TryGetValue(path, out var title) ? title : "NgoFund";
+            if (PageTitles.TryGetValue(path, out var title))
+            {
+                return title;
+            }
+
+            // Only parameterized route in the app right now (/applicants/{id}/ledger) — a
+            // one-off suffix check rather than a general route-title framework for a single case.
+            return path.StartsWith("applicants/", StringComparison.Ordinal) && path.EndsWith("/ledger", StringComparison.Ordinal)
+                ? "Applicant Ledger"
+                : "NgoFund";
         }
     }
 

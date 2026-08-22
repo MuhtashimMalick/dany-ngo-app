@@ -121,6 +121,20 @@ public class PaymentService(
         var fundCategory = await dbContext.FundCategories.FindAsync([application.FundCategoryId], cancellationToken)
             ?? throw new EntityNotFoundException("FundCategory", application.FundCategoryId);
 
+        // D2/D7#5: a non-Zakat-fund application is a qard al-hasan loan and must have its
+        // installment plan authored (POST api/loans) before any money can be disbursed against
+        // it. Mirrored unconditionally by the fn_enforce_loan_plan_before_disbursement DB trigger.
+        if (!fundCategory.IsZakat)
+        {
+            var hasActiveLoanAgreement = await dbContext.LoanAgreements
+                .AnyAsync(l => l.ApplicationId == application.Id && l.Status == LoanAgreementStatus.Active, cancellationToken);
+
+            if (!hasActiveLoanAgreement)
+            {
+                throw new LoanPlanRequiredException(application.ApplicationNumber);
+            }
+        }
+
         // Row lock on the fund too: two concurrent payments against different applications
         // drawing from the same fund must also be serialized, or both could read the same
         // balance and jointly overdraw it.

@@ -3,6 +3,7 @@
 @inject AuthState AuthState
 @inject ToastService Toast
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <div class="page-header">
     @if (AuthState.HasPermission("applicants.create"))
@@ -83,11 +84,26 @@
                 else if (_pendingPhotoDataUrl is not null)
                 {
                     <img class="webcam-preview" src="@_pendingPhotoDataUrl" alt="Captured photo" />
-                    <button type="button" class="btn btn-secondary btn-sm btn-block" @onclick="() => { _pendingPhotoBytes = null; _pendingPhotoDataUrl = null; }">Retake Photo</button>
+                    <button type="button" class="btn btn-secondary btn-sm btn-block" @onclick="ClearPendingPhoto">Replace Photo</button>
                 }
                 else
                 {
-                    <WebcamCapture OnCaptured="OnPhotoCapturedAsync" />
+                    <div class="photo-source-toggle" role="group" aria-label="Photo source">
+                        <button type="button" class="btn btn-sm @(_photoSource == PhotoSource.Camera ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => _photoSource = PhotoSource.Camera">Use Camera</button>
+                        <button type="button" class="btn btn-sm @(_photoSource == PhotoSource.Upload ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => _photoSource = PhotoSource.Upload">Upload File</button>
+                    </div>
+
+                    @if (_photoSource == PhotoSource.Camera)
+                    {
+                        <WebcamCapture OnCaptured="OnPhotoCapturedAsync" />
+                    }
+                    else
+                    {
+                        <FileDrop OnFileSelected="OnPhotoFileSelectedAsync" Accept=".jpg,.jpeg,.png,.webp"
+                                  MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="JPG, PNG or WEBP up to 10 MB" />
+                    }
                 }
             </div>
 
@@ -102,13 +118,15 @@
                                 <InputText id="fullName" @bind-Value="_form.FullName" />
                             </FormField>
 
+                            <FormField Label="Surname" For="surname">
+                                <InputText id="surname" @bind-Value="_form.Surname" maxlength="100" />
+                            </FormField>
+
                             <FormField Label="Father / Husband Name" For="fatherOrHusbandName">
                                 <InputText id="fatherOrHusbandName" @bind-Value="_form.FatherOrHusbandName" />
                             </FormField>
 
-                            <FormField Label="CNIC" For="cnic" ValidationFor="() => _form.Cnic">
-                                <InputText id="cnic" @bind-Value="_form.Cnic" />
-                            </FormField>
+                            <FormatField Label="CNIC" For="cnic" Format="FieldFormat.Cnic" @bind-Value="_form.Cnic" />
 
                             <FormField Label="Gender" For="gender">
                                 <InputSelect id="gender" @bind-Value="_form.Gender">
@@ -119,16 +137,14 @@
                             </FormField>
 
                             <FormField Label="Membership Number" For="membershipNumber">
-                                <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" />
+                                <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" maxlength="@PakistaniFormats.JamaatMembershipMaxLength" />
                             </FormField>
                         </div>
                     </FormSection>
 
                     <FormSection Title="Contact">
                         <div class="form-grid">
-                            <FormField Label="Phone" For="phone">
-                                <InputText id="phone" @bind-Value="_form.Phone" />
-                            </FormField>
+                            <FormatField Label="Phone" For="phone" Format="FieldFormat.MobilePhone" @bind-Value="_form.Phone" />
 
                             <FormField Label="Email" For="email">
                                 <InputText id="email" @bind-Value="_form.Email" />
@@ -155,6 +171,83 @@
                             </FormField>
                         </div>
                     </FormSection>
+
+                    @if (_editingId is null)
+                    {
+                        <FormSection Title="Identity Documents" Description="Required to register a new applicant — applicants added before this rule are unaffected.">
+                            <div class="doc-slot-row">
+                                <div class="doc-slot-header">
+                                    <span class="doc-slot-label">CNIC (Front)</span>
+                                    <span class="badge badge-required">Required</span>
+                                    @if (_cnicFrontUpload is not null)
+                                    {
+                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
+                                    }
+                                </div>
+                                @if (_cnicFrontUpload is not null)
+                                {
+                                    <div class="file-drop-selected">
+                                        <Icon Name="file" Size="16" />
+                                        <span class="file-drop-selected-name">@_cnicFrontUpload.FileName</span>
+                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <FileDrop OnFileSelected="OnCnicFrontSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
+                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
+                                }
+                            </div>
+
+                            <div class="doc-slot-row">
+                                <div class="doc-slot-header">
+                                    <span class="doc-slot-label">CNIC (Back)</span>
+                                    <span class="badge badge-required">Required</span>
+                                    @if (_cnicBackUpload is not null)
+                                    {
+                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
+                                    }
+                                </div>
+                                @if (_cnicBackUpload is not null)
+                                {
+                                    <div class="file-drop-selected">
+                                        <Icon Name="file" Size="16" />
+                                        <span class="file-drop-selected-name">@_cnicBackUpload.FileName</span>
+                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <FileDrop OnFileSelected="OnCnicBackSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
+                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
+                                }
+                            </div>
+
+                            <div class="doc-slot-row">
+                                <div class="doc-slot-header">
+                                    <span class="doc-slot-label">Jamaat Membership Card</span>
+                                    <span class="badge badge-required">Required</span>
+                                    @if (_membershipCardUpload is not null)
+                                    {
+                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
+                                    }
+                                </div>
+                                @if (_membershipCardUpload is not null)
+                                {
+                                    <div class="file-drop-selected">
+                                        <Icon Name="file" Size="16" />
+                                        <span class="file-drop-selected-name">@_membershipCardUpload.FileName</span>
+                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <FileDrop OnFileSelected="OnMembershipCardSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
+                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
+                                }
+                            </div>
+                        </FormSection>
+                    }
 
                     @if (_editingId is not null)
                     {
@@ -187,7 +280,7 @@
 
 @if (_viewingApplicant is not null)
 {
-    <Modal Title="@_viewingApplicant.FullName" Size="lg" OnClose="() => _viewingApplicant = null">
+    <Modal Title="@_viewingApplicant.FullName" Size="lg" OnClose="CloseDetailModal">
         <ChildContent>
         @if (_detailError is not null)
         {
@@ -222,6 +315,7 @@
                     <DetailItem Label="Membership #" Value="@(_viewingApplicant.MembershipNumber ?? "-")" />
                     <DetailItem Label="CNIC" Value="@_viewingApplicant.Cnic" />
                     <DetailItem Label="Father/Husband" Value="@(_viewingApplicant.FatherOrHusbandName ?? "-")" />
+                    <DetailItem Label="Surname" Value="@(_viewingApplicant.Surname ?? "-")" />
                     <DetailItem Label="Gender" Value="@_viewingApplicant.Gender" />
                     <DetailItem Label="Phone" Value="@(_viewingApplicant.Phone ?? "-")" />
                     <DetailItem Label="Email" Value="@(_viewingApplicant.Email ?? "-")" />
@@ -273,10 +367,22 @@
                 </tbody>
             </table>
         </div>
-        <p class="field-hint">To record a payment or review status/remarks/documents for one of these, find it by application # or CNIC on the Applications page.</p>
+        @if (AuthState.HasPermission("payments.view") && AuthState.HasPermission("loans.view"))
+        {
+            <div class="flex justify-between items-center">
+                <p class="field-hint mb-0">See every payment and loan repayment for this applicant, across all funds.</p>
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="ViewLedger">
+                    <Icon Name="eye" Size="15" />View Fund Ledger
+                </button>
+            </div>
+        }
+        else
+        {
+            <p class="field-hint">To record a payment or review status/remarks/documents for one of these, find it by application # or CNIC on the Applications page.</p>
+        }
         </ChildContent>
         <Footer>
-            <button type="button" class="btn btn-secondary" @onclick="() => _viewingApplicant = null">Close</button>
+            <button type="button" class="btn btn-secondary" @onclick="CloseDetailModal">Close</button>
         </Footer>
     </Modal>
 }
@@ -300,6 +406,17 @@
                ConfirmText="Blacklist" IsDestructive="true" OnConfirmed="BlacklistConfirmedAsync" />
 
 @code {
+    // Deep-link from a document slot that's Applicant-scoped but not yet satisfied (see
+    // DocumentSlotRow's OwnerScope == "Applicant" branch) — staff are sent here with
+    // ?applicantId={id} instead of being offered an upload control on the application, since the
+    // document belongs on the applicant's own record. Mirrors Applications.razor's
+    // ?applicationId deep-link from the Dashboard.
+    [SupplyParameterFromQuery(Name = "applicantId")]
+    [Parameter]
+    public Guid? ApplicantIdQuery { get; set; }
+
+    private Guid? _autoOpenedApplicantId;
+
     private const int PageSize = 25;
     private PagedResult<ApplicantDto>? _page;
     private int _currentPage = 1;
@@ -311,10 +428,26 @@
     private bool _isSaving;
     private string? _formError;
     private Guid? _editingId;
+    private ApplicantDto? _editingApplicant;
     private Guid? _photoDocumentId;
+    private PhotoSource _photoSource = PhotoSource.Camera;
     private byte[]? _pendingPhotoBytes;
     private string? _pendingPhotoDataUrl;
+    private string _pendingPhotoFileName = "photo.jpg";
+    private string _pendingPhotoContentType = "image/jpeg";
     private ApplicantFormModel _form = new();
+
+    // Create-only required-document uploads (Task 4b) — held client-side as raw bytes because the
+    // applicant row (their owner) doesn't exist yet; sent inline on CreateApplicantRequest and
+    // committed in the same DB transaction as the applicant. Not used on edit — see FormSection's
+    // `_editingId is null` guard around the Identity Documents section.
+    private PendingUpload? _cnicFrontUpload;
+    private PendingUpload? _cnicBackUpload;
+    private PendingUpload? _membershipCardUpload;
+
+    private enum PhotoSource { Camera, Upload }
+
+    private record PendingUpload(string FileName, string ContentType, byte[] Bytes);
 
     private bool _confirmOpen;
     private ApplicantDto? _applicantPendingBlacklist;
@@ -349,6 +482,14 @@
         }
     }
 
+    private void ViewLedger()
+    {
+        if (_viewingApplicant is not null)
+        {
+            Navigation.NavigateTo($"/applicants/{_viewingApplicant.Id}/ledger");
+        }
+    }
+
     private async Task OpenDetailModalAsync(ApplicantDto applicant)
     {
         _viewingApplicant = applicant;
@@ -368,6 +509,35 @@
     }
 
     protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ApplicantIdQuery is { } id && id != _autoOpenedApplicantId)
+        {
+            _autoOpenedApplicantId = id;
+            try
+            {
+                var applicant = await ApiClient.GetApplicantAsync(id);
+                await OpenDetailModalAsync(applicant);
+            }
+            catch (ApiException)
+            {
+                // Stale/invalid id in the URL — nothing to open, fall through to the plain list.
+            }
+        }
+    }
+
+    private void CloseDetailModal()
+    {
+        _viewingApplicant = null;
+
+        // Drop the query-string id so navigating away and back doesn't try to re-open a modal
+        // that's already been closed — same convention as Applications.razor's CloseManageModal.
+        if (ApplicantIdQuery is not null)
+        {
+            Navigation.NavigateTo("/applicants", replace: true);
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -396,9 +566,16 @@
     private void OpenCreateModal()
     {
         _editingId = null;
+        _editingApplicant = null;
         _photoDocumentId = null;
+        _photoSource = PhotoSource.Camera;
         _pendingPhotoBytes = null;
         _pendingPhotoDataUrl = null;
+        _pendingPhotoFileName = "photo.jpg";
+        _pendingPhotoContentType = "image/jpeg";
+        _cnicFrontUpload = null;
+        _cnicBackUpload = null;
+        _membershipCardUpload = null;
         _form = new ApplicantFormModel { Gender = "Male" };
         _formError = null;
         _showForm = true;
@@ -407,12 +584,15 @@
     private void OpenEditModal(ApplicantDto applicant)
     {
         _editingId = applicant.Id;
+        _editingApplicant = applicant;
         _photoDocumentId = applicant.PhotoDocumentId;
+        _photoSource = PhotoSource.Camera;
         _pendingPhotoBytes = null;
         _pendingPhotoDataUrl = null;
         _form = new ApplicantFormModel
         {
             FullName = applicant.FullName,
+            Surname = applicant.Surname,
             FatherOrHusbandName = applicant.FatherOrHusbandName,
             Cnic = applicant.Cnic,
             Gender = applicant.Gender,
@@ -437,14 +617,22 @@
         _pendingPhotoDataUrl = null;
     }
 
+    private void ClearPendingPhoto()
+    {
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+    }
+
     private async Task OnPhotoCapturedAsync(byte[] bytes)
     {
         if (_editingId is null)
         {
             // No applicant row exists yet, so there is nothing to attach the document to
-            // (the API requires exactly one owner id). Hold the bytes client-side and upload
-            // once the applicant is actually created in SaveAsync.
+            // (the API requires exactly one owner id). Hold the bytes client-side and send them
+            // inline on CreateApplicantRequest once the applicant is actually created in SaveAsync.
             _pendingPhotoBytes = bytes;
+            _pendingPhotoFileName = "photo.jpg";
+            _pendingPhotoContentType = "image/jpeg";
             _pendingPhotoDataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
             return;
         }
@@ -465,45 +653,161 @@
         }
     }
 
+    // Manual-upload alternative to the webcam (Task 4a) — fills the exact same profile-photo slot
+    // (DocumentType.ApplicantPhoto / PhotoDocumentId) as a webcam capture, not a distinct photo
+    // kind. Content type is carried from the actual file, never hardcoded to image/jpeg, because
+    // the server content-sniffs the bytes and rejects a mismatched label.
+    private async Task OnPhotoFileSelectedAsync(IBrowserFile file)
+    {
+        var bytes = await ReadAllBytesAsync(file);
+
+        if (_editingId is null)
+        {
+            _pendingPhotoBytes = bytes;
+            _pendingPhotoFileName = file.Name;
+            _pendingPhotoContentType = file.ContentType;
+            _pendingPhotoDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+            return;
+        }
+
+        _pendingPhotoBytes = null;
+        _pendingPhotoDataUrl = null;
+
+        try
+        {
+            var document = await ApiClient.UploadDocumentAsync(bytes, file.Name, file.ContentType, "ApplicantPhoto",
+                applicantId: _editingId);
+            _photoDocumentId = document.Id;
+            await ApiClient.SetApplicantPhotoAsync(_editingId.Value, document.Id);
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+    }
+
+    private Task OnCnicFrontSelectedAsync(IBrowserFile file) => ReadPendingUploadAsync(file, u => _cnicFrontUpload = u);
+    private Task OnCnicBackSelectedAsync(IBrowserFile file) => ReadPendingUploadAsync(file, u => _cnicBackUpload = u);
+    private Task OnMembershipCardSelectedAsync(IBrowserFile file) => ReadPendingUploadAsync(file, u => _membershipCardUpload = u);
+
+    private async Task ReadPendingUploadAsync(IBrowserFile file, Action<PendingUpload> assign) =>
+        assign(new PendingUpload(file.Name, file.ContentType, await ReadAllBytesAsync(file)));
+
+    private static async Task<byte[]> ReadAllBytesAsync(IBrowserFile file)
+    {
+        await using var stream = file.OpenReadStream(InlineFileUpload.MaxSizeBytes);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        return memory.ToArray();
+    }
+
+    private static InlineFileUpload? ToInlineUpload(PendingUpload? upload) =>
+        upload is null ? null : new InlineFileUpload(upload.FileName, upload.ContentType, Convert.ToBase64String(upload.Bytes));
+
     private async Task SaveAsync()
     {
-        _isSaving = true;
         _formError = null;
+
+        if (_editingId is null)
+        {
+            // Fast client-side guard ahead of the server's own rejection (400) — named so the
+            // user knows exactly which document to add instead of just seeing a disabled button.
+            var missingDocs = new List<string>();
+            if (_cnicFrontUpload is null)
+            {
+                missingDocs.Add("CNIC (Front)");
+            }
+            if (_cnicBackUpload is null)
+            {
+                missingDocs.Add("CNIC (Back)");
+            }
+            if (_membershipCardUpload is null)
+            {
+                missingDocs.Add("Jamaat Membership Card");
+            }
+            if (missingDocs.Count > 0)
+            {
+                _formError = $"Upload the required document(s) before saving: {string.Join(", ", missingDocs)}.";
+                return;
+            }
+        }
+
+        _isSaving = true;
         try
         {
             if (_editingId is null)
             {
-                var created = await ApiClient.CreateApplicantAsync(new CreateApplicantRequest(
-                    _form.MembershipNumber, _form.FullName, _form.FatherOrHusbandName, _form.Cnic, _form.Gender,
-                    null, null, _form.Phone, null, _form.Email, _form.Address, _form.City, null, null,
-                    _form.Occupation, _form.MonthlyIncome, null, null, null));
+                var photo = _pendingPhotoBytes is not null
+                    ? new InlineFileUpload(_pendingPhotoFileName, _pendingPhotoContentType, Convert.ToBase64String(_pendingPhotoBytes))
+                    : null;
 
-                if (_pendingPhotoBytes is not null)
-                {
-                    // Own try/catch, independent of the applicant-creation error handling below:
-                    // a photo-attach failure here must not roll back or hide the fact that the
-                    // applicant itself was already created successfully.
-                    try
-                    {
-                        var document = await ApiClient.UploadDocumentAsync(_pendingPhotoBytes, "photo.jpg", "image/jpeg", "ApplicantPhoto",
-                            applicantId: created.Id);
-                        await ApiClient.SetApplicantPhotoAsync(created.Id, document.Id);
-                    }
-                    catch (ApiException)
-                    {
-                        Toast.Error("Applicant created, but the photo could not be saved — open Edit to retake.");
-                    }
-                }
+                // The server now takes CNIC/membership-card/photo inline and commits the applicant
+                // plus its documents in one DB transaction — either everything succeeds or nothing
+                // is created, so there is no separate post-create upload step or compensating toast
+                // to run here anymore.
+                var created = await ApiClient.CreateApplicantAsync(new CreateApplicantRequest(
+                    MembershipNumber: _form.MembershipNumber,
+                    FullName: _form.FullName,
+                    FatherOrHusbandName: _form.FatherOrHusbandName,
+                    Cnic: _form.Cnic,
+                    Gender: _form.Gender,
+                    DateOfBirth: null,
+                    MaritalStatus: null,
+                    Phone: _form.Phone,
+                    AlternatePhone: null,
+                    Email: _form.Email,
+                    Address: _form.Address,
+                    City: _form.City,
+                    District: null,
+                    Province: null,
+                    Occupation: _form.Occupation,
+                    MonthlyIncome: _form.MonthlyIncome,
+                    DependentsCount: null,
+                    HouseholdSize: null,
+                    Notes: null,
+                    Surname: _form.Surname,
+                    CnicFront: ToInlineUpload(_cnicFrontUpload),
+                    CnicBack: ToInlineUpload(_cnicBackUpload),
+                    MembershipCard: ToInlineUpload(_membershipCardUpload),
+                    Photo: photo));
 
                 Toast.Success($"Applicant created · {created.FullName}");
             }
             else
             {
+                // Overlay only the fields this form exposes onto the full DTO already in hand —
+                // every other field round-trips unchanged instead of being wiped to null (this
+                // form doesn't surface DateOfBirth/MaritalStatus/AlternatePhone/District/Province/
+                // DependentsCount/HouseholdSize/Notes/GrandfatherName/AncestralVillage/
+                // FatherMembershipNumber/WhatsappNumber at all).
+                var existing = _editingApplicant!;
                 await ApiClient.UpdateApplicantAsync(_editingId.Value, new UpdateApplicantRequest(
-                    _form.MembershipNumber, _form.FullName, _form.FatherOrHusbandName, _form.Cnic, _form.Gender,
-                    null, null, _form.Phone, null, _form.Email, _form.Address, _form.City, null, null,
-                    _form.Occupation, _form.MonthlyIncome, null, null,
-                    _form.IsBlacklisted, _form.BlacklistReason, null));
+                    MembershipNumber: _form.MembershipNumber,
+                    FullName: _form.FullName,
+                    FatherOrHusbandName: _form.FatherOrHusbandName,
+                    Cnic: _form.Cnic,
+                    Gender: _form.Gender,
+                    DateOfBirth: existing.DateOfBirth,
+                    MaritalStatus: existing.MaritalStatus,
+                    Phone: _form.Phone,
+                    AlternatePhone: existing.AlternatePhone,
+                    Email: _form.Email,
+                    Address: _form.Address,
+                    City: _form.City,
+                    District: existing.District,
+                    Province: existing.Province,
+                    Occupation: _form.Occupation,
+                    MonthlyIncome: _form.MonthlyIncome,
+                    DependentsCount: existing.DependentsCount,
+                    HouseholdSize: existing.HouseholdSize,
+                    IsBlacklisted: _form.IsBlacklisted,
+                    BlacklistReason: _form.BlacklistReason,
+                    Notes: existing.Notes,
+                    GrandfatherName: existing.GrandfatherName,
+                    Surname: _form.Surname,
+                    AncestralVillage: existing.AncestralVillage,
+                    FatherMembershipNumber: existing.FatherMembershipNumber,
+                    WhatsappNumber: existing.WhatsappNumber));
                 Toast.Success($"Applicant updated · {_form.FullName}");
             }
 
@@ -536,16 +840,32 @@
         try
         {
             await ApiClient.UpdateApplicantAsync(_applicantPendingBlacklist.Id, new UpdateApplicantRequest(
-                _applicantPendingBlacklist.MembershipNumber, _applicantPendingBlacklist.FullName,
-                _applicantPendingBlacklist.FatherOrHusbandName, _applicantPendingBlacklist.Cnic,
-                _applicantPendingBlacklist.Gender, _applicantPendingBlacklist.DateOfBirth,
-                _applicantPendingBlacklist.MaritalStatus, _applicantPendingBlacklist.Phone,
-                _applicantPendingBlacklist.AlternatePhone, _applicantPendingBlacklist.Email,
-                _applicantPendingBlacklist.Address, _applicantPendingBlacklist.City,
-                _applicantPendingBlacklist.District, _applicantPendingBlacklist.Province,
-                _applicantPendingBlacklist.Occupation, _applicantPendingBlacklist.MonthlyIncome,
-                _applicantPendingBlacklist.DependentsCount, _applicantPendingBlacklist.HouseholdSize,
-                true, "Blacklisted by admin", _applicantPendingBlacklist.Notes));
+                MembershipNumber: _applicantPendingBlacklist.MembershipNumber,
+                FullName: _applicantPendingBlacklist.FullName,
+                FatherOrHusbandName: _applicantPendingBlacklist.FatherOrHusbandName,
+                Cnic: _applicantPendingBlacklist.Cnic,
+                Gender: _applicantPendingBlacklist.Gender,
+                DateOfBirth: _applicantPendingBlacklist.DateOfBirth,
+                MaritalStatus: _applicantPendingBlacklist.MaritalStatus,
+                Phone: _applicantPendingBlacklist.Phone,
+                AlternatePhone: _applicantPendingBlacklist.AlternatePhone,
+                Email: _applicantPendingBlacklist.Email,
+                Address: _applicantPendingBlacklist.Address,
+                City: _applicantPendingBlacklist.City,
+                District: _applicantPendingBlacklist.District,
+                Province: _applicantPendingBlacklist.Province,
+                Occupation: _applicantPendingBlacklist.Occupation,
+                MonthlyIncome: _applicantPendingBlacklist.MonthlyIncome,
+                DependentsCount: _applicantPendingBlacklist.DependentsCount,
+                HouseholdSize: _applicantPendingBlacklist.HouseholdSize,
+                IsBlacklisted: true,
+                BlacklistReason: "Blacklisted by admin",
+                Notes: _applicantPendingBlacklist.Notes,
+                GrandfatherName: _applicantPendingBlacklist.GrandfatherName,
+                Surname: _applicantPendingBlacklist.Surname,
+                AncestralVillage: _applicantPendingBlacklist.AncestralVillage,
+                FatherMembershipNumber: _applicantPendingBlacklist.FatherMembershipNumber,
+                WhatsappNumber: _applicantPendingBlacklist.WhatsappNumber));
             Toast.Success($"Applicant blacklisted · {_applicantPendingBlacklist.FullName}");
             await LoadPageAsync(_currentPage);
         }
@@ -558,6 +878,7 @@
     private class ApplicantFormModel
     {
         [Required] public string FullName { get; set; } = "";
+        public string? Surname { get; set; }
         public string? FatherOrHusbandName { get; set; }
         [Required] public string Cnic { get; set; } = "";
         public string Gender { get; set; } = "Male";

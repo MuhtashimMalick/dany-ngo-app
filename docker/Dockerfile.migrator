@@ -18,6 +18,10 @@ COPY src/NgoFund.Migrator src/NgoFund.Migrator
 
 RUN dotnet publish src/NgoFund.Migrator/NgoFund.Migrator.csproj -c Release -o /app/publish --no-restore
 
+# Runtime stage. Needs the ASP.NET Core shared framework (not just the base .NET runtime)
+# because NgoFund.Infrastructure carries a FrameworkReference to it — ASP.NET Core Identity's
+# full IdentityBuilder surface (AddDefaultTokenProviders, etc.) lives there, not in a NuGet
+# package, and Migrator uses UserManager to seed the Super Admin user.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 

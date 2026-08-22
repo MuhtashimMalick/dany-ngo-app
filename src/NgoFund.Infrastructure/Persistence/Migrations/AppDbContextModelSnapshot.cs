@@ -260,6 +260,26 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsEditable = true,
                             Key = "FiscalYearStartMonth",
                             Value = "7"
+                        },
+                        new
+                        {
+                            Id = new Guid("1c6e48d5-cb0a-be34-7fb3-bbe50e3c40e9"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DataType = "number",
+                            Description = "Default number of installments suggested when authoring a new loan agreement.",
+                            IsEditable = true,
+                            Key = "loan.default_installment_count",
+                            Value = "10"
+                        },
+                        new
+                        {
+                            Id = new Guid("c62e575b-2d59-b2e2-da9a-37992c96df9e"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DataType = "number",
+                            Description = "Upper bound on the installment count a loan agreement may be created with.",
+                            IsEditable = true,
+                            Key = "loan.max_installment_count",
+                            Value = "60"
                         });
                 });
 
@@ -275,9 +295,14 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("address");
 
                     b.Property<string>("AlternatePhone")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
                         .HasColumnName("alternate_phone");
+
+                    b.Property<string>("AncestralVillage")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("ancestral_village");
 
                     b.Property<string>("BlacklistReason")
                         .HasMaxLength(500)
@@ -291,8 +316,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Cnic")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
                         .HasColumnName("cnic");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -329,6 +354,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("email");
 
+                    b.Property<string>("FatherMembershipNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("father_membership_number");
+
                     b.Property<string>("FatherOrHusbandName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -345,6 +375,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasColumnName("gender");
+
+                    b.Property<string>("GrandfatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("grandfather_name");
 
                     b.Property<int?>("HouseholdSize")
                         .HasColumnType("integer")
@@ -364,8 +399,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("marital_status");
 
                     b.Property<string>("MembershipNumber")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
                         .HasColumnName("membership_number");
 
                     b.Property<decimal?>("MonthlyIncome")
@@ -382,8 +417,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("occupation");
 
                     b.Property<string>("Phone")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
                         .HasColumnName("phone");
 
                     b.Property<Guid?>("PhotoDocumentId")
@@ -395,6 +430,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("province");
 
+                    b.Property<string>("Surname")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("surname");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -402,6 +442,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
+
+                    b.Property<string>("WhatsappNumber")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("whatsapp_number");
 
                     b.HasKey("Id")
                         .HasName("pk_applicants");
@@ -485,6 +530,19 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
+                    b.Property<int>("RequiresGuarantors")
+                        .HasColumnType("integer")
+                        .HasColumnName("requires_guarantors");
+
+                    b.Property<string>("TermsText")
+                        .HasColumnType("text")
+                        .HasColumnName("terms_text");
+
+                    b.Property<string>("TermsVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("terms_version");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -512,7 +570,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = true,
-                            Name = "Shaadi Fund Request"
+                            Name = "Shaadi Fund Request",
+                            RequiresGuarantors = 0,
+                            TermsText = "اہم ہدایات\n\n1. درخواست کے ساتھ جماعت کے ممبر شپ کارڈ کی فوٹو کاپی اور اصل شادی کارڈ منسلک کرنا ضروری ہے۔\nA photocopy of the Jamaat membership card and the original marriage card must be attached with the application.\n\n2. درخواست فارم صرف متعلقہ دولہا/دلہن کے نام سے وصول کیا جائے گا۔\nThe application form will only be accepted in the name of the concerned bride/groom.\n\n3. کمیٹی کو کسی بھی درخواست کی تفصیلی انکوائری کا حق حاصل ہے۔\nThe committee reserves the right to conduct a detailed inquiry into any application.\n\n4. فارم کے تمام اندراجات پُر کرنا ضروری ہے، نامکمل فارم مسترد کر دیا جائے گا۔\nAll entries in the form must be completed; an incomplete form will be rejected.\n\n5. غلط معلومات فراہم کرنے کی صورت میں فارم مسترد کر دیا جائے گا۔\nThe form will be rejected if incorrect information is provided.\n\n6. دلہن کے شناختی کارڈ یا فارم \"ب\" کی کاپی لازمی طور پر منسلک کریں، ورنہ فارم مسترد کر دیا جائے گا۔\nA copy of the bride's CNIC or Form-B must be attached, otherwise the form will be rejected.\n\n7. درخواست فارم شادی سے کم از کم ایک ماہ قبل جمع کروانا لازمی ہے، جس کے ساتھ اصل شادی کارڈ، شناختی کارڈ (دولہا/دلہن) کی کاپی، اور جماعت کی ممبر شپ کی کاپی منسلک کریں۔\nThe application must be submitted at least one month before the wedding, together with the original marriage card, a copy of CNIC (groom/bride), and a copy of the Jamaat membership card.",
+                            TermsVersion = "1.0"
                         },
                         new
                         {
@@ -523,7 +584,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = true,
-                            Name = "Health Fund Request"
+                            Name = "Health Fund Request",
+                            RequiresGuarantors = 0
                         },
                         new
                         {
@@ -534,7 +596,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = true,
-                            Name = "Education Support"
+                            Name = "Education Support",
+                            RequiresGuarantors = 0
                         },
                         new
                         {
@@ -545,7 +608,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = true,
-                            Name = "House Rent/Help"
+                            Name = "House Rent/Help",
+                            RequiresGuarantors = 0,
+                            TermsText = "مکان مدد کے قوانین و ضوابط\n\n1. مکان مدد کی درخواست کی ادائیگی زکوٰۃ فنڈ سے کی جائے گی۔\nPayment for housing assistance will be made from the Zakat Fund.\n\n2. درخواست گزار کا جماعت کا فعال ممبر ہونا ضروری ہے۔\nThe applicant must be an active Jamaat member.\n\n3. درخواست کے ساتھ قومی شناختی کارڈ اور جماعت کے ممبر شپ کارڈ کی کاپیاں منسلک کرنا لازمی ہے۔\nCopies of CNIC and Jamaat membership card must be attached with the application.\n\n4. عورت اپنے شوہر کی موجودگی میں اپنے شوہر کے نام سے درخواست جمع کروانے کی پابند ہو گی۔\nA woman must submit the application in her husband's name and in his presence.\n\n5. درخواست کے ساتھ گزشتہ تین ماہ کے بلوں (بجلی، گیس، فون، پانی) اور کرایہ کی رسیدوں کی فوٹو کاپیاں منسلک کرنا لازمی ہے۔\nPhotocopies of the last three months' utility bills (electricity, gas, phone, water) and rent receipts must be attached.\n\n6. مکان مدد کمیٹی جب بھی درخواست گزار کو بلائے، اسے حاضر ہو کر تمام تفصیلات سے آگاہ کرنا ہو گا؛ ضرورت پڑنے پر موجودہ رہائش کا معائنہ اور جانچ پڑتال کروانے کا بھی پابند ہو گا۔\nWhenever called by the Housing Assistance Committee, the applicant must appear and provide full details, and must allow inspection of the current residence if required.\n\n7. مکان کا کرایہ، بجلی، گیس، پانی، ٹیکس اور دیگر اخراجات وقت پر ادا کرنے کا پابند ہو گا۔\nThe applicant must pay house rent, electricity, gas, water, tax and other expenses on time.\n\n8. درخواست منظور یا مسترد کرنے کا مکمل اختیار مجلسِ عامہ کے پاس ہے، درخواست گزار کسی قسم کی مداخلت نہیں کرے گا۔\nFull authority to approve or reject the application rests with the General Council; the applicant will not interfere in any way.\n\n9. نامکمل یا غلط بیانی کی صورت میں درخواست فارم مسترد ہو جائے گا۔\nAn incomplete application or false statement will result in rejection of the form.",
+                            TermsVersion = "1.0"
                         },
                         new
                         {
@@ -556,7 +622,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = true,
-                            Name = "Emergency Support"
+                            Name = "Emergency Support",
+                            RequiresGuarantors = 0
                         },
                         new
                         {
@@ -567,7 +634,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = false,
-                            Name = "Rozgar/Business Help"
+                            Name = "Rozgar/Business Help",
+                            RequiresGuarantors = 2,
+                            TermsText = "شرائط و ضوابط\n\n1. آپ اپنے کاروبار کی تفصیل بتا کر ٹرسٹ سے قابلِ واپسی قرض لے سکتے ہیں۔ درخواست صحیح اور مکمل بھر کر ضروری دستاویزات کے ساتھ جمع کروائیں؛ نامکمل درخواست منظور نہیں کی جائے گی۔\nYou may apply for a repayable loan from the Trust by describing your business. The application must be complete and accurate, with required documents attached; incomplete applications will not be approved.\n\n2. قرض کی وصولی کی تاریخ سے ماہوار اقساط پیشگی چیک کے ذریعے وصول کی جائیں گی، اس لیے درخواست گزار کا بینک اکاؤنٹ ہونا لازمی ہے۔\nMonthly installments will be collected via post-dated cheque from the date of loan disbursement, so the applicant must have a bank account.\n\n3. درخواست گزار ہر تین ماہ بعد اپنے کاروبار کی تفصیلی رپورٹ خود کمیٹی کے روبرو پیش کرے گا۔\nThe applicant must present a detailed report of their business in person before the committee every three months.\n\n4. کاروبار کی ناکامی یا دھوکہ دہی کی صورت میں کمیٹی باقی رقم یکمشت وصول کرنے کا فیصلہ کر سکتی ہے۔\nIn case of business failure or fraud, the committee may decide to recover the remaining amount in a lump sum.\n\n5. اگر درخواست گزار نے بینک یا کسی اور ادارے سے قرض لیا ہے تو اس کی تفصیل درخواست میں درج کرنا لازمی ہے۔\nIf the applicant has an existing loan from a bank or any other institution, its details must be disclosed in the application.\n\n6. درخواست ایک مرتبہ مسترد ہونے کی صورت میں چھ ماہ تک دوبارہ جمع نہیں کروائی جا سکے گی۔\nA rejected application cannot be resubmitted for six months.\n\n7. دونوں ضامن افراد کا اے-زی ڈینی ویلفیئر ٹرسٹ کا ممبر اور کاروباری شخصیت ہونا لازمی ہے۔ درخواست گزار کسی وجہ سے ادائیگی میں ناکام ہو تو دونوں ضامن باقی رقم روزگار اسکیم کمیٹی کو واپس ادا کریں گے۔\nBoth guarantors must be A.Z Dany Welfare Trust members and business persons. If the applicant defaults for any reason, both guarantors will repay the remaining amount to the Rozgar Scheme Committee.\n\n8. تمام عہدے داران، مبلغ، ورکنگ کمیٹی اور نامزد اراکین درخواست فارم پر ضامن نہیں بن سکتے۔\nAll office bearers, missionaries, working committee members, and nominated members cannot act as guarantors.\n\n9. روزگار اسکیم کمیٹی کو یہ اختیار حاصل ہے کہ وہ کوئی وجہ بتائے بغیر کسی بھی درخواست کو منظور یا مسترد کر دے؛ اس کا فیصلہ حتمی اور آخری ہو گا۔\nThe Rozgar Scheme Committee has the authority to approve or reject any application without stating a reason; its decision is final.",
+                            TermsVersion = "1.0"
                         },
                         new
                         {
@@ -578,7 +648,131 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             IsDeleted = false,
                             IsZakatEligible = false,
-                            Name = "Other"
+                            Name = "Other",
+                            RequiresGuarantors = 0
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.ApplicationGuarantor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("BusinessAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("business_address");
+
+                    b.Property<string>("BusinessNature")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("business_nature");
+
+                    b.Property<string>("Cnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("cnic");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeclarationAcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("declaration_accepted_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("FatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("father_name");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("GrandfatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("grandfather_name");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("MembershipNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("membership_number");
+
+                    b.Property<string>("PhoneHome")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("phone_home");
+
+                    b.Property<string>("PhoneMobile")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("phone_mobile");
+
+                    b.Property<string>("PhoneOffice")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("phone_office");
+
+                    b.Property<string>("ResidentialAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("residential_address");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence_no");
+
+                    b.Property<string>("Surname")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("surname");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_application_guarantors");
+
+                    b.HasIndex("Cnic")
+                        .HasDatabaseName("ix_application_guarantors_cnic");
+
+                    b.HasIndex("ApplicationId", "SequenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_application_guarantors_application_id_sequence_no")
+                        .HasFilter("is_deleted = false");
+
+                    b.ToTable("application_guarantors", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_application_guarantors_sequence_positive", "sequence_no > 0");
                         });
                 });
 
@@ -747,6 +941,97 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.BusinessLoanApplicationDetails", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("BusinessPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("business_phone");
+
+                    b.Property<decimal?>("CapitalAlreadyAvailable")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("capital_already_available");
+
+                    b.Property<decimal?>("CapitalRequired")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("capital_required");
+
+                    b.Property<string>("Education")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("education");
+
+                    b.Property<string>("EmergencyContactCnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("emergency_contact_cnic");
+
+                    b.Property<string>("EmergencyContactName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("emergency_contact_name");
+
+                    b.Property<string>("EmergencyContactPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("emergency_contact_phone");
+
+                    b.Property<string>("Experience")
+                        .HasColumnType("text")
+                        .HasColumnName("experience");
+
+                    b.Property<bool>("HasPriorBusinessExperience")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_prior_business_experience");
+
+                    b.Property<string>("OtherIncomeSources")
+                        .HasColumnType("text")
+                        .HasColumnName("other_income_sources");
+
+                    b.Property<string>("PaperFormNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("paper_form_number");
+
+                    b.Property<string>("PriorBusinessDetails")
+                        .HasColumnType("text")
+                        .HasColumnName("prior_business_details");
+
+                    b.Property<string>("ProposedBusinessDescription")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("proposed_business_description");
+
+                    b.Property<string>("ProposedBusinessLocation")
+                        .HasColumnType("text")
+                        .HasColumnName("proposed_business_location");
+
+                    b.Property<string>("Skill")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("skill");
+
+                    b.Property<decimal?>("TotalMonthlyExpenses")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_monthly_expenses");
+
+                    b.HasKey("ApplicationId")
+                        .HasName("pk_business_loan_application_details");
+
+                    b.ToTable("business_loan_application_details", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_business_loan_details_capital_available_nonneg", "capital_already_available >= 0");
+
+                            t.HasCheckConstraint("ck_business_loan_details_capital_required_nonneg", "capital_required >= 0");
+
+                            t.HasCheckConstraint("ck_business_loan_details_expenses_nonneg", "total_monthly_expenses >= 0");
+                        });
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -757,6 +1042,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ApplicantId")
                         .HasColumnType("uuid")
                         .HasColumnName("applicant_id");
+
+                    b.Property<Guid?>("ApplicationGuarantorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_guarantor_id");
 
                     b.Property<Guid?>("ApplicationId")
                         .HasColumnType("uuid")
@@ -811,6 +1100,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("size_bytes");
 
+                    b.Property<string>("SlotKey")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("slot_key");
+
                     b.Property<string>("StorageKey")
                         .IsRequired()
                         .HasMaxLength(260)
@@ -831,9 +1125,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.HasIndex("ApplicantId")
                         .HasDatabaseName("ix_documents_applicant_id");
 
-                    b.HasIndex("ApplicationId")
-                        .HasDatabaseName("ix_documents_application_id");
-
                     b.HasIndex("DonationId")
                         .HasDatabaseName("ix_documents_donation_id");
 
@@ -844,9 +1135,15 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_documents_storage_key");
 
+                    b.HasIndex("ApplicationGuarantorId", "SlotKey")
+                        .HasDatabaseName("ix_documents_application_guarantor_id_slot_key");
+
+                    b.HasIndex("ApplicationId", "SlotKey")
+                        .HasDatabaseName("ix_documents_application_id_slot_key");
+
                     b.ToTable("documents", null, t =>
                         {
-                            t.HasCheckConstraint("ck_documents_exactly_one_owner", "num_nonnulls(applicant_id, application_id, donation_id, payment_id) = 1");
+                            t.HasCheckConstraint("ck_documents_exactly_one_owner", "num_nonnulls(applicant_id, application_id, donation_id, payment_id, application_guarantor_id) = 1");
                         });
                 });
 
@@ -973,8 +1270,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("address");
 
                     b.Property<string>("AlternatePhone")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
                         .HasColumnName("alternate_phone");
 
                     b.Property<string>("City")
@@ -983,8 +1280,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("city");
 
                     b.Property<string>("Cnic")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
                         .HasColumnName("cnic");
 
                     b.Property<string>("Country")
@@ -1044,8 +1341,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("is_deleted");
 
                     b.Property<string>("MembershipNumber")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
                         .HasColumnName("membership_number");
 
                     b.Property<string>("Notes")
@@ -1058,8 +1355,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("ntn");
 
                     b.Property<string>("Phone")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
                         .HasColumnName("phone");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
@@ -1142,9 +1439,51 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
+                    b.Property<DateTimeOffset?>("DeclarationAcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("declaration_accepted_at");
+
+                    b.Property<string>("DeclaredBusinessAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("declared_business_address");
+
+                    b.Property<int?>("DeclaredEarningMembers")
+                        .HasColumnType("integer")
+                        .HasColumnName("declared_earning_members");
+
+                    b.Property<string>("DeclaredHouseStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("declared_house_status");
+
+                    b.Property<int?>("DeclaredHouseholdSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("declared_household_size");
+
+                    b.Property<decimal?>("DeclaredMonthlyIncome")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("declared_monthly_income");
+
+                    b.Property<string>("DeclaredResidentialAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("declared_residential_address");
+
+                    b.Property<string>("ExternalFormReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("external_form_reference");
+
                     b.Property<Guid>("FundCategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("fund_category_id");
+
+                    b.Property<string>("IntakeChannel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("InApp")
+                        .HasColumnName("intake_channel");
 
                     b.Property<string>("Priority")
                         .IsRequired()
@@ -1180,6 +1519,19 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<DateTimeOffset?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("terms_accepted_at");
+
+                    b.Property<string>("TermsVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("terms_version");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1203,6 +1555,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.HasIndex("ApplicationNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_applications_application_number");
+
+                    b.HasIndex("ExternalFormReference")
+                        .IsUnique()
+                        .HasDatabaseName("ix_applications_external_form_reference")
+                        .HasFilter("external_form_reference IS NOT NULL");
 
                     b.HasIndex("FundCategoryId")
                         .HasDatabaseName("ix_applications_fund_category_id");
@@ -1357,8 +1714,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ReferenceType")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
                         .HasColumnName("reference_type");
 
                     b.Property<DateOnly>("TransactionDate")
@@ -1381,6 +1738,448 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.ToTable("fund_transactions", null, t =>
                         {
                             t.HasCheckConstraint("ck_fund_transactions_amount_positive", "amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.HousingApplicationDetails", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<decimal?>("AdvancePaid")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("advance_paid");
+
+                    b.Property<int?>("ApplicantAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("applicant_age");
+
+                    b.Property<decimal?>("CurrentHouseValue")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("current_house_value");
+
+                    b.Property<decimal?>("MonthlyRent")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("monthly_rent");
+
+                    b.Property<string>("PreviousAssistanceDetails")
+                        .HasColumnType("text")
+                        .HasColumnName("previous_assistance_details");
+
+                    b.Property<string>("PreviousResidentialAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("previous_residential_address");
+
+                    b.Property<bool>("ReceivedAssistanceBefore")
+                        .HasColumnType("boolean")
+                        .HasColumnName("received_assistance_before");
+
+                    b.Property<bool>("ReceivesEducationAssistance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("receives_education_assistance");
+
+                    b.Property<bool>("ReceivesMarriageAssistance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("receives_marriage_assistance");
+
+                    b.Property<bool>("ReceivesMedicalAssistance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("receives_medical_assistance");
+
+                    b.Property<bool>("ReceivesWidowAssistance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("receives_widow_assistance");
+
+                    b.Property<int?>("YearsAtCurrentAddress")
+                        .HasColumnType("integer")
+                        .HasColumnName("years_at_current_address");
+
+                    b.HasKey("ApplicationId")
+                        .HasName("pk_housing_application_details");
+
+                    b.ToTable("housing_application_details", (string)null);
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanAgreement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancelled_by");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FirstDueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("first_due_date");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("frequency");
+
+                    b.Property<Guid>("FundCategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fund_category_id");
+
+                    b.Property<int>("InstallmentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("installment_count");
+
+                    b.Property<string>("LoanNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("loan_number");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<decimal>("PrincipalAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("principal_amount");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<DateTimeOffset?>("WrittenOffAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("written_off_at");
+
+                    b.Property<Guid?>("WrittenOffBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("written_off_by");
+
+                    b.Property<string>("WrittenOffReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("written_off_reason");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loan_agreements");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_loan_agreements_application_id")
+                        .HasFilter("status = 'Active'");
+
+                    b.HasIndex("FundCategoryId")
+                        .HasDatabaseName("ix_loan_agreements_fund_category_id");
+
+                    b.HasIndex("LoanNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_loan_agreements_loan_number");
+
+                    b.ToTable("loan_agreements", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_loan_agreements_principal_positive", "principal_amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanInstallment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("AmountDue")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount_due");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<Guid>("LoanAgreementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loan_agreement_id");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence_no");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loan_installments");
+
+                    b.HasIndex("LoanAgreementId", "SequenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_loan_installments_loan_agreement_id_sequence_no");
+
+                    b.ToTable("loan_installments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_loan_installments_amount_positive", "amount_due > 0");
+
+                            t.HasCheckConstraint("ck_loan_installments_sequence_positive", "sequence_no > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanRepayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("InstrumentNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("instrument_number");
+
+                    b.Property<Guid>("LoanAgreementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loan_agreement_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<string>("ReceivedFromCnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("received_from_cnic");
+
+                    b.Property<string>("ReceivedFromName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("received_from_name");
+
+                    b.Property<DateOnly>("RepaymentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("repayment_date");
+
+                    b.Property<string>("RepaymentNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("repayment_number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("void_reason");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("voided_at");
+
+                    b.Property<Guid?>("VoidedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("voided_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_loan_repayments");
+
+                    b.HasIndex("LoanAgreementId")
+                        .HasDatabaseName("ix_loan_repayments_loan_agreement_id");
+
+                    b.HasIndex("RepaymentNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_loan_repayments_repayment_number");
+
+                    b.ToTable("loan_repayments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_loan_repayments_amount_positive", "amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.MarriageApplicationDetails", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("BrideCnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("bride_cnic");
+
+                    b.Property<string>("BrideFamilyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bride_family_name");
+
+                    b.Property<string>("BrideFatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bride_father_name");
+
+                    b.Property<string>("BrideJamaat")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("bride_jamaat");
+
+                    b.Property<string>("BrideMaritalStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("bride_marital_status");
+
+                    b.Property<string>("BrideName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bride_name");
+
+                    b.Property<string>("BridePreviousHusbandName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bride_previous_husband_name");
+
+                    b.Property<string>("BridePriorTrustAssistance")
+                        .HasColumnType("text")
+                        .HasColumnName("bride_prior_trust_assistance");
+
+                    b.Property<string>("GroomAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("groom_address");
+
+                    b.Property<string>("GroomBusinessAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("groom_business_address");
+
+                    b.Property<string>("GroomFatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("groom_father_name");
+
+                    b.Property<string>("GroomGrandfatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("groom_grandfather_name");
+
+                    b.Property<string>("GroomJamaat")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("groom_jamaat");
+
+                    b.Property<string>("GroomMaritalStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("groom_marital_status");
+
+                    b.Property<string>("GroomMobile")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("groom_mobile");
+
+                    b.Property<string>("GroomName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("groom_name");
+
+                    b.Property<string>("GroomPreviousWifeName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("groom_previous_wife_name");
+
+                    b.Property<string>("GuardianRelationshipToBride")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("guardian_relationship_to_bride");
+
+                    b.Property<DateOnly?>("NikahDate")
+                        .HasColumnType("date")
+                        .HasColumnName("nikah_date");
+
+                    b.Property<DateOnly?>("RukhsatiDate")
+                        .HasColumnType("date")
+                        .HasColumnName("rukhsati_date");
+
+                    b.HasKey("ApplicationId")
+                        .HasName("pk_marriage_application_details");
+
+                    b.HasIndex("BrideCnic")
+                        .HasDatabaseName("ix_marriage_application_details_bride_cnic");
+
+                    b.ToTable("marriage_application_details", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_marriage_application_details_rukhsati_after_nikah", "rukhsati_date IS NULL OR nikah_date IS NULL OR rukhsati_date >= nikah_date");
                         });
                 });
 
@@ -1479,8 +2278,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("instrument_number");
 
                     b.Property<string>("PaidToCnic")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
                         .HasColumnName("paid_to_cnic");
 
                     b.Property<string>("PaidToName")
@@ -1873,6 +2672,46 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayName = "Delete Documents",
                             Module = "documents"
+                        },
+                        new
+                        {
+                            Id = new Guid("eb6df8d0-5450-9416-53f6-c4a3cab94aca"),
+                            Code = "loans.view",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "View Loans",
+                            Module = "loans"
+                        },
+                        new
+                        {
+                            Id = new Guid("9340c2a7-afa8-82f9-4690-2c708d41d32f"),
+                            Code = "loans.manage",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Create/Cancel Loan Agreements",
+                            Module = "loans"
+                        },
+                        new
+                        {
+                            Id = new Guid("a40bf9c9-b39a-f7db-ef12-066357e36c2f"),
+                            Code = "loans.repay",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Record Loan Repayments",
+                            Module = "loans"
+                        },
+                        new
+                        {
+                            Id = new Guid("ba427a6d-d489-d784-f380-a865bcf112fa"),
+                            Code = "loans.void",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Void Loan Repayments",
+                            Module = "loans"
+                        },
+                        new
+                        {
+                            Id = new Guid("548b3971-b4da-0e85-b75f-307e14ffc716"),
+                            Code = "loans.writeoff",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Write Off Loans",
+                            Module = "loans"
                         },
                         new
                         {
@@ -2364,6 +3203,31 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         new
                         {
                             RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("eb6df8d0-5450-9416-53f6-c4a3cab94aca")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("9340c2a7-afa8-82f9-4690-2c708d41d32f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("a40bf9c9-b39a-f7db-ef12-066357e36c2f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("ba427a6d-d489-d784-f380-a865bcf112fa")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("548b3971-b4da-0e85-b75f-307e14ffc716")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
                             PermissionId = new Guid("3161fb95-a303-92be-7aa7-4926eb2b4e76")
                         },
                         new
@@ -2554,6 +3418,31 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         new
                         {
                             RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
+                            PermissionId = new Guid("eb6df8d0-5450-9416-53f6-c4a3cab94aca")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
+                            PermissionId = new Guid("9340c2a7-afa8-82f9-4690-2c708d41d32f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
+                            PermissionId = new Guid("a40bf9c9-b39a-f7db-ef12-066357e36c2f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
+                            PermissionId = new Guid("ba427a6d-d489-d784-f380-a865bcf112fa")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
+                            PermissionId = new Guid("548b3971-b4da-0e85-b75f-307e14ffc716")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("6ca87666-f14f-8970-12e3-d3193bcb01ad"),
                             PermissionId = new Guid("3161fb95-a303-92be-7aa7-4926eb2b4e76")
                         },
                         new
@@ -2678,6 +3567,26 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            RoleId = new Guid("1bcca810-9298-8bb5-862d-b870025e4704"),
+                            PermissionId = new Guid("eb6df8d0-5450-9416-53f6-c4a3cab94aca")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("1bcca810-9298-8bb5-862d-b870025e4704"),
+                            PermissionId = new Guid("9340c2a7-afa8-82f9-4690-2c708d41d32f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("1bcca810-9298-8bb5-862d-b870025e4704"),
+                            PermissionId = new Guid("a40bf9c9-b39a-f7db-ef12-066357e36c2f")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("1bcca810-9298-8bb5-862d-b870025e4704"),
+                            PermissionId = new Guid("ba427a6d-d489-d784-f380-a865bcf112fa")
+                        },
+                        new
+                        {
                             RoleId = new Guid("b12a0841-4618-39f2-05e1-65b6ef22171c"),
                             PermissionId = new Guid("f996e26f-42a0-01a7-3c83-646e953d9042")
                         },
@@ -2784,6 +3693,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         new
                         {
                             RoleId = new Guid("2385a4ab-ec7f-1fae-56c8-bfe26ec375f4"),
+                            PermissionId = new Guid("eb6df8d0-5450-9416-53f6-c4a3cab94aca")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("2385a4ab-ec7f-1fae-56c8-bfe26ec375f4"),
                             PermissionId = new Guid("3161fb95-a303-92be-7aa7-4926eb2b4e76")
                         },
                         new
@@ -2871,6 +3785,18 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Navigation("PhotoDocument");
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.ApplicationGuarantor", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithMany("Guarantors")
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_application_guarantors_applications_application_id");
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.ApplicationRemark", b =>
                 {
                     b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
@@ -2895,6 +3821,18 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Navigation("Application");
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.BusinessLoanApplicationDetails", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithOne("BusinessLoanDetails")
+                        .HasForeignKey("NgoFund.Domain.Entities.BusinessLoanApplicationDetails", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_business_loan_application_details_applications_application_");
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.Document", b =>
                 {
                     b.HasOne("NgoFund.Domain.Entities.Applicant", "Applicant")
@@ -2902,6 +3840,12 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ApplicantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_documents_applicants_applicant_id");
+
+                    b.HasOne("NgoFund.Domain.Entities.ApplicationGuarantor", "ApplicationGuarantor")
+                        .WithMany()
+                        .HasForeignKey("ApplicationGuarantorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_documents_application_guarantors_application_guarantor_id");
 
                     b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
                         .WithMany()
@@ -2924,6 +3868,8 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Navigation("Applicant");
 
                     b.Navigation("Application");
+
+                    b.Navigation("ApplicationGuarantor");
 
                     b.Navigation("Donation");
 
@@ -2993,6 +3939,75 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Navigation("FundCategory");
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.HousingApplicationDetails", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithOne("HousingDetails")
+                        .HasForeignKey("NgoFund.Domain.Entities.HousingApplicationDetails", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_housing_application_details_applications_application_id");
+
+                    b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanAgreement", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_loan_agreements_applications_application_id");
+
+                    b.HasOne("NgoFund.Domain.Entities.FundCategory", "FundCategory")
+                        .WithMany()
+                        .HasForeignKey("FundCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_loan_agreements_fund_categories_fund_category_id");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("FundCategory");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanInstallment", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.LoanAgreement", "LoanAgreement")
+                        .WithMany("Installments")
+                        .HasForeignKey("LoanAgreementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_loan_installments_loan_agreements_loan_agreement_id");
+
+                    b.Navigation("LoanAgreement");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanRepayment", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.LoanAgreement", "LoanAgreement")
+                        .WithMany("Repayments")
+                        .HasForeignKey("LoanAgreementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_loan_repayments_loan_agreements_loan_agreement_id");
+
+                    b.Navigation("LoanAgreement");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.MarriageApplicationDetails", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithOne("MarriageDetails")
+                        .HasForeignKey("NgoFund.Domain.Entities.MarriageApplicationDetails", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marriage_application_details_applications_application_id");
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.Payment", b =>
                 {
                     b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
@@ -3059,11 +4074,26 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("NgoFund.Domain.Entities.FundApplication", b =>
                 {
+                    b.Navigation("BusinessLoanDetails");
+
+                    b.Navigation("Guarantors");
+
+                    b.Navigation("HousingDetails");
+
+                    b.Navigation("MarriageDetails");
+
                     b.Navigation("Payments");
 
                     b.Navigation("Remarks");
 
                     b.Navigation("StatusHistory");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.LoanAgreement", b =>
+                {
+                    b.Navigation("Installments");
+
+                    b.Navigation("Repayments");
                 });
 #pragma warning restore 612, 618
         }

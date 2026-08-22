@@ -1,0 +1,61 @@
+@* Groom field group + wedding dates, split out of MarriageDetailsSection — pairs with
+   MarriageBrideFields.razor; see its doc comment. Backs the wizard's "Groom's Information &
+   Wedding Dates" page and the manage modal's single-block editor. *@
+<div class="form-section-legend">Groom</div>
+<div class="form-grid">
+    <FormField Label="Groom Name *" For="groomName" ValidationFor="() => Model.GroomName">
+        <InputText id="groomName" @bind-Value="Model.GroomName" />
+    </FormField>
+    <FormField Label="Groom Father Name" For="groomFather">
+        <InputText id="groomFather" @bind-Value="Model.GroomFatherName" />
+    </FormField>
+    <FormField Label="Groom Grandfather Name" For="groomGrandfather">
+        <InputText id="groomGrandfather" @bind-Value="Model.GroomGrandfatherName" />
+    </FormField>
+    <FormField Label="Groom Jamaat" For="groomJamaat">
+        <InputText id="groomJamaat" @bind-Value="Model.GroomJamaat" />
+    </FormField>
+    <FormField Label="Groom Marital Status" For="groomMaritalStatus">
+        <InputSelect id="groomMaritalStatus" @bind-Value="Model.GroomMaritalStatus">
+            <option value="">Select</option>
+            <option value="Single">First Marriage</option>
+            <option value="Married">Married</option>
+            <option value="Divorced">Divorced</option>
+            <option value="Widowed">Widowed</option>
+        </InputSelect>
+    </FormField>
+    @if (Model.GroomMaritalStatus is "Divorced" or "Widowed")
+    {
+        <FormField Label="Groom's Previous Wife Name" For="groomPrevWife">
+            <InputText id="groomPrevWife" @bind-Value="Model.GroomPreviousWifeName" />
+        </FormField>
+    }
+    <FormField Label="Groom Address" For="groomAddress" CssClass="span-2">
+        <InputTextArea id="groomAddress" @bind-Value="Model.GroomAddress" />
+    </FormField>
+    <FormatField Label="Groom Mobile" For="groomMobile" Format="FieldFormat.MobilePhone" @bind-Value="Model.GroomMobile" />
+    <FormField Label="Groom Business Address" For="groomBusinessAddress" CssClass="span-2">
+        <InputTextArea id="groomBusinessAddress" @bind-Value="Model.GroomBusinessAddress" />
+    </FormField>
+</div>
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Dates</div>
+<div class="form-grid">
+    <FormField Label="Nikah Date" For="nikahDate">
+        <InputDate id="nikahDate" @bind-Value="Model.NikahDate" />
+    </FormField>
+    <FormField Label="Rukhsati Date" For="rukhsatiDate" Hint="@RukhsatiHint">
+        <InputDate id="rukhsatiDate" @bind-Value="Model.RukhsatiDate" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MarriageDetailsFormModel Model { get; set; } = null!;
+
+    // Non-blocking — the server is the source of truth for this rule; this just saves staff a
+    // round trip when the dates are obviously the wrong way round.
+    private string? RukhsatiHint =>
+        Model.NikahDate is not null && Model.RukhsatiDate is not null && Model.RukhsatiDate < Model.NikahDate
+            ? "Rukhsati date is before Nikah date — the server will reject this."
+            : null;
+}

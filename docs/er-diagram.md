@@ -29,6 +29,12 @@ erDiagram
 
     PAYMENTS ||--o| FUND_TRANSACTIONS : "posts debit"
 
+    APPLICATIONS ||--o| LOAN_AGREEMENTS : "becomes a loan (General fund only)"
+    FUND_CATEGORIES ||--o{ LOAN_AGREEMENTS : "repayable fund for"
+    LOAN_AGREEMENTS ||--o{ LOAN_INSTALLMENTS : "schedules"
+    LOAN_AGREEMENTS ||--o{ LOAN_REPAYMENTS : "repaid via"
+    LOAN_REPAYMENTS ||--o| FUND_TRANSACTIONS : "posts credit"
+
     APPLICANTS ||--o{ DOCUMENTS : "owns"
     APPLICATIONS ||--o{ DOCUMENTS : "owns"
     DONATIONS ||--o{ DOCUMENTS : "owns"
@@ -120,6 +126,35 @@ erDiagram
         numeric amount
         string reference_type
         uuid reference_id "unique with reference_type"
+    }
+
+    LOAN_AGREEMENTS {
+        uuid id PK
+        string loan_number UK
+        uuid application_id FK "unique while status = Active"
+        uuid fund_category_id FK "frozen at creation, never Zakat"
+        numeric principal_amount "frozen from approved_amount"
+        string status "Active/Cancelled/WrittenOff"
+        int installment_count
+        string frequency "Monthly"
+        date first_due_date
+    }
+
+    LOAN_INSTALLMENTS {
+        uuid id PK
+        uuid loan_agreement_id FK
+        int sequence_no
+        numeric amount_due
+        date due_date
+    }
+
+    LOAN_REPAYMENTS {
+        uuid id PK
+        string repayment_number UK
+        uuid loan_agreement_id FK
+        numeric amount
+        date repayment_date
+        string status "Completed/Voided"
     }
 
     DOCUMENTS {

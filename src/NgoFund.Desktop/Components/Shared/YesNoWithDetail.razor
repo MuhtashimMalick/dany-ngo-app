@@ -1,0 +1,69 @@
+@* Repeated "Yes/No question + conditional detail textbox" pattern — appears on multiple category
+   detail forms (received-assistance-before, has-prior-business-experience). The detail field
+   reveals via a real GSAP height/opacity tween (ngoFundMotion.animateDetailReveal, matchMedia-
+   guarded for prefers-reduced-motion, per gsap-core's guidance to prefer GSAP over a hand-rolled
+   CSS transition for anything more than a fade) only when the user actively flips the toggle to
+   Yes — reopening a record that's already "Yes" must render the detail field immediately, not
+   replay the reveal animation on every render. *@
+@inject IJSRuntime JS
+
+<div class="field">
+    <label id="@_labelId">@Question</label>
+    <div class="yesno-toggle" role="radiogroup" aria-labelledby="@_labelId">
+        <label class="radio-pill @(Value ? "active" : "")">
+            <input type="radio" name="@_groupName" checked="@Value" @onchange="() => SetValueAsync(true)" /> Yes
+        </label>
+        <label class="radio-pill @(!Value ? "active" : "")">
+            <input type="radio" name="@_groupName" checked="@(!Value)" @onchange="() => SetValueAsync(false)" /> No
+        </label>
+    </div>
+</div>
+
+@if (Value)
+{
+    <div class="field" id="@_wrapId">
+        <label for="@_detailId">@DetailLabel</label>
+        <textarea id="@_detailId" value="@Detail" @oninput="OnDetailInputAsync"></textarea>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Question { get; set; } = "";
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public string DetailLabel { get; set; } = "Details";
+    [Parameter] public string? Detail { get; set; }
+    [Parameter] public EventCallback<string?> DetailChanged { get; set; }
+
+    private readonly string _groupName = $"yn-{Guid.NewGuid():N}";
+    private readonly string _detailId = $"yn-detail-{Guid.NewGuid():N}";
+    private readonly string _wrapId = $"yn-wrap-{Guid.NewGuid():N}";
+    private readonly string _labelId = $"yn-label-{Guid.NewGuid():N}";
+    private bool _pendingReveal;
+
+    private async Task SetValueAsync(bool value)
+    {
+        var revealing = value && !Value;
+        Value = value;
+        await ValueChanged.InvokeAsync(value);
+        if (revealing)
+        {
+            _pendingReveal = true;
+        }
+    }
+
+    private async Task OnDetailInputAsync(ChangeEventArgs e)
+    {
+        Detail = e.Value?.ToString();
+        await DetailChanged.InvokeAsync(Detail);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingReveal)
+        {
+            _pendingReveal = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateDetailReveal", $"#{_wrapId}");
+        }
+    }
+}

@@ -21,4 +21,9 @@ public record UpdateApplicantRequest(
     int? HouseholdSize,
     bool IsBlacklisted,
     string? BlacklistReason,
-    string? Notes);
+    string? Notes,
+    string? GrandfatherName = null,
+    string? Surname = null,
+    string? AncestralVillage = null,
+    string? FatherMembershipNumber = null,
+    string? WhatsappNumber = null);

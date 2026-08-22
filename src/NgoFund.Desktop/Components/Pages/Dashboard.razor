@@ -507,7 +507,6 @@ else
         _ => "var(--status-neutral-solid)",
     };
 
-    // Hand-built inline SVG — no charting package (see 's "prefer the framework/standard
     // library" rule). Rendered at the exact pixel size ChartCanvas measures via ResizeObserver, so
     // 1 SVG user unit is always 1 CSS pixel — axis text and gridline stroke-width never scale with
     // the container (the fix for the previous "9px label renders at 18px" bug).

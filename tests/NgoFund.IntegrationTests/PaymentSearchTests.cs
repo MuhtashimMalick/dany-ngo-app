@@ -69,6 +69,7 @@ public class PaymentSearchTests(AuthApiFactory factory) : IClassFixture<AuthApiF
         var zakatPayment = await ReadOrFailAsync<PaymentDto>(zakatPaymentResponse, HttpStatusCode.Created);
 
         var generalApplication = await CreateApprovedApplicationAsync(client, "13001-1300004-4", categoryId, generalFundId, 1500m);
+        await LoanTestHelpers.CreateLoanAgreementAsync(client, generalApplication.Id, installmentCount: 1); // General-fund payments require a loan plan (M7)
         var generalPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
             generalApplication.Id, 1500m, recentDate, "Cash", null, null, null, null, null, null));
         var generalPayment = await ReadOrFailAsync<PaymentDto>(generalPaymentResponse, HttpStatusCode.Created);

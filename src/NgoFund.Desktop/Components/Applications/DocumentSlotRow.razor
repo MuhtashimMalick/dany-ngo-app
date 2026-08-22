@@ -1,0 +1,150 @@
+@* One document-slot row — split out of DocumentSlotList.razor purely to keep that component's
+   markup flat (it renders this once per application-level slot and again per guarantor-group
+   slot). See DocumentSlotList's doc comment for the overall design. *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+@inject IJSRuntime JS
+@inject AuthState AuthState
+
+<div class="doc-slot-row" id="@_rowId">
+    <div class="doc-slot-header">
+        <span class="doc-slot-label">@Slot.Label</span>
+        <span class="badge @(Slot.IsRequired ? "badge-required" : "badge-optional")">@(Slot.IsRequired ? "Required" : "Optional")</span>
+        @if (Slot.IsSatisfied)
+        {
+            <span id="@_checkId" class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
+        }
+        @if (Slot.MinCount > 1)
+        {
+            <span class="doc-slot-progress">@Slot.Documents.Count of @Slot.MinCount uploaded</span>
+        }
+    </div>
+
+    @if (Slot.OwnerScope == "Applicant" && Slot.SatisfiedByApplicantProfile)
+    {
+        <p class="field-hint">On file from the applicant's profile — no separate upload needed for this application.</p>
+    }
+    else if (Slot.OwnerScope == "Applicant")
+    {
+        <p class="field-error">
+            Not on file. This document belongs on the applicant's own record, not this application.
+            @if (ApplicantId is { } applicantId)
+            {
+                <a href="@($"/applicants?applicantId={applicantId}")">Open the applicant record</a>
+                <text> to add it there.</text>
+            }
+            else
+            {
+                <text>Add it to the applicant's record to satisfy this requirement.</text>
+            }
+        </p>
+    }
+
+    @if (_error is not null)
+    {
+        <p class="field-error">@_error</p>
+    }
+
+    @if (Slot.Documents.Count > 0)
+    {
+        <ul class="plain-list">
+            @foreach (var document in Slot.Documents)
+            {
+                <li id="@DocRowId(document)">
+                    <span class="flex-1">@document.FileName</span>
+                    <button type="button" class="icon-btn" aria-label="View document" @onclick="() => OnViewDocument.InvokeAsync(document)"><Icon Name="eye" Size="16" /></button>
+                    @if (AuthState.HasPermission("documents.delete") && Slot.OwnerScope != "Applicant")
+                    {
+                        <button type="button" class="icon-btn icon-btn-destructive" aria-label="Remove document" @onclick="() => RemoveAsync(document)"><Icon Name="trash" Size="16" /></button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Slot.OwnerScope != "Applicant" && AuthState.HasPermission("documents.upload") && (Slot.MinCount <= 1 ? Slot.Documents.Count == 0 : Slot.Documents.Count < Slot.MinCount))
+    {
+        <FileDrop OnFileSelected="UploadAsync" Hint="@AcceptedTypesHint" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+    [Parameter, EditorRequired] public DocumentSlotStatusDto Slot { get; set; } = null!;
+    /// <summary>The application's owning applicant — only used to build the "open the applicant
+    /// record" link on an unsatisfied OwnerScope "Applicant" slot (see markup above). Documents for
+    /// such a slot must be uploaded on the applicant's own record, never on the application, so
+    /// this row never uploads on the applicant's behalf.</summary>
+    [Parameter] public Guid? ApplicantId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+
+    private string? _error;
+    private (Guid Id, string Selector)? _pendingAnimateDocRow;
+    private bool _pendingAnimateSatisfied;
+
+    private string SlotKey => Slot.GuarantorId is null ? Slot.SlotKey : $"{Slot.SlotKey}-{Slot.GuarantorId:N}";
+    private string _rowId => $"doc-slot-{SlotKey}";
+    private string _checkId => $"doc-slot-check-{SlotKey}";
+
+    private string AcceptedTypesHint =>
+        Slot.AcceptedTypes.Count > 0 ? $"Accepted: {string.Join(", ", Slot.AcceptedTypes)} — up to 10 MB" : "PDF, JPG or PNG up to 10 MB";
+
+    private static string DocRowId(DocumentDto document) => $"doc-row-{document.Id:N}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingAnimateDocRow is { } row)
+        {
+            _pendingAnimateDocRow = null;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateDocRowIn", row.Selector);
+        }
+        if (_pendingAnimateSatisfied)
+        {
+            _pendingAnimateSatisfied = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateSlotSatisfied", $"#{_checkId}");
+        }
+    }
+
+    private async Task UploadAsync(IBrowserFile file)
+    {
+        _error = null;
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+
+            var document = await ApiClient.UploadDocumentAsync(memory.ToArray(), file.Name, file.ContentType,
+                Slot.DefaultDocumentType,
+                applicationId: Slot.OwnerScope == "Application" ? ApplicationId : null,
+                applicationGuarantorId: Slot.OwnerScope == "Guarantor" ? Slot.GuarantorId : null,
+                slotKey: Slot.SlotKey);
+
+            Toast.Success($"Document uploaded · {file.Name}");
+            _pendingAnimateDocRow = (document.Id, $"#{DocRowId(document)}");
+            _pendingAnimateSatisfied = true;
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RemoveAsync(DocumentDto document)
+    {
+        _error = null;
+        try
+        {
+            await ApiClient.DeleteDocumentAsync(document.Id);
+            Toast.Success($"Document removed · {document.FileName}");
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

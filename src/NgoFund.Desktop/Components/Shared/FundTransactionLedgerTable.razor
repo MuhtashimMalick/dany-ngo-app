@@ -1,0 +1,124 @@
+@* One fund's chronological transaction feed — every credit/debit that ever touched
+   fund_transactions for this fund, in order, with a running balance (client feedback: Date /
+   Category / No. / Name / GRN (money in) / OG (money out) / Total). Per client decision, this
+   ledger REPLACES the per-applicant summary view that used to live alongside it in a nested tab
+   set — this is now the only view inside each Funds.razor fund tab. Lives inside a Funds.razor
+   <TabPanel>, mounted only while its tab is active, so it doesn't fire a request for every fund on
+   page load.
+
+   RunningBalance is rendered exactly as the server sends it, never recomputed here — it's derived
+   from the append-only fund_transactions ledger server-side and must always agree with
+   vw_fund_balances (see FundTransactionLedgerRowDto's doc comment). *@
+@inject ApiClient ApiClient
+@inject IJSRuntime JS
+
+<FilterBar>
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by name, application no, reference no…" />
+    <div class="field filter-field-sm mb-0">
+        <label for="ledgerFromDate-@FundCategoryId">From</label>
+        <input id="ledgerFromDate-@FundCategoryId" type="date" @bind="_fromDate" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+    <div class="field filter-field-sm mb-0">
+        <label for="ledgerToDate-@FundCategoryId">To</label>
+        <input id="ledgerToDate-@FundCategoryId" type="date" @bind="_toDate" @bind:after="() => LoadPageAsync(1)" />
+    </div>
+</FilterBar>
+@if (_fromDate is not null || _toDate is not null || !string.IsNullOrWhiteSpace(_search))
+{
+    <p class="field-hint">Total is the fund's running balance over its entire history — it stays correct even with a date or search filter applied; only which rows are shown changes.</p>
+}
+
+@if (_errorMessage is not null)
+{
+    <div class="alert alert-error">@_errorMessage</div>
+}
+
+<DataTable TItem="FundTransactionLedgerRowDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+           Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
+           OnPageChange="LoadPageAsync" RowsContainerId="@RowsContainerId" EmptyText="@EmptyText"
+           EmptyDescription="@EmptyDescription" EmptyIcon="donations">
+    <HeaderRow>
+        <th>Date</th>
+        <th>Category</th>
+        <th>No.</th>
+        <th>Name</th>
+        <th class="num">GRN (PKR)</th>
+        <th class="num">OG (PKR)</th>
+        <th class="num">Total (PKR)</th>
+    </HeaderRow>
+    <RowTemplate Context="row">
+        <tr class="@(IsReversal(row) ? "ledger-row-reversal" : null)" title="@row.ReferenceNumber">
+            <td>@row.TransactionDate.ToString("yyyy-MM-dd")</td>
+            <td>@(row.CategoryName ?? "—")</td>
+            <td>@(row.CaseNumber ?? "—")</td>
+            <td>
+                <span class="ledger-party-cell">
+                    @row.PartyName
+                    @if (IsReversal(row))
+                    {
+                        <StatusBadge Status="Reversal" Text="@ReversalLabel(row.ReferenceType)" />
+                    }
+                </span>
+            </td>
+            <td class="num ledger-amount-in">@(row.AmountIn is { } amountIn ? amountIn.ToString("N2") : "—")</td>
+            <td class="num ledger-amount-out">@(row.AmountOut is { } amountOut ? amountOut.ToString("N2") : "—")</td>
+            <td class="num ledger-balance-cell">@row.RunningBalance.ToString("N2")</td>
+        </tr>
+    </RowTemplate>
+</DataTable>
+
+@code {
+    [Parameter, EditorRequired] public Guid FundCategoryId { get; set; }
+
+    private const int PageSize = 25;
+    private PagedResult<FundTransactionLedgerRowDto>? _page;
+    private int _currentPage = 1;
+    private string _search = "";
+    private DateOnly? _fromDate;
+    private DateOnly? _toDate;
+    private string? _errorMessage;
+    private bool _pendingRowAnimation;
+
+    private string RowsContainerId => $"fund-transaction-rows-{FundCategoryId:N}";
+
+    private bool HasActiveFilter => !string.IsNullOrWhiteSpace(_search) || _fromDate is not null || _toDate is not null;
+
+    private string EmptyText => HasActiveFilter ? "No matching transactions." : "No transactions yet.";
+
+    private string EmptyDescription => HasActiveFilter
+        ? "No transactions match the current search or date filter. Try a different name, application no, reference no, or date range."
+        : "Donations, payments and repayments posted against this fund will appear here in date order.";
+
+    protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingRowAnimation)
+        {
+            _pendingRowAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", $"#{RowsContainerId} tr");
+        }
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        _errorMessage = null;
+        try
+        {
+            _page = await ApiClient.GetFundTransactionLedgerAsync(FundCategoryId, page, PageSize, _fromDate, _toDate, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _currentPage = page;
+            _pendingRowAnimation = true;
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private static bool IsReversal(FundTransactionLedgerRowDto row) => row.ReferenceType.EndsWith("Reversal", StringComparison.Ordinal);
+
+    // "DonationReversal" -> "Donation Reversal" — a generic PascalCase splitter rather than a
+    // switch per reference type, so a future reversal-able reference type needs no change here.
+    private static string ReversalLabel(string referenceType) =>
+        System.Text.RegularExpressions.Regex.Replace(referenceType, "(?<!^)([A-Z])", " $1");
+}

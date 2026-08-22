@@ -35,6 +35,12 @@ public class ReportsController(IReportService reportService) : ControllerBase
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken cancellationToken)
         => Ok(await reportService.GetMonthlyPaymentsAsync(from, to, cancellationToken));
 
+    [HttpGet("loan-repayments")]
+    [HasPermission("reports.view")]
+    public async Task<ActionResult<IReadOnlyList<MonthlySummaryRowDto>>> GetLoanRepayments(
+        [FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken cancellationToken)
+        => Ok(await reportService.GetMonthlyLoanRepaymentsAsync(from, to, cancellationToken));
+
     [HttpGet("donations/monthly/export")]
     [HasPermission("reports.export")]
     public async Task<IActionResult> ExportMonthlyDonations([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken cancellationToken)

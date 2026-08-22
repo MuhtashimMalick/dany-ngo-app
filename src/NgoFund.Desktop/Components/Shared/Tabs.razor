@@ -1,0 +1,169 @@
+@* Generic tab strip + panel host. Dynamic by construction: child <TabPanel> components register
+   themselves with the parent on init and unregister on dispose, so wrapping a TabPanel in an
+   `@if` in the caller (e.g. Applications.razor's Installments tab, shown only for General-fund
+   applications) removes the tab from the DOM entirely rather than merely hiding it — there's no
+   separate "list of tab keys" for the caller to keep in sync.
+
+   Follows the WAI-ARIA tabs pattern (manual activation would also be valid, but this app's tabs
+   are cheap to render so automatic activation — arrow keys both move focus and select — reads as
+   more responsive): tablist/tab/tabpanel roles, roving tabindex (only the active tab is in the
+   Tab order), aria-selected/aria-controls/aria-labelledby wiring, and Left/Right/Home/End
+   navigation. *@
+@inject IJSRuntime JS
+
+<div class="tabs @CssClass">
+    <div class="tabs-header-row">
+        <div class="tabs-list" role="tablist" aria-label="@AriaLabel">
+            @foreach (var panel in _panels)
+            {
+                <button type="button"
+                        id="@TabButtonId(panel)"
+                        class="tabs-tab @(IsActive(panel) ? "active" : "")"
+                        role="tab"
+                        aria-selected="@(IsActive(panel) ? "true" : "false")"
+                        aria-controls="@PanelId(panel)"
+                        tabindex="@(IsActive(panel) ? "0" : "-1")"
+                        @onclick="() => SelectAsync(panel)"
+                        @onkeydown="e => OnTabKeyDownAsync(e, panel)">
+                    @panel.Title
+                </button>
+            }
+        </div>
+        @if (HeaderExtra is not null)
+        {
+            <div class="tabs-header-extra">
+                @HeaderExtra
+            </div>
+        }
+    </div>
+    <div class="tabs-panels">
+        <CascadingValue Value="this" IsFixed="true">
+            @ChildContent
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Tabs";
+    [Parameter] public string? CssClass { get; set; }
+
+    // Optional content rendered in the same flex row as the tab strip, right-aligned (e.g.
+    // Funds.razor's per-fund balance summary). Backward compatible: existing callers (e.g.
+    // Applications.razor) that don't set this simply render the tabs-header-row with only the
+    // tab strip inside, unchanged from before this wrapper existed.
+    [Parameter] public RenderFragment? HeaderExtra { get; set; }
+
+    // Fires whenever the active tab changes — on first registration and on every SelectAsync —
+    // passing the newly-active panel's Title (TabPanel.Key is an internal random id with no
+    // meaning to callers; Title is the stable, caller-supplied string a parent can match back to
+    // its own data, e.g. FundCategoryDto.Name). Unused by callers that don't need to react to the
+    // active tab (e.g. Applications.razor), so it's a no-op for them.
+    [Parameter] public EventCallback<string> ActiveTitleChanged { get; set; }
+
+    private readonly List<TabPanel> _panels = [];
+    private string? _activeKey;
+    private bool _pendingFocusAndAnimate;
+    private readonly string _id = $"tabs-{Guid.NewGuid():N}";
+
+    internal string TabButtonId(TabPanel panel) => $"{_id}-tab-{panel.Key}";
+    internal string PanelId(TabPanel panel) => $"{_id}-panel-{panel.Key}";
+    internal bool IsActive(TabPanel panel) => panel.Key == _activeKey;
+
+    // Called from TabPanel.OnInitialized/Dispose — this is what makes the tab list dynamic. The
+    // first panel to register becomes the active one; if the active panel is removed, whatever's
+    // first in what remains takes over so the strip never ends up with no tab selected.
+    internal void Register(TabPanel panel)
+    {
+        if (_panels.Contains(panel))
+        {
+            return;
+        }
+        _panels.Add(panel);
+        if (_activeKey is null)
+        {
+            _activeKey = panel.Key;
+            NotifyActiveChanged(panel);
+        }
+        StateHasChanged();
+    }
+
+    internal void Unregister(TabPanel panel)
+    {
+        if (!_panels.Remove(panel))
+        {
+            return;
+        }
+        if (_activeKey == panel.Key)
+        {
+            var newActive = _panels.FirstOrDefault();
+            _activeKey = newActive?.Key;
+            if (newActive is not null)
+            {
+                NotifyActiveChanged(newActive);
+            }
+        }
+        StateHasChanged();
+    }
+
+    // Fire-and-forget: Register/Unregister are synchronous (called from TabPanel's synchronous
+    // OnInitialized/Dispose), so ActiveTitleChanged is invoked without awaiting here. SelectAsync
+    // (already async, driven by a user click/keypress) awaits it properly.
+    private void NotifyActiveChanged(TabPanel panel)
+    {
+        if (ActiveTitleChanged.HasDelegate)
+        {
+            _ = ActiveTitleChanged.InvokeAsync(panel.Title);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingFocusAndAnimate)
+        {
+            _pendingFocusAndAnimate = false;
+            var active = _panels.FirstOrDefault(p => p.Key == _activeKey);
+            if (active is not null)
+            {
+                await JS.InvokeVoidAsync("ngoFundTabs.focus", TabButtonId(active));
+                await JS.InvokeVoidAsync("ngoFundMotion.animateTabPanel", $"#{PanelId(active)}");
+            }
+        }
+    }
+
+    private Task SelectAsync(TabPanel panel)
+    {
+        if (_activeKey == panel.Key)
+        {
+            return Task.CompletedTask;
+        }
+        _activeKey = panel.Key;
+        _pendingFocusAndAnimate = true;
+        return ActiveTitleChanged.HasDelegate ? ActiveTitleChanged.InvokeAsync(panel.Title) : Task.CompletedTask;
+    }
+
+    private Task OnTabKeyDownAsync(KeyboardEventArgs e, TabPanel panel)
+    {
+        var index = _panels.IndexOf(panel);
+        if (index < 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var newIndex = e.Key switch
+        {
+            "ArrowRight" => (index + 1) % _panels.Count,
+            "ArrowLeft" => (index - 1 + _panels.Count) % _panels.Count,
+            "Home" => 0,
+            "End" => _panels.Count - 1,
+            _ => index,
+        };
+
+        if (newIndex == index)
+        {
+            return Task.CompletedTask;
+        }
+
+        return SelectAsync(_panels[newIndex]);
+    }
+}

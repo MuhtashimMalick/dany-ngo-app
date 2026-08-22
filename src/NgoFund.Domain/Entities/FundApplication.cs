@@ -1,3 +1,4 @@
+using NgoFund.Domain.Applications;
 using NgoFund.Domain.Common;
 using NgoFund.Domain.Enums;
 using NgoFund.Domain.Exceptions;
@@ -47,6 +48,45 @@ public class FundApplication : BaseEntity, IUpdateAuditable
 
     public DateTimeOffset? ClosedAt { get; set; }
 
+    // --- Point-in-time snapshots, as stated on THIS application ---
+    //
+    // These `Declared*` fields intentionally duplicate shape with fields on `Applicant`
+    // (`Applicant.MonthlyIncome`, `Applicant.HouseholdSize`, `Applicant.Address`, ...). That is
+    // deliberate, not a DRY violation to "fix":
+    //   - `Applicant.MonthlyIncome`/`HouseholdSize`/etc. are "latest known" person-level facts,
+    //     maintained on the Applicants screen and updated whenever staff learn something new.
+    //   - `FundApplication.Declared*` are a snapshot of what the applicant stated on THIS specific
+    //     application at THIS point in time (often re-keyed verbatim from a Google Form/paper
+    //     form submission).
+    // The two must NEVER be kept in sync automatically: an applicant's income can change between
+    // two applications filed a year apart, and re-keying a form must preserve exactly what was
+    // declared then, not silently overwrite it with whatever the Applicant record says today (or
+    // vice versa). Any future code that's tempted to add a sync job between these two should not.
+    public decimal? DeclaredMonthlyIncome { get; set; }
+    public int? DeclaredHouseholdSize { get; set; }
+    public int? DeclaredEarningMembers { get; set; }
+    public string? DeclaredResidentialAddress { get; set; }
+    public string? DeclaredBusinessAddress { get; set; }
+    public HouseStatus? DeclaredHouseStatus { get; set; }
+
+    // --- Intake / re-keying provenance ---
+    public ApplicationIntakeChannel IntakeChannel { get; set; } = ApplicationIntakeChannel.InApp;
+
+    /// <summary>Google Form response ID / paper form number this application was re-keyed from, if any. Unique when present.</summary>
+    public string? ExternalFormReference { get; set; }
+
+    /// <summary>When the applicant originally submitted (Google Form/paper) — as opposed to <see cref="BaseEntity.CreatedAt"/>, which is when staff keyed it into this system.</summary>
+    public DateTimeOffset? SubmittedAt { get; set; }
+
+    public DateTimeOffset? DeclarationAcceptedAt { get; set; }
+    public DateTimeOffset? TermsAcceptedAt { get; set; }
+    public string? TermsVersion { get; set; }
+
+    public HousingApplicationDetails? HousingDetails { get; set; }
+    public MarriageApplicationDetails? MarriageDetails { get; set; }
+    public BusinessLoanApplicationDetails? BusinessLoanDetails { get; set; }
+    public ICollection<ApplicationGuarantor> Guarantors { get; set; } = [];
+
     public ICollection<ApplicationStatusHistory> StatusHistory { get; set; } = [];
     public ICollection<ApplicationRemark> Remarks { get; set; } = [];
     public ICollection<Payment> Payments { get; set; } = [];
@@ -65,6 +105,56 @@ public class FundApplication : BaseEntity, IUpdateAuditable
         if (fund.IsZakat && !category.IsZakatEligible)
         {
             throw new ZakatFundMismatchException(category.Name, fund.Name);
+        }
+    }
+
+    /// <summary>
+    /// Blocks a category change once category-scoped data already exists for this application: the
+    /// current category's details row (housing/marriage/business-loan), any
+    /// <see cref="ApplicationGuarantor"/> rows, or any <see cref="Document"/> saved into a slot. Call
+    /// only when the category is actually changing (the caller already knows this — it's the one
+    /// comparing old vs. new category IDs). See <see cref="ApplicationCategoryChangeBlockedException"/>.
+    /// </summary>
+    public static void EnsureCategoryChangeAllowed(string applicationNumber, string currentCategoryName, bool hasCategoryScopedData)
+    {
+        if (hasCategoryScopedData)
+        {
+            throw new ApplicationCategoryChangeBlockedException(applicationNumber, currentCategoryName);
+        }
+    }
+
+    /// <summary>
+    /// The guarantor gate: a category with <see cref="ApplicationCategory.RequiresGuarantors"/> &gt; 0
+    /// (2 for ROZGAR, 0 elsewhere) needs at least that many <see cref="ApplicationGuarantor"/> rows
+    /// on file before the application can be transitioned to <see cref="ApplicationStatus.Approved"/>.
+    /// Called from the same site as <see cref="EnsureFundIsCompatible"/> — the Approved-transition
+    /// call path in <c>FundApplicationService.ChangeStatusAsync</c> — deliberately NOT folded into
+    /// <see cref="TransitionTo"/> itself, which knows nothing about categories or guarantor counts.
+    /// </summary>
+    public static void EnsureGuarantorsSatisfied(string applicationNumber, ApplicationCategory category, int guarantorCount)
+    {
+        if (guarantorCount < category.RequiresGuarantors)
+        {
+            throw new GuarantorsRequiredException(applicationNumber, category.RequiresGuarantors, guarantorCount);
+        }
+    }
+
+    /// <summary>
+    /// The completeness gate: closes the bug where an application could reach
+    /// <see cref="ApplicationStatus.Approved"/> with zero category-specific details and zero
+    /// required documents on file. Called from the same Approved-transition call site as
+    /// <see cref="EnsureGuarantorsSatisfied"/>, right after it, with a result already computed by
+    /// <see cref="ApplicationCompletenessEvaluator.Evaluate"/> — this method just turns a
+    /// negative verdict into an exception.
+    /// </summary>
+    public static void EnsureApplicationIsComplete(string applicationNumber, ApplicationCompletenessResult result)
+    {
+        if (!result.IsComplete)
+        {
+            throw new ApplicationIncompleteException(
+                applicationNumber,
+                result.MissingFields.Select(f => f.Label).ToList(),
+                result.Slots.Where(s => s.Slot.IsRequired && !s.IsSatisfied).Select(s => s.DisplayLabel).ToList());
         }
     }
 

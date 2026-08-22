@@ -54,7 +54,8 @@ public class ReportingTests(AuthApiFactory factory) : IClassFixture<AuthApiFacto
         var zakatFund = funds.Single(f => f.Code == "ZAKAT");
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Dashboard Test Applicant", null, "99999-9999999-9", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Dashboard Test Applicant", null, "99999-9999999-9", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(

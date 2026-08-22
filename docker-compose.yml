@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ngofund}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
+      # Postgres 18's image switched to storing data under /var/lib/postgresql (versioned
+      # subdirectory inside), not /var/lib/postgresql/data as in older images.
       - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ngofund} -d ${POSTGRES_DB:-ngofund}"]
@@ -14,6 +16,8 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # One-shot: applies pending EF Core migrations and seeds reference data + the initial Super
+  # Admin user, then exits 0. `api` will not start until this completes successfully.
   migrator:
     build:
       context: .
@@ -50,6 +54,7 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Optional DB admin UI — only starts with `docker compose --profile tools up`.
   pgadmin:
     image: dpage/pgadmin4
     profiles: ["tools"]

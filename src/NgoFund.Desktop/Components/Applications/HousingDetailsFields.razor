@@ -1,0 +1,42 @@
+@* Field-only markup for HousingDetailsFormModel — no FormSection/EditForm/load/save of its own, so
+   it drops into either HousingDetailsSection's self-contained "edit everything" block (manage
+   modal) or a single wizard page (create flow) without duplicating the field list. See
+   ApplicationDetailModels.cs's doc comment for why this split exists. *@
+<div class="form-grid">
+    <FormField Label="Applicant Age" For="hdApplicantAge">
+        <InputNumber id="hdApplicantAge" @bind-Value="Model.ApplicantAge" />
+    </FormField>
+    <FormField Label="Years at Current Address" For="hdYears">
+        <InputNumber id="hdYears" @bind-Value="Model.YearsAtCurrentAddress" />
+    </FormField>
+    <FormField Label="Current House Value (PKR)" For="hdHouseValue">
+        <InputNumber id="hdHouseValue" @bind-Value="Model.CurrentHouseValue" />
+    </FormField>
+    <FormField Label="Monthly Rent (PKR)" For="hdRent">
+        <InputNumber id="hdRent" @bind-Value="Model.MonthlyRent" />
+    </FormField>
+    <FormField Label="Advance Paid (PKR)" For="hdAdvance">
+        <InputNumber id="hdAdvance" @bind-Value="Model.AdvancePaid" />
+    </FormField>
+    <FormField Label="Previous Residential Address" For="hdPrevAddress" CssClass="span-2">
+        <InputTextArea id="hdPrevAddress" @bind-Value="Model.PreviousResidentialAddress" />
+    </FormField>
+</div>
+
+<YesNoWithDetail Question="Received assistance before?" @bind-Value="Model.ReceivedAssistanceBefore"
+                  DetailLabel="Details of previous assistance" @bind-Detail="Model.PreviousAssistanceDetails" />
+
+<div class="field">
+    <label>Other assistance currently received</label>
+    <div class="checkbox-group">
+        <label class="checkbox-label"><input type="checkbox" @bind="Model.ReceivesMarriageAssistance" /> Marriage</label>
+        <label class="checkbox-label"><input type="checkbox" @bind="Model.ReceivesEducationAssistance" /> Education</label>
+        <label class="checkbox-label"><input type="checkbox" @bind="Model.ReceivesMedicalAssistance" /> Medical</label>
+        <label class="checkbox-label"><input type="checkbox" @bind="Model.ReceivesWidowAssistance" /> Widow</label>
+    </div>
+    <span class="field-hint">Leave all unchecked for "None".</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public HousingDetailsFormModel Model { get; set; } = null!;
+}

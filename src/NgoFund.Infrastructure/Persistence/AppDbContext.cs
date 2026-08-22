@@ -41,10 +41,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<FundApplication> Applications => Set<FundApplication>();
     public DbSet<ApplicationStatusHistory> ApplicationStatusHistories => Set<ApplicationStatusHistory>();
     public DbSet<ApplicationRemark> ApplicationRemarks => Set<ApplicationRemark>();
+    public DbSet<HousingApplicationDetails> HousingApplicationDetails => Set<HousingApplicationDetails>();
+    public DbSet<MarriageApplicationDetails> MarriageApplicationDetails => Set<MarriageApplicationDetails>();
+    public DbSet<BusinessLoanApplicationDetails> BusinessLoanApplicationDetails => Set<BusinessLoanApplicationDetails>();
+    public DbSet<ApplicationGuarantor> ApplicationGuarantors => Set<ApplicationGuarantor>();
 
     // Payments & ledger
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<FundTransaction> FundTransactions => Set<FundTransaction>();
+
+    // Loans (qard al-hasan)
+    public DbSet<LoanAgreement> LoanAgreements => Set<LoanAgreement>();
+    public DbSet<LoanInstallment> LoanInstallments => Set<LoanInstallment>();
+    public DbSet<LoanRepayment> LoanRepayments => Set<LoanRepayment>();
 
     // Documents
     public DbSet<Document> Documents => Set<Document>();
@@ -68,8 +77,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         configurationBuilder.Properties<Gender>().HaveConversion<string>().HaveMaxLength(10);
         configurationBuilder.Properties<MaritalStatus>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<TransactionDirection>().HaveConversion<string>().HaveMaxLength(10);
-        configurationBuilder.Properties<TransactionReferenceType>().HaveConversion<string>().HaveMaxLength(20);
+        // 30, not 20: "LoanRepaymentReversal" (21 chars) is the longest current member, and this
+        // leaves headroom for future reference types without another width migration.
+        configurationBuilder.Properties<TransactionReferenceType>().HaveConversion<string>().HaveMaxLength(30);
         configurationBuilder.Properties<DocumentType>().HaveConversion<string>().HaveMaxLength(30);
+        configurationBuilder.Properties<LoanAgreementStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<LoanInstallmentFrequency>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<LoanRepaymentStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<HouseStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ApplicationIntakeChannel>().HaveConversion<string>().HaveMaxLength(20);
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

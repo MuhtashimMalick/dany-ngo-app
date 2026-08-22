@@ -1,0 +1,155 @@
+@* Named-slot document checklist — the Google-Forms-style replacement for the old freeform
+   "pick a document type from a dropdown, then upload" flow. One row (DocumentSlotRow) per slot
+   the API's /completeness manifest returns: a label, a Required/Optional badge, a progress hint
+   when MinCount > 1, and a FileDrop pre-tagged with that slot's DefaultDocumentType + SlotKey —
+   no dropdown, per the client's explicit ask. Guarantor-scoped slots (Slots already contains one
+   entry per existing guarantor row from the API, nothing to cross-multiply client-side — see
+   DocumentSlotStatusDto's doc comment) are grouped under a subheading per guarantor. A small
+   collapsed freeform area below the checklist preserves the old no-slot upload path for documents
+   that don't fit any named slot. Used both inside ApplicationWizard's Documents page and the
+   manage modal's Documents tab — one component, two call sites, so the checklist can never drift
+   between create and manage. *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+@inject AuthState AuthState
+
+<div class="doc-slot-list">
+    @foreach (var slot in ApplicationSlots)
+    {
+        <DocumentSlotRow ApplicationId="ApplicationId" Slot="slot" ApplicantId="ApplicantId" OnChanged="OnChanged" OnViewDocument="OnViewDocument" @key="SlotKey(slot)" />
+    }
+
+    @foreach (var group in GuarantorGroups)
+    {
+        <div class="doc-slot-group-heading">Guarantor @group.SequenceNumber@(string.IsNullOrWhiteSpace(group.Name) ? "" : $" — {group.Name}")</div>
+        @foreach (var slot in group.Slots)
+        {
+            <DocumentSlotRow ApplicationId="ApplicationId" Slot="slot" ApplicantId="ApplicantId" OnChanged="OnChanged" OnViewDocument="OnViewDocument" @key="SlotKey(slot)" />
+        }
+    }
+
+    @if (ApplicationSlots.Count == 0 && GuarantorGroups.Count == 0)
+    {
+        <p class="field-hint">This category has no fixed document checklist.</p>
+    }
+
+    <details class="doc-slot-extra">
+        <summary>Additional documents</summary>
+        <p class="field-hint">For anything that doesn't fit one of the named slots above.</p>
+        @if (_error is not null)
+        {
+            <p class="field-error">@_error</p>
+        }
+        @if (ExtraDocuments.Count > 0)
+        {
+            <ul class="plain-list">
+                @foreach (var document in ExtraDocuments)
+                {
+                    <li>
+                        <span class="flex-1">@document.FileName</span>
+                        <button type="button" class="icon-btn" aria-label="View document" @onclick="() => OnViewDocument.InvokeAsync(document)"><Icon Name="eye" Size="16" /></button>
+                        @if (AuthState.HasPermission("documents.delete"))
+                        {
+                            <button type="button" class="icon-btn icon-btn-destructive" aria-label="Remove document" @onclick="() => RemoveExtraAsync(document)"><Icon Name="trash" Size="16" /></button>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        @if (AuthState.HasPermission("documents.upload"))
+        {
+            <div class="field w-220">
+                <label for="extraDocType">Document type</label>
+                <select id="extraDocType" @bind="_extraDocumentType">
+                    @foreach (var opt in ExtraDocumentTypes)
+                    {
+                        <option value="@opt.Value">@opt.Label</option>
+                    }
+                </select>
+            </div>
+            <FileDrop OnFileSelected="OnExtraFileSelectedAsync" Hint="PDF, JPG or PNG up to 10 MB" />
+        }
+    </details>
+</div>
+
+@code {
+    private static readonly (string Value, string Label)[] ExtraDocumentTypes =
+    [
+        ("SupportingDocument", "Supporting Document"),
+        ("Other", "Other"),
+    ];
+
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+    /// <summary>The application's owning applicant — used to deep-link to their record when a slot
+    /// with OwnerScope "Applicant" isn't satisfied yet. See DocumentSlotRow's ApplicantId parameter
+    /// for why the document can't just be uploaded here.</summary>
+    [Parameter] public Guid? ApplicantId { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<DocumentSlotStatusDto> Slots { get; set; } = [];
+    /// <summary>Already-uploaded documents that don't belong to any slot (SlotKey is null) — shown
+    /// in the "Additional documents" area. Passed in rather than re-derived so the caller (which
+    /// already fetches the application's full document list for its own Documents tab) is the
+    /// single source of truth for what's been uploaded.</summary>
+    [Parameter] public IReadOnlyList<DocumentDto> ExtraDocuments { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+
+    private string _extraDocumentType = ExtraDocumentTypes[0].Value;
+    private string? _error;
+
+    // "Applicant"-scoped slots (v1.4: CNIC/membership card resolved from the applicant's own
+    // profile, see DocumentSlotStatusDto's doc comment) render alongside the application-level
+    // slots rather than in their own group — they're top-level requirements for this application
+    // exactly like the "Application"-scoped ones, just satisfied (or not) from a different place.
+    private List<DocumentSlotStatusDto> ApplicationSlots =>
+        Slots.Where(s => s.OwnerScope is "Application" or "Applicant").ToList();
+
+    private List<(int SequenceNumber, string? Name, List<DocumentSlotStatusDto> Slots)> GuarantorGroups =>
+        Slots.Where(s => s.OwnerScope == "Guarantor")
+            .GroupBy(s => s.GuarantorId)
+            .Select(g => (
+                SequenceNumber: g.First().GuarantorSequenceNumber ?? 0,
+                Name: g.First().GuarantorName,
+                Slots: g.ToList()))
+            .OrderBy(g => g.SequenceNumber)
+            .ToList();
+
+    private static string SlotKey(DocumentSlotStatusDto slot) =>
+        slot.GuarantorId is null ? slot.SlotKey : $"{slot.SlotKey}-{slot.GuarantorId}";
+
+    private async Task OnExtraFileSelectedAsync(IBrowserFile file)
+    {
+        _error = null;
+        try
+        {
+            const long maxSize = 10 * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+
+            await ApiClient.UploadDocumentAsync(memory.ToArray(), file.Name, file.ContentType,
+                _extraDocumentType, applicationId: ApplicationId);
+
+            Toast.Success($"Document uploaded · {file.Name}");
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RemoveExtraAsync(DocumentDto document)
+    {
+        _error = null;
+        try
+        {
+            await ApiClient.DeleteDocumentAsync(document.Id);
+            Toast.Success($"Document removed · {document.FileName}");
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

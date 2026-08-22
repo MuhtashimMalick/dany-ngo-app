@@ -23,11 +23,15 @@ public class DocumentsController(IDocumentService documentService) : ControllerB
         [FromQuery] Guid? applicationId,
         [FromQuery] Guid? donationId,
         [FromQuery] Guid? paymentId,
+        [FromQuery] Guid? applicationGuarantorId,
+        [FromQuery] string? slotKey,
+        [FromQuery] string? description,
         CancellationToken cancellationToken)
     {
         await using var stream = file.OpenReadStream();
         var result = await documentService.UploadAsync(
-            stream, file.FileName, file.ContentType, documentType, applicantId, applicationId, donationId, paymentId, cancellationToken);
+            stream, file.FileName, file.ContentType, documentType, applicantId, applicationId, donationId, paymentId,
+            applicationGuarantorId, slotKey, description, cancellationToken);
         return Ok(result);
     }
 
@@ -48,6 +52,11 @@ public class DocumentsController(IDocumentService documentService) : ControllerB
     [HasPermission("documents.view")]
     public async Task<ActionResult<IReadOnlyList<DocumentDto>>> GetForApplication(Guid applicationId, CancellationToken cancellationToken)
         => Ok(await documentService.GetForApplicationAsync(applicationId, cancellationToken));
+
+    [HttpGet("by-guarantor/{guarantorId:guid}")]
+    [HasPermission("documents.view")]
+    public async Task<ActionResult<IReadOnlyList<DocumentDto>>> GetForGuarantor(Guid guarantorId, CancellationToken cancellationToken)
+        => Ok(await documentService.GetForGuarantorAsync(guarantorId, cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [HasPermission("documents.delete")]

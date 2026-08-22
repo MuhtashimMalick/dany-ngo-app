@@ -1,0 +1,127 @@
+@* Business Loan (ROZGAR) category-detail form — self-contained, same load/save pattern as
+   HousingDetailsSection (see its doc comment). Used by the manage modal's Details tab as a single
+   block; the create-flow wizard splits the same two field groups (BusinessBackgroundFields/
+   BusinessProposalFields) across its own "Applicant Background" and "Proposed Business" pages
+   instead of reusing this wrapper — see HousingDetailsSection's doc comment for why.
+   AmountMismatchWarning is response-only and non-fatal — rendered as a dismissable-by-navigation
+   alert-warning banner (not alert-error) that animates in only when it newly appears after a save,
+   per gsap-core: motion should mark the moment something changed, not replay on every render. *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<FormSection Title="Business Loan Details" Description="From the applicant's Business Loan (Rozgar) form.">
+    @if (_error is not null)
+    {
+        <div class="alert alert-error">@_error</div>
+    }
+
+    @if (_warning is not null)
+    {
+        <div class="alert alert-warning" id="business-loan-warning">@_warning</div>
+    }
+
+    @if (_isLoading)
+    {
+        <Skeleton Rows="4" Columns="2" />
+    }
+    else
+    {
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="business-loan-details-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <BusinessBackgroundFields Model="_form" />
+            <BusinessProposalFields Model="_form" RequestedAmount="RequestedAmount" />
+
+            <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Business Loan Details")</button>
+        </EditForm>
+    }
+</FormSection>
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+    [Parameter, EditorRequired] public decimal RequestedAmount { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _pendingWarningAnimation;
+    private string? _error;
+    private string? _warning;
+    private BusinessLoanDetailsFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var existing = await ApiClient.GetBusinessLoanDetailsAsync(ApplicationId);
+            if (existing is not null)
+            {
+                _form = new BusinessLoanDetailsFormModel
+                {
+                    PaperFormNumber = existing.PaperFormNumber,
+                    BusinessPhone = existing.BusinessPhone,
+                    Education = existing.Education,
+                    Skill = existing.Skill,
+                    Experience = existing.Experience,
+                    OtherIncomeSources = existing.OtherIncomeSources,
+                    TotalMonthlyExpenses = existing.TotalMonthlyExpenses,
+                    ProposedBusinessDescription = existing.ProposedBusinessDescription,
+                    ProposedBusinessLocation = existing.ProposedBusinessLocation,
+                    CapitalRequired = existing.CapitalRequired,
+                    CapitalAlreadyAvailable = existing.CapitalAlreadyAvailable,
+                    HasPriorBusinessExperience = existing.HasPriorBusinessExperience,
+                    PriorBusinessDetails = existing.PriorBusinessDetails,
+                    EmergencyContactName = existing.EmergencyContactName,
+                    EmergencyContactCnic = existing.EmergencyContactCnic,
+                    EmergencyContactPhone = existing.EmergencyContactPhone,
+                };
+                _warning = existing.AmountMismatchWarning;
+            }
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            var result = await ApiClient.UpsertBusinessLoanDetailsAsync(ApplicationId, new UpsertBusinessLoanApplicationDetailsRequest(
+                _form.PaperFormNumber, _form.BusinessPhone, _form.Education, _form.Skill, _form.Experience,
+                _form.OtherIncomeSources, _form.TotalMonthlyExpenses, _form.ProposedBusinessDescription,
+                _form.ProposedBusinessLocation, _form.CapitalRequired, _form.CapitalAlreadyAvailable,
+                _form.HasPriorBusinessExperience, _form.PriorBusinessDetails, _form.EmergencyContactName,
+                _form.EmergencyContactCnic, _form.EmergencyContactPhone));
+
+            Toast.Success("Business loan details saved");
+            _warning = result.AmountMismatchWarning;
+            _pendingWarningAnimation = _warning is not null;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingWarningAnimation)
+        {
+            _pendingWarningAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", "#business-loan-warning");
+        }
+    }
+}

@@ -234,4 +234,16 @@ public class ReportService(AppDbContext dbContext, IFundCategoryService fundCate
 
         return rows.OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.FundCategoryName).ToList();
     }
+
+    public async Task<IReadOnlyList<MonthlySummaryRowDto>> GetMonthlyLoanRepaymentsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.LoanRepayments
+            .AsNoTracking()
+            .Where(r => r.Status == LoanRepaymentStatus.Completed && r.RepaymentDate >= from && r.RepaymentDate <= to)
+            .GroupBy(r => new { r.RepaymentDate.Year, r.RepaymentDate.Month, r.LoanAgreement.FundCategoryId, r.LoanAgreement.FundCategory.Name })
+            .Select(g => new MonthlySummaryRowDto(g.Key.Year, g.Key.Month, g.Key.FundCategoryId, g.Key.Name, g.Sum(r => r.Amount)))
+            .ToListAsync(cancellationToken);
+
+        return rows.OrderBy(r => r.Year).ThenBy(r => r.Month).ThenBy(r => r.FundCategoryName).ToList();
+    }
 }

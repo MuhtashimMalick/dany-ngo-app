@@ -181,6 +181,159 @@ window.ngoFundMotion = (() => {
       });
     },
 
+    // Tabs.razor: fade+small-rise the newly active panel in on every tab switch — a "Subtle"
+    // page-transition-tier motion (200ms, power1.out) since a tab switch is a much smaller
+    // context change than a route navigation, not the 300-400ms animatePageContent uses.
+    animateTabPanel(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, y: reduceMotion ? 0 : 6 },
+          { autoAlpha: 1, y: 0, duration: reduceMotion ? 0 : 0.2, ease: 'power1.out', overwrite: true, clearProps: 'transform' }
+        );
+      });
+    },
+
+    // YesNoWithDetail.razor: reveal the conditional detail field when a Yes/No toggle flips to
+    // Yes. Height:auto isn't tweenable directly, so this reads the wrapper's natural scrollHeight
+    // and tweens toward that pixel value — the standard GSAP accordion-reveal technique — then
+    // clearProps hands layout back to the browser so later content changes (the user typing more
+    // lines into the textarea) aren't clipped by a stale inline height.
+    animateDetailReveal(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        if (reduceMotion) {
+          gsap.set(el, { autoAlpha: 1 });
+          return;
+        }
+        const targetHeight = el.scrollHeight;
+        gsap.set(el, { overflow: 'hidden' });
+        gsap.fromTo(
+          el,
+          { autoAlpha: 0, height: 0 },
+          { autoAlpha: 1, height: targetHeight, duration: 0.25, ease: 'power2.out', clearProps: 'height,overflow', overwrite: true }
+        );
+      });
+    },
+
+    // GuarantorsEditor.razor: entrance for a guarantor row just added via "Add Guarantor" (max 2,
+    // so this is never a stagger — one row at a time).
+    animateGuarantorRowIn(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, y: reduceMotion ? 0 : -8 },
+          { autoAlpha: 1, y: 0, duration: reduceMotion ? 0 : 0.25, ease: 'power2.out', clearProps: 'transform', overwrite: true }
+        );
+      });
+    },
+
+    // GuarantorsEditor.razor: exit for a row being removed. Returns a Promise so the caller can
+    // `await` the tween finishing before actually removing the row from the C# list — Blazor has
+    // no separate "removing" render state, so the animation has to run to completion first or it
+    // would never be seen.
+    animateGuarantorRowOut(selector) {
+      return new Promise((resolve) => {
+        withReducedMotionGuard((reduceMotion) => {
+          const el = document.querySelector(selector);
+          if (!el || reduceMotion) {
+            resolve();
+            return;
+          }
+          gsap.to(el, { autoAlpha: 0, x: -12, duration: 0.2, ease: 'power1.in', overwrite: true, onComplete: resolve });
+        });
+      });
+    },
+
+    // BusinessLoanDetailsSection.razor: the non-blocking AmountMismatchWarning banner appearing
+    // after a save completes — a small settle-in so its arrival reads as a direct consequence of
+    // the save, not content that silently changed underneath the user.
+    animateWarningBanner(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, y: reduceMotion ? 0 : -6 },
+          { autoAlpha: 1, y: 0, duration: reduceMotion ? 0 : 0.25, ease: 'power2.out', clearProps: 'transform', overwrite: true }
+        );
+      });
+    },
+
+    // ApplicationWizard.razor: page-to-page transition — a small horizontal slide+fade, direction-
+    // aware (Next slides in from the right, Back slides in from the left) so the motion itself
+    // communicates progress/regress through the step sequence, matching how the client described
+    // Google Forms' own page transitions. Kept to the "Standard" page-transition tier (250-300ms,
+    // power2.out) per gsap-core — a step change inside one modal is a smaller context change than
+    // a full route navigation, but bigger than a tab switch (animateTabPanel's 200ms).
+    animateWizardStepIn(selector, direction) {
+      withReducedMotionGuard((reduceMotion) => {
+        const fromX = reduceMotion ? 0 : direction === 'back' ? -18 : 18;
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, x: fromX },
+          { autoAlpha: 1, x: 0, duration: reduceMotion ? 0 : 0.3, ease: 'power2.out', overwrite: true, clearProps: 'transform' }
+        );
+      });
+    },
+
+    // ApplicationWizard.razor's step indicator — the active step dot/segment growing slightly and
+    // completed steps' checkmarks settling in as the wizard advances.
+    animateWizardStepIndicator(activeSelector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          activeSelector,
+          { scale: reduceMotion ? 1 : 0.85 },
+          { scale: 1, duration: reduceMotion ? 0 : 0.25, ease: 'back.out(1.6)', overwrite: true, clearProps: 'transform' }
+        );
+      });
+    },
+
+    // DocumentSlotList.razor: a just-uploaded document row settling into a slot's file list, and
+    // (separately) the slot itself flashing its "satisfied" check once IsSatisfied flips true —
+    // the confirmation moment the client asked for ("upload button" should feel like it registered).
+    animateDocRowIn(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, y: reduceMotion ? 0 : -6 },
+          { autoAlpha: 1, y: 0, duration: reduceMotion ? 0 : 0.25, ease: 'power2.out', clearProps: 'transform', overwrite: true }
+        );
+      });
+    },
+
+    animateSlotSatisfied(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        if (reduceMotion) return;
+        gsap.fromTo(
+          selector,
+          { scale: 0.7, autoAlpha: 0 },
+          { scale: 1, autoAlpha: 1, duration: 0.35, ease: 'back.out(2)', overwrite: true, clearProps: 'transform' }
+        );
+      });
+    },
+
+    // CompletenessChecklist.razor: missing-items list re-render (e.g. after a save shrinks the
+    // list) — same stagger-fade language as animateTableRows, kept as its own named entry point
+    // since a checklist re-render is a distinct motion moment from a data-table page load even
+    // though the tween shape matches.
+    animateChecklistItems(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        gsap.fromTo(
+          selector,
+          { autoAlpha: 0, y: reduceMotion ? 0 : 6 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: reduceMotion ? 0 : 0.25,
+            ease: 'power1.out',
+            stagger: reduceMotion ? 0 : { each: 0.03, from: 'start' },
+            clearProps: 'transform',
+            overwrite: true,
+          }
+        );
+      });
+    },
+
     // Sidebar collapse toggle — chevron rotation only. The sidebar's width change (and the nav
     // label/brand-text crossfade) is a plain CSS transition driven by MainLayout toggling the
     // `.collapsed` class: it's a simple two-state, always-reversible toggle with no sequencing or
@@ -471,6 +624,16 @@ window.ngoFundWebcam = (() => {
     },
   };
 })();
+
+// Tabs.razor: moves focus to the newly active tab button after Left/Right/Home/End navigation
+// (roving-tabindex per the WAI-ARIA tabs pattern — the tab that just became active is the only
+// one left in the Tab order, so keyboard users need focus moved there explicitly). Split out from
+// ngoFundMotion since it's plain DOM focus management, not an animation.
+window.ngoFundTabs = {
+  focus(id) {
+    document.getElementById(id)?.focus();
+  },
+};
 
 // Handles bytes handed back from the API (base64-encoded, since IJSRuntime can't pass a raw
 // byte[] as a JS ArrayBuffer without extra interop plumbing) — either as a named-file download,

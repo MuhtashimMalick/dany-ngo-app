@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using NgoFund.Contracts.Applicants;
 using NgoFund.Contracts.ApplicationCategories;
@@ -42,7 +41,8 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
     private static async Task<ApplicantDto> CreateApplicantAsync(HttpClient client, string cnic)
     {
         var response = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Test Applicant", null, cnic, "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Test Applicant", null, cnic, "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         return await ReadOrFailAsync<ApplicantDto>(response, HttpStatusCode.Created);
     }
 
@@ -121,7 +121,7 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
         var client = await CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "33333-3333333-3");
 
-        var fileBytes = Encoding.UTF8.GetBytes("fake image bytes for testing");
+        var fileBytes = TestFiles.MinimalJpegBytes;
         using var form = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(fileBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
@@ -138,8 +138,10 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
         var downloadedBytes = await downloadResponse.Content.ReadAsByteArrayAsync();
         Assert.Equal(fileBytes, downloadedBytes);
 
+        // Applicant creation itself now uploads CnicFront + MembershipCard (A3), so the photo
+        // uploaded above is the 3rd document on this applicant, not the only one.
         var forApplicant = (await client.GetFromJsonAsync<List<DocumentDto>>($"/api/documents/by-applicant/{applicant.Id}"))!;
-        Assert.Single(forApplicant);
+        Assert.Single(forApplicant, d => d.Id == document.Id);
     }
 
     [Fact]
@@ -147,7 +149,7 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
     {
         var client = await CreateAuthenticatedClientAsync();
 
-        var fileBytes = Encoding.UTF8.GetBytes("fake image bytes for testing");
+        var fileBytes = TestFiles.MinimalJpegBytes;
         using var form = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(fileBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
@@ -159,5 +161,108 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
         Assert.Equal(HttpStatusCode.UnprocessableEntity, uploadResponse.StatusCode);
         var problem = JsonSerializer.Deserialize<JsonElement>(await uploadResponse.Content.ReadAsStringAsync());
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
+    }
+
+    [Fact]
+    public async Task CreateApplication_WithDuplicateExternalFormReference_Returns422NotRaw500()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var applicant = await CreateApplicantAsync(client, "44444-4444444-4");
+        var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
+
+        var firstResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test",
+            ExternalFormReference: "FORM-DUP-001"));
+        await ReadOrFailAsync<ApplicationDto>(firstResponse, HttpStatusCode.Created);
+
+        // Staff re-keying the same Google Form response against a second applicant/application.
+        var secondApplicant = await CreateApplicantAsync(client, "44444-4444444-5");
+        var secondResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            secondApplicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test",
+            ExternalFormReference: "FORM-DUP-001"));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, secondResponse.StatusCode);
+        var problem = JsonSerializer.Deserialize<JsonElement>(await secondResponse.Content.ReadAsStringAsync());
+        Assert.Contains("FORM-DUP-001", problem.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateApplication_WithExternalFormReferenceUsedByAnotherApplication_Returns422NotRaw500()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var applicant = await CreateApplicantAsync(client, "44444-4444444-6");
+        var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
+
+        var firstResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test",
+            ExternalFormReference: "FORM-DUP-002"));
+        await ReadOrFailAsync<ApplicationDto>(firstResponse, HttpStatusCode.Created);
+
+        var secondApplicant = await CreateApplicantAsync(client, "44444-4444444-7");
+        var secondResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            secondApplicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
+        var second = await ReadOrFailAsync<ApplicationDto>(secondResponse, HttpStatusCode.Created);
+
+        // Updating the second application to reuse the first one's reference must be rejected too.
+        var updateResponse = await client.PutAsJsonAsync($"/api/applications/{second.Id}", new UpdateApplicationRequest(
+            healthId, zakatFundId, 5000m, null, "Normal", "Test", ExternalFormReference: "FORM-DUP-002"));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, updateResponse.StatusCode);
+        var problem = JsonSerializer.Deserialize<JsonElement>(await updateResponse.Content.ReadAsStringAsync());
+        Assert.Contains("FORM-DUP-002", problem.GetProperty("detail").GetString());
+
+        // Re-saving the second application with its own unchanged (null) reference must still work.
+        var noOpUpdate = await client.PutAsJsonAsync($"/api/applications/{second.Id}", new UpdateApplicationRequest(
+            healthId, zakatFundId, 5000m, null, "Normal", "Test"));
+        Assert.Equal(HttpStatusCode.OK, noOpUpdate.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateApplication_CategoryChange_AfterGuarantorAdded_IsRejected()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var applicant = await CreateApplicantAsync(client, "44444-4444444-8");
+        var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
+        var educationId = (await client.GetFromJsonAsync<List<ApplicationCategoryDto>>("/api/application-categories"))!
+            .Single(c => c.Code == "EDUCATION").Id;
+
+        var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
+        var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
+
+        // Category-scoped data now exists: a guarantor row on file for this application.
+        var guarantorResponse = await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors",
+            new ReplaceApplicationGuarantorsRequest([new GuarantorEntry(
+                null, 1, "J-1234", "Guarantor One", null, null, null, "55555-5555555-5",
+                null, null, null, null, null, null, null)]));
+        Assert.Equal(HttpStatusCode.OK, guarantorResponse.StatusCode);
+
+        var blockedUpdate = await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
+            educationId, zakatFundId, 5000m, null, "Normal", "Test"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, blockedUpdate.StatusCode);
+
+        // Re-saving with the category unchanged must still work.
+        var noOpUpdate = await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
+            healthId, zakatFundId, 5000m, null, "Normal", "Test"));
+        Assert.Equal(HttpStatusCode.OK, noOpUpdate.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateApplication_CategoryChange_OnFreshApplication_IsAllowed()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var applicant = await CreateApplicantAsync(client, "44444-4444444-9");
+        var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
+        var educationId = (await client.GetFromJsonAsync<List<ApplicationCategoryDto>>("/api/application-categories"))!
+            .Single(c => c.Code == "EDUCATION").Id;
+
+        var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
+        var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
+
+        // Nothing category-scoped saved yet, so correcting the category is a legitimate no-op-adjacent edit.
+        var updateResponse = await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
+            educationId, zakatFundId, 5000m, null, "Normal", "Test"));
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
     }
 }

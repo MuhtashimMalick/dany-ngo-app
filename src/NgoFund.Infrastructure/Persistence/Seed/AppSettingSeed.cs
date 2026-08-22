@@ -17,6 +17,8 @@ internal static class AppSettingSeed
             ("ReceiptHeader", "", "string", "Text printed at the top of donation/payment receipts."),
             ("ReceiptFooter", "", "string", "Text printed at the bottom of donation/payment receipts."),
             ("FiscalYearStartMonth", "7", "number", "1-12; month the fiscal year starts (7 = July)."),
+            ("loan.default_installment_count", "10", "number", "Default number of installments suggested when authoring a new loan agreement."),
+            ("loan.max_installment_count", "60", "number", "Upper bound on the installment count a loan agreement may be created with."),
         ];
 
         builder.Entity<AppSetting>().HasData(rows.Select(r => new AppSetting

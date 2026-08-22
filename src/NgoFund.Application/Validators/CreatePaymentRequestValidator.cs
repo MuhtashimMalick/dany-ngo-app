@@ -1,4 +1,5 @@
 using FluentValidation;
+using NgoFund.Contracts.Common;
 using NgoFund.Contracts.Payments;
 using NgoFund.Domain.Enums;
 
@@ -17,7 +18,9 @@ public class CreatePaymentRequestValidator : AbstractValidator<CreatePaymentRequ
         RuleFor(x => x.InstrumentNumber).MaximumLength(100);
         RuleFor(x => x.BankName).MaximumLength(150);
         RuleFor(x => x.PaidToName).MaximumLength(200);
-        RuleFor(x => x.PaidToCnic).MaximumLength(20);
+        RuleFor(x => x.PaidToCnic).Matches(PakistaniFormats.CnicPattern)
+            .WithMessage(PakistaniFormats.CnicMessage)
+            .When(x => !string.IsNullOrEmpty(x.PaidToCnic));
         RuleFor(x => x.PaidToRelation).MaximumLength(100);
         RuleFor(x => x.Remarks).MaximumLength(1000);
     }

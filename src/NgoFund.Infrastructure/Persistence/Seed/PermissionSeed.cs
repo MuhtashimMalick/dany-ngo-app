@@ -40,6 +40,10 @@ internal static class PermissionSeed
         ("documents", "upload", "Upload Documents"), ("documents", "view", "View Documents"),
         ("documents", "delete", "Delete Documents"),
 
+        ("loans", "view", "View Loans"), ("loans", "manage", "Create/Cancel Loan Agreements"),
+        ("loans", "repay", "Record Loan Repayments"), ("loans", "void", "Void Loan Repayments"),
+        ("loans", "writeoff", "Write Off Loans"),
+
         ("dashboard", "view", "View Dashboard"),
         ("reports", "view", "View Reports"), ("reports", "export", "Export Reports"),
         ("auditlogs", "view", "View Audit Logs"),

@@ -1,3 +1,8 @@
+# syntax=docker/dockerfile:1
+
+# Build stage — restores/publishes just the Api project and the layers it depends on. Copying
+# .csproj files before the rest of the source lets Docker cache the (slow) restore layer across
+# rebuilds that only touch .cs files.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 

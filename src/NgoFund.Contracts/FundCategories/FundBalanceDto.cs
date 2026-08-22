@@ -8,4 +8,5 @@ public record FundBalanceDto(
     bool IsZakat,
     decimal TotalCollected,
     decimal TotalUtilized,
-    decimal Balance);
+    decimal Balance,
+    decimal TotalRepaid);

@@ -1,0 +1,33 @@
+@* One tab inside a parent <Tabs>. Must be a direct (possibly `@if`-wrapped) descendant of a
+   <Tabs> — registers itself on the cascaded Tabs instance on init and unregisters on dispose,
+   which is what lets the caller add/remove a tab just by adding/removing the `@if` around this
+   element (see Tabs.razor's doc comment). Renders nothing when it isn't the active tab, rather
+   than hiding via CSS, so inactive panels don't pay for DOM/layout they can't see. *@
+@implements IDisposable
+
+@if (ParentTabs is not null && ParentTabs.IsActive(this))
+{
+    <div class="tabs-panel" role="tabpanel" id="@ParentTabs.PanelId(this)" aria-labelledby="@ParentTabs.TabButtonId(this)" tabindex="0">
+        @ChildContent
+    </div>
+}
+
+@code {
+    [CascadingParameter] private Tabs? ParentTabs { get; set; }
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    internal readonly string Key = Guid.NewGuid().ToString("N");
+
+    protected override void OnInitialized()
+    {
+        if (ParentTabs is null)
+        {
+            throw new InvalidOperationException($"{nameof(TabPanel)} must be rendered inside a {nameof(Tabs)} component.");
+        }
+        ParentTabs.Register(this);
+    }
+
+    public void Dispose() => ParentTabs?.Unregister(this);
+}

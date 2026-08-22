@@ -1,0 +1,49 @@
+@* Proposed-business + emergency-contact field group, split out of BusinessLoanDetailsSection —
+   backs the wizard's "Proposed Business" page and the manage modal's single-block editor. Pairs
+   with BusinessBackgroundFields.razor; see ApplicationDetailModels.cs's doc comment.
+   RequestedAmount is display-only context (the base application's amount, not a field on this
+   model) — same "no separate loan-amount field" rationale as the original section component. *@
+<div class="form-grid">
+    <FormField Label="Business Phone" For="businessPhone">
+        <InputText id="businessPhone" @bind-Value="Model.BusinessPhone" />
+    </FormField>
+</div>
+
+<div class="form-section-legend">Proposed Business</div>
+<div class="form-grid">
+    <FormField Label="What business do you want to start? *" For="proposedBusiness" CssClass="span-2" ValidationFor="() => Model.ProposedBusinessDescription">
+        <InputTextArea id="proposedBusiness" @bind-Value="Model.ProposedBusinessDescription" />
+    </FormField>
+    <FormField Label="Proposed Business Location" For="proposedLocation" CssClass="span-2">
+        <InputText id="proposedLocation" @bind-Value="Model.ProposedBusinessLocation" />
+    </FormField>
+    <FormField Label="Capital Required (PKR)" For="capitalRequired" Hint="@CapitalHint">
+        <InputNumber id="capitalRequired" @bind-Value="Model.CapitalRequired" />
+    </FormField>
+    <FormField Label="Capital Already Available (PKR)" For="capitalAvailable">
+        <InputNumber id="capitalAvailable" @bind-Value="Model.CapitalAlreadyAvailable" />
+    </FormField>
+</div>
+
+<YesNoWithDetail Question="Prior business experience?" @bind-Value="Model.HasPriorBusinessExperience"
+                  DetailLabel="Details of prior business" @bind-Detail="Model.PriorBusinessDetails" />
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Emergency Contact</div>
+<p class="field-hint">In case of accident or death, who is responsible?</p>
+<div class="form-grid">
+    <FormField Label="Name" For="emergencyName">
+        <InputText id="emergencyName" @bind-Value="Model.EmergencyContactName" />
+    </FormField>
+    <FormatField Label="CNIC" For="emergencyCnic" Format="FieldFormat.Cnic" @bind-Value="Model.EmergencyContactCnic" />
+    <FormField Label="Phone" For="emergencyPhone">
+        <InputText id="emergencyPhone" @bind-Value="Model.EmergencyContactPhone" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BusinessLoanDetailsFormModel Model { get; set; } = null!;
+    [Parameter] public decimal RequestedAmount { get; set; }
+
+    private string CapitalHint =>
+        $"The loan amount needed is the application's Requested Amount (PKR {RequestedAmount:N2}) — there's no separate loan-amount field here.";
+}

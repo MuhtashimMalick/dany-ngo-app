@@ -88,21 +88,17 @@
                         </InputSelect>
                     </FormField>
 
-                    <FormField Label="CNIC / NTN" For="cnic">
-                        <InputText id="cnic" @bind-Value="_form.Cnic" />
-                    </FormField>
+                    <FormatField Label="CNIC / NTN" For="cnic" Format="FieldFormat.Cnic" @bind-Value="_form.Cnic" />
 
                     <FormField Label="Membership Number" For="membershipNumber">
-                        <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" />
+                        <InputText id="membershipNumber" @bind-Value="_form.MembershipNumber" maxlength="@PakistaniFormats.JamaatMembershipMaxLength" />
                     </FormField>
                 </div>
             </FormSection>
 
             <FormSection Title="Contact">
                 <div class="form-grid">
-                    <FormField Label="Phone" For="phone">
-                        <InputText id="phone" @bind-Value="_form.Phone" />
-                    </FormField>
+                    <FormatField Label="Phone" For="phone" Format="FieldFormat.MobilePhone" @bind-Value="_form.Phone" />
 
                     <FormField Label="Email" For="email">
                         <InputText id="email" @bind-Value="_form.Email" />

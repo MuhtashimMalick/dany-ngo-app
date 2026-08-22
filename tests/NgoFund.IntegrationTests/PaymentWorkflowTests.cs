@@ -80,7 +80,8 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
         await FundAsync(client, zakatFundId, 50000m);
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Pending Applicant", null, "77777-7777777-7", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Pending Applicant", null, "77777-7777777-7", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(

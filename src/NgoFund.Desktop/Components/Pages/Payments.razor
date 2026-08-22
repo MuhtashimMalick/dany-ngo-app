@@ -139,7 +139,7 @@
                 <Combobox TItem="ApplicationDto" SearchFunc="SearchApplicationsAsync" OnSelect="SelectApplicationAsync"
                           Placeholder="Search by application #, applicant name or CNIC"
                           NoResultsText="No matching applications."
-                          OptionDisabledReason="@(a => a.Status is "Approved" or "PartiallyPaid" ? null : "not payable")">
+                          OptionDisabledReason="GetApplicationDisabledReason">
                     <OptionTemplate Context="application">
                         <span>@application.ApplicationNumber — @application.ApplicantName (@application.ApplicantCnic)</span>
                         <StatusBadge Status="@application.Status" />
@@ -271,7 +271,7 @@
             <div class="receipt-amount">
                 <div class="label">Amount Paid</div>
                 <div class="value">PKR @_receiptPayment.Amount.ToString("N2")</div>
-                <div class="words">@AmountInWords(_receiptPayment.Amount) rupees only</div>
+                <div class="words">@AmountInWordsFormatter.Convert(_receiptPayment.Amount) rupees only</div>
             </div>
 
             <div class="receipt-signatures">
@@ -428,6 +428,26 @@
         return result.Items;
     }
 
+    // General-fund applications (RequiresLoanPlan) must have an installment plan (LoanAgreementId)
+    // before they're payable — a payment attempt without one is rejected server-side
+    // (LoanPlanRequiredException -> ProblemDetails, surfaced generically below via the existing
+    // ApiException catch in CreateAsync, same as any other domain-rule rejection). Disabling the
+    // option here is the UI-side half of that same rule, not a replacement for it.
+    private static string? GetApplicationDisabledReason(ApplicationDto application)
+    {
+        if (application.Status is not ("Approved" or "PartiallyPaid"))
+        {
+            return "not payable";
+        }
+
+        if (application.RequiresLoanPlan && application.LoanAgreementId is null)
+        {
+            return "Installment plan required";
+        }
+
+        return null;
+    }
+
     private async Task SelectApplicationAsync(ApplicationDto application)
     {
         _selectedApplication = application;
@@ -523,44 +543,6 @@
     private void CloseReceipt() => _receiptPayment = null;
 
     private async Task PrintReceiptAsync() => await JS.InvokeVoidAsync("print");
-
-    /// <summary>Small, dependency-free number-to-words for the receipt's "amount in words" line —
-    /// good enough for typical disbursement amounts (up to hundreds of millions); not a general
-    /// currency-in-words library.</summary>
-    private static string AmountInWords(decimal amount)
-    {
-        var whole = (long)Math.Floor(amount);
-        if (whole == 0)
-        {
-            return "Zero";
-        }
-
-        string[] ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-        string[] tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-
-        string ConvertThreeDigit(long n)
-        {
-            var parts = new List<string>();
-            if (n >= 100) { parts.Add(ones[n / 100] + " Hundred"); n %= 100; }
-            if (n >= 20) { parts.Add(tens[n / 10]); n %= 10; }
-            if (n > 0) { parts.Add(ones[n]); }
-            return string.Join(" ", parts);
-        }
-
-        var segments = new List<string>();
-        long crore = whole / 10_000_000; whole %= 10_000_000;
-        long lakh = whole / 100_000; whole %= 100_000;
-        long thousand = whole / 1_000; whole %= 1_000;
-        long remainder = whole;
-
-        if (crore > 0) segments.Add($"{ConvertThreeDigit(crore)} Crore");
-        if (lakh > 0) segments.Add($"{ConvertThreeDigit(lakh)} Lakh");
-        if (thousand > 0) segments.Add($"{ConvertThreeDigit(thousand)} Thousand");
-        if (remainder > 0) segments.Add(ConvertThreeDigit(remainder));
-
-        return string.Join(" ", segments);
-    }
 
     private class PaymentFormModel
     {

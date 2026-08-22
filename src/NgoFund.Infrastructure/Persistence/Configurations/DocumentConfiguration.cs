@@ -10,19 +10,24 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
     {
         builder.ToTable("documents", t => t.HasCheckConstraint(
             "ck_documents_exactly_one_owner",
-            "num_nonnulls(applicant_id, application_id, donation_id, payment_id) = 1"));
+            "num_nonnulls(applicant_id, application_id, donation_id, payment_id, application_guarantor_id) = 1"));
 
         builder.Property(e => e.FileName).HasMaxLength(260).IsRequired();
         builder.Property(e => e.StorageKey).HasMaxLength(260).IsRequired();
         builder.Property(e => e.ContentType).HasMaxLength(150).IsRequired();
         builder.Property(e => e.Sha256).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Description).HasMaxLength(500);
+        builder.Property(e => e.SlotKey).HasMaxLength(60);
 
         builder.HasIndex(e => e.StorageKey).IsUnique();
-        builder.HasIndex(e => e.ApplicantId);
-        builder.HasIndex(e => e.ApplicationId);
-        builder.HasIndex(e => e.DonationId);
-        builder.HasIndex(e => e.PaymentId);
+        builder.HasIndex(e => new { e.ApplicationId, e.SlotKey });
+        builder.HasIndex(e => new { e.ApplicationGuarantorId, e.SlotKey });
+
+        // No explicit HasIndex() for the five owner FK columns below — EF Core's convention
+        // already creates a non-unique index backing every FK by default. An earlier explicit
+        // `HasIndex(e => e.ApplicationId)` call here was redundant and, once this table grew
+        // several sibling 1:1 relationships elsewhere in the model (the details tables below), it
+        // started merging into a wrongly-unique index; removing the redundant call fixed it.
 
         // Restrict, not Cascade: deleting an applicant/application/etc. must not silently delete
         // its documents — soft-delete the owner and keep the file record intact.
@@ -44,6 +49,11 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.HasOne(e => e.Payment)
             .WithMany()
             .HasForeignKey(e => e.PaymentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.ApplicationGuarantor)
+            .WithMany()
+            .HasForeignKey(e => e.ApplicationGuarantorId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

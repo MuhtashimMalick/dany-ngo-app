@@ -12,6 +12,8 @@ public class NumberGenerator(AppDbContext dbContext) : INumberGenerator
         ["Donation"] = "DON",
         ["Application"] = "APP",
         ["Payment"] = "PAY",
+        ["LoanAgreement"] = "LOAN",
+        ["LoanRepayment"] = "REP",
     };
 
     public async Task<string> NextAsync(string entityType, CancellationToken cancellationToken)

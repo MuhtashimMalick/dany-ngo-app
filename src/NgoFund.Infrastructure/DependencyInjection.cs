@@ -73,8 +73,12 @@ public static class DependencyInjection
         services.AddScoped<IDocumentService, DocumentService>();
         services.AddScoped<IApplicantService, ApplicantService>();
         services.AddScoped<IFundApplicationService, FundApplicationService>();
+        services.AddScoped<IApplicationDetailsService, ApplicationDetailsService>();
         services.AddScoped<IApplicationCategoryService, ApplicationCategoryService>();
         services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<ILoanService, LoanService>();
+        services.AddScoped<IApplicantLedgerService, ApplicantLedgerService>();
+        services.AddScoped<IFundTransactionLedgerService, FundTransactionLedgerService>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IAppSettingService, AppSettingService>();
 

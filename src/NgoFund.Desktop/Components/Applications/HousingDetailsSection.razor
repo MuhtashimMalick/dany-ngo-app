@@ -1,0 +1,99 @@
+@* Housing Assistance (HOUSE_RENT) category-detail form — self-contained: loads its own data via
+   GET .../details/housing (a 404 there means "not entered yet", not an error — ApiClient surfaces
+   that as a null result) and saves independently via its own button. Used by the manage modal's
+   Details tab (existing "edit everything, existing application" mode). The create-flow wizard
+   does NOT reuse this wrapper — a brand-new application has nothing to load yet, and the wizard
+   needs to hold the model across its own page lifecycle and choose its own save point — so
+   ApplicationWizard.razor instead renders HousingDetailsFields.razor directly against its own
+   model instance. Both contexts share that one Fields component, which is the actual DRY point;
+   this wrapper only adds the self-contained load/save behavior on top for the manage-modal case.
+   Mirrors LoanSchedulePanel's self-contained load/save pattern (see that component's doc
+   comment). *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+
+<FormSection Title="Housing Assistance Details" Description="From the applicant's Housing Assistance form.">
+    @if (_error is not null)
+    {
+        <div class="alert alert-error">@_error</div>
+    }
+
+    @if (_isLoading)
+    {
+        <Skeleton Rows="3" Columns="2" />
+    }
+    else
+    {
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="housing-details-form">
+            <HousingDetailsFields Model="_form" />
+
+            <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Housing Details")</button>
+        </EditForm>
+    }
+</FormSection>
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private string? _error;
+    private HousingDetailsFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var existing = await ApiClient.GetHousingDetailsAsync(ApplicationId);
+            if (existing is not null)
+            {
+                _form = new HousingDetailsFormModel
+                {
+                    ApplicantAge = existing.ApplicantAge,
+                    CurrentHouseValue = existing.CurrentHouseValue,
+                    MonthlyRent = existing.MonthlyRent,
+                    AdvancePaid = existing.AdvancePaid,
+                    YearsAtCurrentAddress = existing.YearsAtCurrentAddress,
+                    PreviousResidentialAddress = existing.PreviousResidentialAddress,
+                    ReceivedAssistanceBefore = existing.ReceivedAssistanceBefore,
+                    PreviousAssistanceDetails = existing.PreviousAssistanceDetails,
+                    ReceivesMarriageAssistance = existing.ReceivesMarriageAssistance,
+                    ReceivesEducationAssistance = existing.ReceivesEducationAssistance,
+                    ReceivesMedicalAssistance = existing.ReceivesMedicalAssistance,
+                    ReceivesWidowAssistance = existing.ReceivesWidowAssistance,
+                };
+            }
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            await ApiClient.UpsertHousingDetailsAsync(ApplicationId, new UpsertHousingApplicationDetailsRequest(
+                _form.ApplicantAge, _form.CurrentHouseValue, _form.MonthlyRent, _form.AdvancePaid,
+                _form.YearsAtCurrentAddress, _form.PreviousResidentialAddress, _form.ReceivedAssistanceBefore,
+                _form.PreviousAssistanceDetails, _form.ReceivesMarriageAssistance, _form.ReceivesEducationAssistance,
+                _form.ReceivesMedicalAssistance, _form.ReceivesWidowAssistance));
+            Toast.Success("Housing details saved");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

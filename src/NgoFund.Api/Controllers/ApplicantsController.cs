@@ -5,6 +5,7 @@ using NgoFund.Api.Authorization;
 using NgoFund.Application.Abstractions;
 using NgoFund.Contracts.Applicants;
 using NgoFund.Contracts.Common;
+using NgoFund.Contracts.Ledgers;
 
 namespace NgoFund.Api.Controllers;
 
@@ -13,6 +14,7 @@ namespace NgoFund.Api.Controllers;
 [Authorize]
 public class ApplicantsController(
     IApplicantService applicantService,
+    IApplicantLedgerService applicantLedgerService,
     IValidator<CreateApplicantRequest> createValidator,
     IValidator<UpdateApplicantRequest> updateValidator) : ControllerBase
 {
@@ -26,8 +28,12 @@ public class ApplicantsController(
     public async Task<ActionResult<ApplicantDto>> GetApplicant(Guid id, CancellationToken cancellationToken)
         => Ok(await applicantService.GetApplicantByIdAsync(id, cancellationToken));
 
+    // Up to 4 inline base64 uploads (CnicFront/CnicBack/MembershipCard/Photo) at 10 MB decoded
+    // each: base64 inflates size by ~4/3, so 4 * 10 MB * 4/3 ~= 53 MB of raw JSON, plus headroom
+    // for the rest of the request body — comfortably past Kestrel's 30 MB default.
     [HttpPost]
     [HasPermission("applicants.create")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
     public async Task<ActionResult<ApplicantDto>> Create(CreateApplicantRequest request, CancellationToken cancellationToken)
     {
         await createValidator.ValidateAndThrowAsync(request, cancellationToken);
@@ -59,4 +65,11 @@ public class ApplicantsController(
         await applicantService.SetProfilePhotoAsync(id, documentId, cancellationToken);
         return NoContent();
     }
+
+    /// <summary>This applicant's complete financial history across every fund. Not paged — one person's history is bounded. Gated on both money-viewing permissions, not a new one.</summary>
+    [HttpGet("{id:guid}/ledger")]
+    [HasPermission("payments.view")]
+    [HasPermission("loans.view")]
+    public async Task<ActionResult<ApplicantLedgerDto>> GetLedger(Guid id, CancellationToken cancellationToken)
+        => Ok(await applicantLedgerService.GetApplicantLedgerAsync(id, cancellationToken));
 }

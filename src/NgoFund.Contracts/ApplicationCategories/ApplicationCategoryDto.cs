@@ -7,4 +7,7 @@ public record ApplicationCategoryDto(
     bool IsZakatEligible,
     decimal? DefaultMaxAmount,
     bool IsActive,
-    int DisplayOrder);
+    int DisplayOrder,
+    int RequiresGuarantors,
+    string? TermsText,
+    string? TermsVersion);

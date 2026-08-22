@@ -1,0 +1,25 @@
+@* Renders a FundApplicantLedgerRowDto's server-computed RecoveryStatus as a StatusBadge carrying
+   the actual outstanding/written-off amount alongside the colour (F3) — never recomputed
+   client-side, so the Funds-page per-fund ledger table and the individual applicant ledger page
+   (the two places this DTO's RecoveryStatus is shown) can never disagree. "NotApplicable" (always
+   true for Zakat-fund rows, since a Zakat fund can never carry a loan) renders as a plain dash
+   rather than an empty-looking badge. *@
+@if (Row.RecoveryStatus == "NotApplicable")
+{
+    <span>-</span>
+}
+else
+{
+    <StatusBadge Status="@Row.RecoveryStatus" Text="@Text" />
+}
+
+@code {
+    [Parameter, EditorRequired] public FundApplicantLedgerRowDto Row { get; set; } = null!;
+
+    private string Text => Row.RecoveryStatus switch
+    {
+        "Outstanding" => $"Outstanding · PKR {Row.OutstandingRecoverable:N2}",
+        "WrittenOff" => $"Written Off · PKR {Row.WrittenOffAmount:N2}",
+        _ => Row.RecoveryStatus, // "Cleared" — the label alone is enough, there's no amount left to show
+    };
+}

@@ -13,14 +13,16 @@
      declares that intent to the browser/OS instead of leaving it ambiguous. */
   color-scheme: light;
 
-  /* Color — one confident accent (teal, ties thematically to funds/growth), flat and used
-     sparingly; everything else is a true neutral gray, not color-tinted. */
-  --color-primary: #0f766e;
-  --color-primary-hover: #0b5d56;
+  /* Color — one confident accent (blue, taken directly from the client's logo per the 2026-08-10
+     rebrand request), flat and used sparingly; everything else is a true neutral gray, not
+     color-tinted. Hover shade (#093d7e) is the same hue/saturation at ~22% lower lightness —
+     the same relationship the previous teal pair (#0f766e -> #0b5d56) used. */
+  --color-primary: #0b4ea2;
+  --color-primary-hover: #093d7e;
   --color-on-primary: #ffffff;
   --color-secondary: #334155;
-  --color-accent: #0f766e;
-  --color-accent-hover: #0b5d56;
+  --color-accent: #0b4ea2;
+  --color-accent-hover: #093d7e;
 
   --color-background: #f8fafc;
   --color-surface: #ffffff;
@@ -30,7 +32,7 @@
   --color-border: #e2e8f0;
   --color-destructive: #dc2626;
   --color-destructive-hover: #b91c1c;
-  --color-ring: #0f766e;
+  --color-ring: #0b4ea2;
 
   /* Status colors — application/payment/donation workflow states. Hand-tuned, desaturated pairs
      rather than raw Tailwind-100/700 swatches (the previous pass's badges read as an obvious

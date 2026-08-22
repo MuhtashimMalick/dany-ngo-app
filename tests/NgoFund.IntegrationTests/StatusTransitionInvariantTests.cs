@@ -77,7 +77,8 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         HttpClient client, string cnic, Guid categoryId, Guid fundId, decimal requestedAmount)
     {
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
-            null, "Status Invariant Test Applicant", null, cnic, "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+            null, "Status Invariant Test Applicant", null, cnic, "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            CnicFront: TestFiles.MinimalPngUpload, CnicBack: TestFiles.MinimalPngUpload, MembershipCard: TestFiles.MinimalPngUpload));
         var applicant = await ReadOrFailAsync<ApplicantDto>(applicantResponse, HttpStatusCode.Created);
 
         var createResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(

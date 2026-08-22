@@ -1,3 +1,4 @@
+using NgoFund.Domain.Applications;
 using NgoFund.Domain.Entities;
 using NgoFund.Domain.Enums;
 using NgoFund.Domain.Exceptions;
@@ -41,6 +42,106 @@ public class FundApplicationTests
     {
         Assert.Throws<ZakatFundMismatchException>(() =>
             FundApplication.EnsureFundIsCompatible(Category(isZakatEligible: false), Fund(isZakat: true)));
+    }
+
+    // --- Guarantor gate (E2): categories with RequiresGuarantors > 0 (2 for ROZGAR) block Approved
+    // until enough ApplicationGuarantor rows are on file. ---
+
+    private static ApplicationCategory CategoryRequiringGuarantors(int requiresGuarantors) => new()
+    {
+        Name = "Rozgar/Business Help",
+        IsZakatEligible = false,
+        RequiresGuarantors = requiresGuarantors,
+    };
+
+    [Fact]
+    public void EnsureGuarantorsSatisfied_NoGuarantorsRequired_NeverThrows()
+    {
+        FundApplication.EnsureGuarantorsSatisfied("APP-0001", CategoryRequiringGuarantors(0), guarantorCount: 0);
+    }
+
+    [Fact]
+    public void EnsureGuarantorsSatisfied_FewerThanRequired_Throws()
+    {
+        Assert.Throws<GuarantorsRequiredException>(() =>
+            FundApplication.EnsureGuarantorsSatisfied("APP-0001", CategoryRequiringGuarantors(2), guarantorCount: 1));
+    }
+
+    [Fact]
+    public void EnsureGuarantorsSatisfied_ExactlyRequired_Succeeds()
+    {
+        FundApplication.EnsureGuarantorsSatisfied("APP-0001", CategoryRequiringGuarantors(2), guarantorCount: 2);
+    }
+
+    [Fact]
+    public void EnsureGuarantorsSatisfied_MoreThanRequired_Succeeds()
+    {
+        FundApplication.EnsureGuarantorsSatisfied("APP-0001", CategoryRequiringGuarantors(2), guarantorCount: 3);
+    }
+
+    // --- The completeness gate: EnsureApplicationIsComplete throws when the pre-computed
+    // ApplicationCompletenessResult.IsComplete is false, mirroring EnsureGuarantorsSatisfied's shape. ---
+
+    private static readonly RequiredField DummyField = new("Dummy", "Dummy Field", "Section");
+
+    [Fact]
+    public void EnsureApplicationIsComplete_ResultIsComplete_NeverThrows()
+    {
+        var result = new ApplicationCompletenessResult(IsComplete: true, MissingFields: [], Slots: []);
+
+        FundApplication.EnsureApplicationIsComplete("APP-0001", result);
+    }
+
+    [Fact]
+    public void EnsureApplicationIsComplete_ResultIncomplete_ThrowsWithMissingFieldLabel()
+    {
+        var result = new ApplicationCompletenessResult(IsComplete: false, MissingFields: [DummyField], Slots: []);
+
+        var ex = Assert.Throws<ApplicationIncompleteException>(() => FundApplication.EnsureApplicationIsComplete("APP-0001", result));
+
+        Assert.Contains("Dummy Field", ex.MissingFieldLabels);
+        Assert.Empty(ex.MissingDocumentLabels);
+    }
+
+    [Fact]
+    public void EnsureApplicationIsComplete_UnsatisfiedRequiredSlot_ThrowsWithMissingDocumentLabel()
+    {
+        var slot = new RequiredDocumentSlot("TEST.SLOT", "Test Document", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.CnicFront]);
+        var status = new DocumentSlotStatus(slot, null, null, null, [], IsSatisfied: false);
+        var result = new ApplicationCompletenessResult(IsComplete: false, MissingFields: [], Slots: [status]);
+
+        var ex = Assert.Throws<ApplicationIncompleteException>(() => FundApplication.EnsureApplicationIsComplete("APP-0001", result));
+
+        Assert.Contains("Test Document", ex.MissingDocumentLabels);
+        Assert.Empty(ex.MissingFieldLabels);
+    }
+
+    [Fact]
+    public void EnsureApplicationIsComplete_UnsatisfiedOptionalSlot_IsNeverListedAsMissing()
+    {
+        var slot = new RequiredDocumentSlot("TEST.OPTIONAL", "Optional Document", false, 1, DocumentSlotOwnerScope.Application, [DocumentType.CnicFront]);
+        var status = new DocumentSlotStatus(slot, null, null, null, [], IsSatisfied: false);
+        // IsComplete is computed by the evaluator (an unsatisfied optional slot never flips it to
+        // false) — this test exercises EnsureApplicationIsComplete's own filtering independently by
+        // forcing IsComplete=false via an unrelated missing field, and checking the optional slot
+        // still never appears in the resulting exception's document list.
+        var result = new ApplicationCompletenessResult(IsComplete: false, MissingFields: [DummyField], Slots: [status]);
+
+        var ex = Assert.Throws<ApplicationIncompleteException>(() => FundApplication.EnsureApplicationIsComplete("APP-0001", result));
+
+        Assert.DoesNotContain("Optional Document", ex.MissingDocumentLabels);
+    }
+
+    [Fact]
+    public void EnsureApplicationIsComplete_GuarantorScopedSlot_UsesDisambiguatedDisplayLabel()
+    {
+        var slot = new RequiredDocumentSlot("ROZGAR.GUARANTOR_CNIC", "Guarantor's CNIC", true, 1, DocumentSlotOwnerScope.Guarantor, [DocumentType.CnicFront]);
+        var status = new DocumentSlotStatus(slot, Guid.NewGuid(), GuarantorSequenceNumber: 2, "Guarantor Two", [], IsSatisfied: false);
+        var result = new ApplicationCompletenessResult(IsComplete: false, MissingFields: [], Slots: [status]);
+
+        var ex = Assert.Throws<ApplicationIncompleteException>(() => FundApplication.EnsureApplicationIsComplete("APP-0001", result));
+
+        Assert.Contains("Guarantor's CNIC (Guarantor 2)", ex.MissingDocumentLabels);
     }
 
     [Theory]

@@ -1,0 +1,1004 @@
+@* Multi-page, Google-Forms-style create-application wizard — replaces the old 2-step "base form,
+   then one giant category-details blob" create modal. Built for the completeness-enforcement
+   milestone: the client's core ask was "staff shouldn't be able to submit a half-filled
+   application, same as a Google Form won't let you skip a required question." This component is
+   the primary defense; the API's Approved-transition completeness gate (already built) is the
+   backstop for whatever a staff member abandons mid-wizard by closing early (rule #4 below).
+
+   Page sequence is fixed per category (see BuildPagesAfterCreate) but not knowable until the
+   first page's Save creates the application (category is chosen ON page 1) — same reveal-after-
+   create shape the old 2-step flow already had, just with more steps after the reveal.
+
+   Save points (deliberately NOT saving on every page — see the milestone brief):
+     - POST /api/applications when leaving the Applicant & Request page.
+     - PUT /api/applications/{id} when leaving Household & Address/Intake, and again on Finish
+       (Declaration & Terms) — needed because UpdateApplicationRequest is a full-replace DTO and
+       IntakeChannel can only be set at creation (UpdateApplicationRequest has no IntakeChannel
+       property), so Intake fields live on page 1 even though a couple of the per-category page
+       titles below read "Household & Intake" for naming-consistency with the no-details flow.
+     - PUT .../details/{category} once, when leaving the LAST category-detail page (Marriage and
+       Business Loan each split across two pages — save fires leaving the second, not the first).
+     - PUT .../guarantors once, when leaving the LAST guarantor page.
+     - Document uploads happen live via DocumentSlotList as each file is picked.
+
+   Per-page Next/Finish enablement uses a small computed CurrentPageValid switch rather than
+   EditForm+DataAnnotationsValidator bound to the one shared detail model per page — the shared
+   models (MarriageDetailsFormModel etc., see ApplicationDetailModels.cs) carry [Required] on
+   fields that live on DIFFERENT wizard pages (BrideName on page 3, GroomName on page 4); a single
+   DataAnnotationsValidator against the whole model would block page 3's Next on page 4's empty
+   GroomName. The milestone brief explicitly allows this ("EditForm/DataAnnotationsValidator per
+   page, or an equivalent per-page validity check") — required fields are still marked with a
+   trailing " *" in each Fields component's label and still carry the same [Required] attribute,
+   which the manage modal's whole-block editors (MarriageDetailsSection etc.) validate normally
+   with DataAnnotationsValidator since those aren't split across pages. *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<Modal Title="@Title" Size="lg" OnClose="RequestCloseAsync">
+    <ChildContent>
+        <div class="wizard-steps" aria-label="Application progress">
+            @for (var i = 0; i < _pages.Count; i++)
+            {
+                var index = i;
+                <div class="wizard-step @(index == _pageIndex ? "active" : "") @(index < _pageIndex ? "done" : "")">
+                    <span class="wizard-step-dot" id="@(index == _pageIndex ? _activeStepDotId : null)">
+                        @if (index < _pageIndex)
+                        {
+                            <Icon Name="check-circle" Size="14" />
+                        }
+                        else
+                        {
+                            @(index + 1)
+                        }
+                    </span>
+                </div>
+            }
+        </div>
+        <p class="wizard-step-caption">Step @(_pageIndex + 1) of @_pages.Count · @PageTitle</p>
+
+        @if (_pageError is not null)
+        {
+            <div class="alert alert-error">@_pageError</div>
+        }
+
+        @* oninput/onchange here catch events bubbled up from every InputText/InputNumber/checkbox
+           on the page — including ones bound inside child components like HousingDetailsFields or
+           GuarantorFields, where the compiler-generated ValueChanged callback only re-renders that
+           child, never this wizard. Native DOM events bubble across component boundaries even
+           though Blazor's rendering doesn't, so this is what keeps computed page state (the
+           Zakat-eligibility hint, SelectedCategory-driven markup, CurrentPageValid itself) live as
+           the user types instead of stale until the next full re-render (e.g. Back/Next). Next/
+           Finish are never disabled off CurrentPageValid (see Next()) — clicking always works and
+           always blurs the focused input first, so this re-render just keeps the rest of the page
+           in sync, not the button's clickability. *@
+        <div class="wizard-page" id="@_pageContentId" @oninput="HandlePageFieldChanged" @onchange="HandlePageFieldChanged">
+            @if (_pages[_pageIndex] == WizardPageKind.ApplicantRequest)
+            {
+                <FormSection Title="Applicant">
+                    @if (_selectedApplicant is not null)
+                    {
+                        <div class="flex items-center gap-3">
+                            <span>@_selectedApplicant.FullName (@_selectedApplicant.Cnic)</span>
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _selectedApplicant = null">Change</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <Combobox TItem="ApplicantDto" SearchFunc="SearchApplicantsAsync" OnSelect="SelectApplicant"
+                                  Placeholder="Search by name or CNIC" NoResultsText="No matching applicants.">
+                            <OptionTemplate Context="applicant">
+                                <span>@applicant.FullName (@applicant.Cnic)</span>
+                            </OptionTemplate>
+                        </Combobox>
+                    }
+                </FormSection>
+
+                <EditForm Model="_requestForm">
+                    <FormSection Title="Request">
+                        <div class="form-grid">
+                            <FormField Label="Category *" For="wizardCategory"
+                                       Hint="@(_application is not null ? "Category is fixed once the application is created." : null)">
+                                <InputSelect id="wizardCategory" @bind-Value="_requestForm.ApplicationCategoryId" disabled="@(_application is not null)">
+                                    <option value="">Select category</option>
+                                    @foreach (var category in Categories)
+                                    {
+                                        <option value="@category.Id">@category.Name</option>
+                                    }
+                                </InputSelect>
+                            </FormField>
+                            <FormField Label="Fund *" For="wizardFund"
+                                       Hint="@(SelectedCategoryIsZakatEligible ? null : "This category isn't Zakat-eligible — only the General fund is payable.")">
+                                <InputSelect id="wizardFund" @bind-Value="_requestForm.FundCategoryId">
+                                    <option value="">Select fund</option>
+                                    @foreach (var fund in Funds)
+                                    {
+                                        <option value="@fund.Id" disabled="@(fund.IsZakat && !SelectedCategoryIsZakatEligible)">
+                                            @fund.Name@(fund.IsZakat && !SelectedCategoryIsZakatEligible ? " (not eligible)" : "")
+                                        </option>
+                                    }
+                                </InputSelect>
+                            </FormField>
+                            <FormField Label="Requested Amount *" For="wizardAmount">
+                                <InputNumber id="wizardAmount" @bind-Value="_requestForm.RequestedAmount" />
+                            </FormField>
+                            <FormField Label="Priority" For="wizardPriority">
+                                <InputSelect id="wizardPriority" @bind-Value="_requestForm.Priority">
+                                    <option value="Normal">Normal</option>
+                                    <option value="High">High</option>
+                                    <option value="Urgent">Urgent</option>
+                                </InputSelect>
+                            </FormField>
+                            <FormField Label="Application Date" For="wizardDate">
+                                <InputDate id="wizardDate" @bind-Value="_requestForm.ApplicationDate" />
+                            </FormField>
+                            <FormField Label="Purpose" For="wizardPurpose" CssClass="span-2">
+                                <InputTextArea id="wizardPurpose" @bind-Value="_requestForm.Purpose" />
+                            </FormField>
+                        </div>
+                    </FormSection>
+
+                    <FormSection Title="Intake" Description="How this application reached the office.">
+                        <div class="form-grid">
+                            <FormField Label="Intake Channel" For="wizardIntake">
+                                <InputSelect id="wizardIntake" @bind-Value="_requestForm.IntakeChannel">
+                                    <option value="InApp">In App</option>
+                                    <option value="GoogleForm">Google Form</option>
+                                    <option value="Paper">Paper</option>
+                                </InputSelect>
+                            </FormField>
+                            @if (_requestForm.IntakeChannel != "InApp")
+                            {
+                                <FormField Label="External Form Reference" For="wizardExternalRef">
+                                    <InputText id="wizardExternalRef" @bind-Value="_requestForm.ExternalFormReference" />
+                                </FormField>
+                                <FormField Label="Originally Submitted" For="wizardSubmittedAt" Hint="When the applicant submitted the original form — distinct from today's data-entry date.">
+                                    <InputDate id="wizardSubmittedAt" @bind-Value="_requestForm.SubmittedAt" />
+                                </FormField>
+                            }
+                        </div>
+                    </FormSection>
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.Household)
+            {
+                <EditForm Model="_householdForm">
+                    <div class="form-grid">
+                        <FormField Label="Declared Monthly Income (PKR)" For="wizardIncome">
+                            <InputNumber id="wizardIncome" @bind-Value="_householdForm.DeclaredMonthlyIncome" />
+                        </FormField>
+                        <FormField Label="Household Size" For="wizardHhSize">
+                            <InputNumber id="wizardHhSize" @bind-Value="_householdForm.DeclaredHouseholdSize" />
+                        </FormField>
+                        <FormField Label="Earning Members" For="wizardEarning">
+                            <InputNumber id="wizardEarning" @bind-Value="_householdForm.DeclaredEarningMembers" />
+                        </FormField>
+                        <FormField Label="House Status" For="wizardHouseStatus">
+                            <InputSelect id="wizardHouseStatus" @bind-Value="_householdForm.DeclaredHouseStatus">
+                                <option value="">Select</option>
+                                <option value="Owned">Owned</option>
+                                <option value="Rented">Rented</option>
+                                <option value="Katchi">Katchi</option>
+                                <option value="Pucci">Pucci</option>
+                            </InputSelect>
+                        </FormField>
+                        <FormField Label="Declared Residential Address" For="wizardResAddr" CssClass="span-2">
+                            <InputTextArea id="wizardResAddr" @bind-Value="_householdForm.DeclaredResidentialAddress" />
+                        </FormField>
+                        <FormField Label="Declared Business Address" For="wizardBizAddr" CssClass="span-2">
+                            <InputTextArea id="wizardBizAddr" @bind-Value="_householdForm.DeclaredBusinessAddress" />
+                        </FormField>
+                    </div>
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.HousingDetails)
+            {
+                <EditForm Model="_housingForm">
+                    <HousingDetailsFields Model="_housingForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.MarriageBride)
+            {
+                <EditForm Model="_marriageForm">
+                    <MarriageBrideFields Model="_marriageForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.MarriageGroom)
+            {
+                <EditForm Model="_marriageForm">
+                    <MarriageGroomFields Model="_marriageForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.BusinessBackground)
+            {
+                <EditForm Model="_businessForm">
+                    <BusinessBackgroundFields Model="_businessForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.BusinessProposal)
+            {
+                <EditForm Model="_businessForm">
+                    <BusinessProposalFields Model="_businessForm" RequestedAmount="_requestForm.RequestedAmount" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.Guarantor && _guarantorRows.Count > CurrentGuarantorIndex)
+            {
+                <EditForm Model="_guarantorRows[CurrentGuarantorIndex]">
+                    <GuarantorFields Row="_guarantorRows[CurrentGuarantorIndex]" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.Documents && _application is not null)
+            {
+                @if (_isCompletenessLoading)
+                {
+                    <Skeleton Rows="3" Columns="1" />
+                }
+                <DocumentSlotList ApplicationId="_application.Id" ApplicantId="_application.ApplicantId" Slots="_completeness?.Slots ?? []"
+                                   ExtraDocuments="_documents.Where(d => d.SlotKey is null).ToList()"
+                                   OnChanged="RefreshDocumentStateAsync" OnViewDocument="doc => _viewingDocument = doc" />
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.Declaration && _application is not null)
+            {
+                @if (CategoryHasManifest)
+                {
+                    <CompletenessChecklist Completeness="_completeness" IsLoading="_isCompletenessLoading"
+                                            HiddenSectionLabels="[DeclarationSectionLabel]" />
+                }
+
+                @if (!string.IsNullOrWhiteSpace(SelectedCategory?.TermsText))
+                {
+                    <FormSection Title="Terms">
+                        <div class="terms-text">@SelectedCategory.TermsText</div>
+                    </FormSection>
+                }
+
+                <EditForm Model="_declarationForm">
+                    <FormSection Title="Declaration">
+                        <label class="checkbox-label mb-3">
+                            <input type="checkbox" @bind="_declarationForm.DeclarationAcceptedBool" /> Applicant declaration accepted
+                        </label>
+                        <label class="checkbox-label mb-3">
+                            <input type="checkbox" @bind="_declarationForm.TermsAcceptedBool" /> Terms accepted@(SelectedCategory?.TermsVersion is { } version ? $" (version {version})" : "")
+                        </label>
+                    </FormSection>
+                </EditForm>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        @if (_pageIndex > 0)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="Back" disabled="@_isSaving">
+                <Icon Name="chevron-left" Size="15" />Back
+            </button>
+        }
+        <button type="button" class="btn btn-secondary" @onclick="RequestCloseAsync">Cancel</button>
+        @if (IsLastPage)
+        {
+            <button type="button" class="btn btn-primary" @onclick="Next" disabled="@_isSaving">
+                @(_isSaving ? "Finishing..." : "Finish")
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" @onclick="Next" disabled="@_isSaving">
+                @(_isSaving ? "Saving..." : "Next")<Icon Name="chevron-right" Size="15" />
+            </button>
+        }
+    </Footer>
+</Modal>
+
+<ConfirmDialog IsOpen="_showZakatConfirm" IsOpenChanged="v => _showZakatConfirm = v"
+               Title="Zakat-eligible category on the General fund"
+               Message="This application's category is normally paid from the Zakat fund, but you selected the General fund. Paying from the General fund makes this a repayable Qard al-Hasan loan, not a grant — the applicant will be expected to repay it in interest-free installments. Continue?"
+               ConfirmText="Yes, treat as a loan" CancelText="Cancel" OnConfirmed="ConfirmZakatAndCreateAsync" />
+
+<ConfirmDialog IsOpen="_showCloseConfirm" IsOpenChanged="v => _showCloseConfirm = v"
+               Title="Close this application?"
+               Message="This application will be saved as incomplete and cannot be approved until the missing details and documents are added."
+               ConfirmText="Close anyway" CancelText="Keep editing" IsDestructive="true" OnConfirmed="CloseImmediatelyAsync" />
+
+<DocumentViewer Document="_viewingDocument" OnClose="() => _viewingDocument = null" />
+
+@code {
+    private enum WizardPageKind
+    {
+        ApplicantRequest, Household, HousingDetails, MarriageBride, MarriageGroom,
+        BusinessBackground, BusinessProposal, Guarantor, Documents, Declaration,
+    }
+
+    [Parameter, EditorRequired] public IReadOnlyList<ApplicationCategoryDto> Categories { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<FundCategoryDto> Funds { get; set; } = [];
+    /// <summary>Fired when the wizard should be unmounted — either Finish completed successfully
+    /// or the user confirmed closing early. The caller (Applications.razor) is responsible for
+    /// reloading the list; this component never assumes anything about what's behind it.</summary>
+    [Parameter, EditorRequired] public EventCallback OnClosed { get; set; }
+
+    private List<WizardPageKind> _pages = [WizardPageKind.ApplicantRequest];
+    private int _pageIndex;
+    private string _direction = "forward";
+    private bool _pendingStepAnimation = true;
+    private readonly string _pageContentId = $"wizard-page-{Guid.NewGuid():N}";
+    private readonly string _activeStepDotId = $"wizard-step-active-{Guid.NewGuid():N}";
+
+    private ApplicantDto? _selectedApplicant;
+    private readonly RequestFormModel _requestForm = new();
+    private readonly HouseholdFormModel _householdForm = new();
+    private readonly HousingDetailsFormModel _housingForm = new();
+    private readonly MarriageDetailsFormModel _marriageForm = new();
+    private readonly BusinessLoanDetailsFormModel _businessForm = new();
+    private List<GuarantorRowModel> _guarantorRows = [];
+    private readonly DeclarationFormModel _declarationForm = new();
+
+    private ApplicationDto? _application;
+    private ApplicationCompletenessDto? _completeness;
+    private bool _isCompletenessLoading;
+    private IReadOnlyList<DocumentDto> _documents = [];
+    private DocumentDto? _viewingDocument;
+
+    private bool _isSaving;
+    private string? _pageError;
+    private bool _showZakatConfirm;
+    private bool _showCloseConfirm;
+
+    private string Title => _application is null ? "New Application" : $"New Application — {_application.ApplicationNumber}";
+    private bool IsLastPage => _pageIndex == _pages.Count - 1;
+
+    private ApplicationCategoryDto? SelectedCategory =>
+        Categories.FirstOrDefault(c => c.Id == _requestForm.ApplicationCategoryId);
+
+    private bool SelectedCategoryIsZakatEligible =>
+        _requestForm.ApplicationCategoryId is null || (SelectedCategory?.IsZakatEligible ?? true);
+
+    /// <summary>0-based position of the current page among the (possibly N > 2, see F3) contiguous
+    /// Guarantor pages in `_pages` — indexes both `_guarantorRows` and the "Guarantor N" title.</summary>
+    private int CurrentGuarantorIndex => _pages.Take(_pageIndex).Count(p => p == WizardPageKind.Guarantor);
+
+    private bool PendingZakatWarning =>
+        _requestForm.ApplicationCategoryId is not null && _requestForm.FundCategoryId is not null &&
+        SelectedCategoryIsZakatEligible &&
+        !(Funds.FirstOrDefault(f => f.Id == _requestForm.FundCategoryId)?.IsZakat ?? false);
+
+    /// <summary>Only HOUSE_RENT/SHAADI/ROZGAR have a document manifest — completeness is fetched
+    /// and shown only for these, matching the manage-modal checklist's same skip rule (nothing to
+    /// check for HEALTH/EDUCATION/EMERGENCY/OTHER, so Finish there behaves exactly as it did
+    /// before this milestone: enabled as soon as the page's own fields are valid).</summary>
+    private bool CategoryHasManifest =>
+        _application?.ApplicationCategoryCode is "HOUSE_RENT" or "SHAADI" or "ROZGAR";
+
+    private string PageTitle => _pages[_pageIndex] switch
+    {
+        WizardPageKind.ApplicantRequest => "Applicant & Request",
+        WizardPageKind.Household => _application?.ApplicationCategoryCode switch
+        {
+            "HOUSE_RENT" => "Household & Address",
+            "ROZGAR" => "Household & Business Address",
+            _ => "Household",
+        },
+        WizardPageKind.HousingDetails => "Housing Details",
+        WizardPageKind.MarriageBride => "Guardian & Bride's Information",
+        WizardPageKind.MarriageGroom => "Groom's Information & Wedding Dates",
+        WizardPageKind.BusinessBackground => "Applicant Background",
+        WizardPageKind.BusinessProposal => "Proposed Business",
+        WizardPageKind.Guarantor => $"Guarantor {CurrentGuarantorIndex + 1}",
+        WizardPageKind.Documents => "Documents",
+        WizardPageKind.Declaration => "Declaration & Terms",
+        _ => "",
+    };
+
+    private bool CurrentPageValid => _pages[_pageIndex] switch
+    {
+        WizardPageKind.ApplicantRequest => _selectedApplicant is not null
+            && _requestForm.ApplicationCategoryId is not null && _requestForm.FundCategoryId is not null
+            && _requestForm.RequestedAmount > 0,
+        WizardPageKind.MarriageBride => !string.IsNullOrWhiteSpace(_marriageForm.BrideName),
+        WizardPageKind.MarriageGroom => !string.IsNullOrWhiteSpace(_marriageForm.GroomName),
+        WizardPageKind.BusinessProposal => !string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription),
+        WizardPageKind.Guarantor => _guarantorRows.Count > CurrentGuarantorIndex && IsGuarantorRowValid(_guarantorRows[CurrentGuarantorIndex]),
+        WizardPageKind.Declaration => DocumentsAndDetailsComplete && DeclarationFieldsValid,
+        _ => true,
+    };
+
+    /// <summary>Section label every "Terms &amp; Declaration" <c>RequiredField</c> in
+    /// <c>ApplicationRequirements</c> (DeclarationAcceptedAt, TermsAcceptedAt) is
+    /// tagged with. The server's completeness evaluator (<see cref="_completeness"/>) reports these
+    /// as missing until they're saved, but they're only ever saved by Finish itself (see
+    /// <see cref="BuildUpdateRequest"/>). Gating Finish on the server's view of them would be a
+    /// deadlock: Finish can't be clicked until they're "complete," and they can't become complete
+    /// without clicking Finish. <see cref="DeclarationFieldsValid"/> checks the local form directly
+    /// instead, so filtering <see cref="MissingFieldDto.SectionLabel"/> (rather than a hardcoded key
+    /// array that could silently drift from a Domain-side rename) is all that's needed to exclude
+    /// them from what we require the server to already confirm.</summary>
+    private const string DeclarationSectionLabel = "Terms & Declaration";
+
+    /// <summary>Documents + category-detail-field completeness only (excludes the declaration/terms
+    /// fields — see <see cref="DeclarationSectionLabel"/>), sourced from the server since document
+    /// upload state genuinely lives there.</summary>
+    private bool DocumentsAndDetailsComplete =>
+        !CategoryHasManifest || (_completeness is not null
+            && _completeness.MissingFields.All(f => f.SectionLabel == DeclarationSectionLabel)
+            && _completeness.Slots.Where(s => s.IsRequired).All(s => s.IsSatisfied));
+
+    /// <summary>Declaration/terms acceptance, checked against the wizard's own live form state so
+    /// ticking a checkbox takes effect immediately — no save round trip needed (this is what
+    /// Finish will actually send via BuildUpdateRequest). Mirrors
+    /// <c>ApplicationCompletenessEvaluator.MissingBaseFields</c>'s <c>category.TermsText is not
+    /// null</c> check exactly (not a whitespace check) — a category with an empty-string TermsText
+    /// still requires these fields server-side, so treating it as "no terms configured" here would
+    /// let Finish succeed while the server's Approve-time completeness gate still fails later.</summary>
+    private bool DeclarationFieldsValid =>
+        SelectedCategory?.TermsText is null
+        || (_declarationForm.DeclarationAcceptedBool && _declarationForm.TermsAcceptedBool);
+
+    /// <summary>Mirrors ReplaceApplicationGuarantorsRequestValidator's per-guarantor required set
+    /// (Name + Cnic + MembershipNumber) so Next is disabled client-side before a name-only
+    /// guarantor ever reaches the server-side rejection (F2).</summary>
+    private static bool IsGuarantorRowValid(GuarantorRowModel row) =>
+        !string.IsNullOrWhiteSpace(row.FullName) && !string.IsNullOrWhiteSpace(row.Cnic)
+        && !string.IsNullOrWhiteSpace(row.MembershipNumber);
+
+    /// <summary>Google-Forms-style "you missed something" message for the current page, shown via
+    /// <see cref="_pageError"/> when Next/Finish is clicked while <see cref="CurrentPageValid"/> is
+    /// false (see Next()) — the button itself is never disabled (see the Footer), since a disabled
+    /// button swallows the click and skips the blur that would have committed the last field's
+    /// value. Mirrors the same per-field checks CurrentPageValid already makes, just phrased as a
+    /// label instead of a bool.</summary>
+    private string? CurrentPageMissingMessage => _pages[_pageIndex] switch
+    {
+        WizardPageKind.ApplicantRequest => JoinMissingFields(
+            (_selectedApplicant is null, "Applicant"),
+            (_requestForm.ApplicationCategoryId is null, "Category"),
+            (_requestForm.FundCategoryId is null, "Fund"),
+            (_requestForm.RequestedAmount <= 0, "Requested Amount")),
+        WizardPageKind.MarriageBride => string.IsNullOrWhiteSpace(_marriageForm.BrideName) ? "Bride's Name is required." : null,
+        WizardPageKind.MarriageGroom => string.IsNullOrWhiteSpace(_marriageForm.GroomName) ? "Groom's Name is required." : null,
+        WizardPageKind.BusinessProposal => string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription) ? "Proposed Business Description is required." : null,
+        WizardPageKind.Guarantor => GuarantorMissingMessage(),
+        WizardPageKind.Declaration => DeclarationMissingMessage(),
+        _ => null,
+    };
+
+    private string? GuarantorMissingMessage()
+    {
+        if (_guarantorRows.Count <= CurrentGuarantorIndex)
+        {
+            return "Guarantor details are required.";
+        }
+
+        var row = _guarantorRows[CurrentGuarantorIndex];
+        return JoinMissingFields(
+            (string.IsNullOrWhiteSpace(row.FullName), "Full Name"),
+            (string.IsNullOrWhiteSpace(row.Cnic), "CNIC"),
+            (string.IsNullOrWhiteSpace(row.MembershipNumber), "Membership Number"));
+    }
+
+    private string? DeclarationMissingMessage()
+    {
+        var parts = new List<string>();
+        if (!DocumentsAndDetailsComplete)
+        {
+            parts.Add("all required details and documents");
+        }
+        if (!DeclarationFieldsValid)
+        {
+            parts.Add("Declaration Accepted and Terms Accepted");
+        }
+
+        return parts.Count == 0 ? null : $"Complete {string.Join(" and ", parts)} before finishing.";
+    }
+
+    private static string? JoinMissingFields(params (bool IsMissing, string Label)[] fields)
+    {
+        var missing = fields.Where(f => f.IsMissing).Select(f => f.Label).ToList();
+        return missing.Count == 0 ? null : $"{string.Join(", ", missing)} {(missing.Count == 1 ? "is" : "are")} required.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingStepAnimation)
+        {
+            _pendingStepAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateWizardStepIn", $"#{_pageContentId}", _direction);
+            await JS.InvokeVoidAsync("ngoFundMotion.animateWizardStepIndicator", $"#{_activeStepDotId}");
+        }
+    }
+
+    /// <summary>No-op body — just being a registered Blazor event handler is what makes this
+    /// component re-render (and CurrentPageValid recompute) on every bubbled field edit; see the
+    /// comment on the "wizard-page" div.</summary>
+    private void HandlePageFieldChanged()
+    {
+    }
+
+    private void AdvancePage()
+    {
+        _pageIndex++;
+        _direction = "forward";
+        _pendingStepAnimation = true;
+    }
+
+    private void Back()
+    {
+        if (_pageIndex == 0)
+        {
+            return;
+        }
+
+        _pageIndex--;
+        _direction = "back";
+        _pendingStepAnimation = true;
+        _pageError = null;
+    }
+
+    private async Task Next()
+    {
+        if (!CurrentPageValid)
+        {
+            _pageError = CurrentPageMissingMessage ?? "Please complete the required fields before continuing.";
+            return;
+        }
+
+        _pageError = null;
+        switch (_pages[_pageIndex])
+        {
+            case WizardPageKind.ApplicantRequest:
+                await HandleRequestNextAsync();
+                break;
+            case WizardPageKind.Household:
+                await SaveHouseholdAndAdvanceAsync();
+                break;
+            case WizardPageKind.HousingDetails:
+                await SaveHousingAndAdvanceAsync();
+                break;
+            case WizardPageKind.MarriageBride:
+                AdvancePage();
+                break;
+            case WizardPageKind.MarriageGroom:
+                await SaveMarriageAndAdvanceAsync();
+                break;
+            case WizardPageKind.BusinessBackground:
+                AdvancePage();
+                break;
+            case WizardPageKind.BusinessProposal:
+                await SaveBusinessAndAdvanceAsync();
+                break;
+            case WizardPageKind.Guarantor:
+                // Save fires only when leaving the LAST guarantor page (see header comment) — if
+                // the next page is another Guarantor page, this one wasn't the last.
+                if (_pageIndex + 1 < _pages.Count && _pages[_pageIndex + 1] == WizardPageKind.Guarantor)
+                {
+                    AdvancePage();
+                }
+                else
+                {
+                    await SaveGuarantorsAndAdvanceAsync();
+                }
+                break;
+            case WizardPageKind.Documents:
+                AdvancePage();
+                break;
+            case WizardPageKind.Declaration:
+                await FinishAsync();
+                break;
+        }
+    }
+
+    private async Task<IReadOnlyList<ApplicantDto>> SearchApplicantsAsync(string query)
+    {
+        var result = await ApiClient.GetApplicantsAsync(1, 10, query);
+        return result.Items;
+    }
+
+    private void SelectApplicant(ApplicantDto applicant) => _selectedApplicant = applicant;
+
+    private async Task HandleRequestNextAsync()
+    {
+        if (_selectedApplicant is null)
+        {
+            _pageError = "Select an applicant to continue.";
+            return;
+        }
+
+        if (PendingZakatWarning)
+        {
+            _showZakatConfirm = true;
+            return;
+        }
+
+        await CreateOrUpdateRequestAndAdvanceAsync();
+    }
+
+    private async Task ConfirmZakatAndCreateAsync() => await CreateOrUpdateRequestAndAdvanceAsync();
+
+    /// <summary>Page 1's Next handler. Only creates the application the FIRST time this page is
+    /// left — revisiting page 1 (Back, then Next again) previously called CreateApplicationAsync
+    /// unconditionally, minting a brand-new application (and abandoning whatever was already saved
+    /// against the first one) on every round trip. Once <see cref="_application"/> exists, this
+    /// just saves the request-page fields onto it, same as every later page's Next does.</summary>
+    private async Task CreateOrUpdateRequestAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            await CreateApplicationAsync();
+        }
+        else
+        {
+            await SaveRequestAndAdvanceAsync();
+        }
+    }
+
+    private async Task SaveRequestAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            // Category is create-time-only (locked in the markup above once _application is not
+            // null, same as IntakeChannel) — changing it post-creation would orphan any
+            // already-saved category-detail rows, guarantor rows, and document slot keys tagged
+            // against the original category (ApplicationDetailsService.EnsureCategoryAsync throws
+            // ApplicationCategoryMismatchException for a mismatched category, making those rows
+            // permanently unreachable through this wizard). So there's no page-rebuild branch here
+            // — just save-and-advance, like every later page's Next.
+            _application = await ApiClient.UpdateApplicationAsync(_application.Id, BuildUpdateRequest());
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CreateApplicationAsync()
+    {
+        if (_selectedApplicant is null || _requestForm.ApplicationCategoryId is null || _requestForm.FundCategoryId is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            var created = await ApiClient.CreateApplicationAsync(new CreateApplicationRequest(
+                _selectedApplicant.Id, _requestForm.ApplicationCategoryId.Value, _requestForm.FundCategoryId.Value,
+                _requestForm.RequestedAmount, _requestForm.Priority, _requestForm.ApplicationDate, _requestForm.Purpose,
+                null, null, null, null, null, null,
+                _requestForm.IntakeChannel, _requestForm.ExternalFormReference, _requestForm.SubmittedAt,
+                null, null, SelectedCategory?.TermsVersion));
+
+            _application = created;
+            Toast.Success($"Application created · {created.ApplicationNumber}");
+            BuildPagesAfterCreate(created);
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void BuildPagesAfterCreate(ApplicationDto app)
+    {
+        var pages = new List<WizardPageKind> { WizardPageKind.ApplicantRequest, WizardPageKind.Household };
+
+        switch (app.ApplicationCategoryCode)
+        {
+            case "HOUSE_RENT":
+                pages.Add(WizardPageKind.HousingDetails);
+                pages.Add(WizardPageKind.Documents);
+                break;
+            case "SHAADI":
+                pages.Add(WizardPageKind.MarriageBride);
+                pages.Add(WizardPageKind.MarriageGroom);
+                pages.Add(WizardPageKind.Documents);
+                break;
+            case "ROZGAR":
+                pages.Add(WizardPageKind.BusinessBackground);
+                pages.Add(WizardPageKind.BusinessProposal);
+                // Fully data-driven (F3): as many Guarantor pages as the category requires, not
+                // clamped to a hardcoded max — the approval gate itself has no such cap either.
+                var guarantorCount = Math.Max(app.RequiresGuarantors, 0);
+                _guarantorRows = Enumerable.Range(1, guarantorCount)
+                    .Select(seq => new GuarantorRowModel { SequenceNumber = seq }).ToList();
+                for (var i = 0; i < guarantorCount; i++)
+                {
+                    pages.Add(WizardPageKind.Guarantor);
+                }
+                pages.Add(WizardPageKind.Documents);
+                break;
+        }
+
+        pages.Add(WizardPageKind.Declaration);
+        _pages = pages;
+    }
+
+    private UpdateApplicationRequest BuildUpdateRequest() => new(
+        _requestForm.ApplicationCategoryId!.Value, _requestForm.FundCategoryId!.Value,
+        _requestForm.RequestedAmount, _application!.ApprovedAmount, _requestForm.Priority, _requestForm.Purpose,
+        _householdForm.DeclaredMonthlyIncome, _householdForm.DeclaredHouseholdSize, _householdForm.DeclaredEarningMembers,
+        _householdForm.DeclaredResidentialAddress, _householdForm.DeclaredBusinessAddress, _householdForm.DeclaredHouseStatus,
+        _requestForm.ExternalFormReference, _requestForm.SubmittedAt,
+        _declarationForm.DeclarationAcceptedAt, _declarationForm.TermsAcceptedAt, SelectedCategory?.TermsVersion);
+
+    private async Task SaveHouseholdAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            _application = await ApiClient.UpdateApplicationAsync(_application.Id, BuildUpdateRequest());
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveHousingAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpsertHousingDetailsAsync(_application.Id, new UpsertHousingApplicationDetailsRequest(
+                _housingForm.ApplicantAge, _housingForm.CurrentHouseValue, _housingForm.MonthlyRent, _housingForm.AdvancePaid,
+                _housingForm.YearsAtCurrentAddress, _housingForm.PreviousResidentialAddress, _housingForm.ReceivedAssistanceBefore,
+                _housingForm.PreviousAssistanceDetails, _housingForm.ReceivesMarriageAssistance, _housingForm.ReceivesEducationAssistance,
+                _housingForm.ReceivesMedicalAssistance, _housingForm.ReceivesWidowAssistance));
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveMarriageAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpsertMarriageDetailsAsync(_application.Id, new UpsertMarriageApplicationDetailsRequest(
+                _marriageForm.GuardianRelationshipToBride, _marriageForm.BrideName, _marriageForm.BrideFatherName,
+                _marriageForm.BrideFamilyName, _marriageForm.BrideCnic, _marriageForm.BrideMaritalStatus,
+                _marriageForm.BridePreviousHusbandName, _marriageForm.BrideJamaat, _marriageForm.BridePriorTrustAssistance,
+                _marriageForm.GroomName, _marriageForm.GroomFatherName, _marriageForm.GroomGrandfatherName,
+                _marriageForm.GroomJamaat, _marriageForm.GroomMaritalStatus, _marriageForm.GroomPreviousWifeName,
+                _marriageForm.GroomAddress, _marriageForm.GroomMobile, _marriageForm.GroomBusinessAddress,
+                _marriageForm.NikahDate, _marriageForm.RukhsatiDate));
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveBusinessAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpsertBusinessLoanDetailsAsync(_application.Id, new UpsertBusinessLoanApplicationDetailsRequest(
+                _businessForm.PaperFormNumber, _businessForm.BusinessPhone, _businessForm.Education, _businessForm.Skill,
+                _businessForm.Experience, _businessForm.OtherIncomeSources, _businessForm.TotalMonthlyExpenses,
+                _businessForm.ProposedBusinessDescription, _businessForm.ProposedBusinessLocation, _businessForm.CapitalRequired,
+                _businessForm.CapitalAlreadyAvailable, _businessForm.HasPriorBusinessExperience, _businessForm.PriorBusinessDetails,
+                _businessForm.EmergencyContactName, _businessForm.EmergencyContactCnic, _businessForm.EmergencyContactPhone));
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveGuarantorsAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            var entries = _guarantorRows.Select(r => new GuarantorEntry(
+                r.Id, r.SequenceNumber, r.MembershipNumber, r.FullName, r.FatherName, r.GrandfatherName, r.Surname,
+                r.Cnic, r.ResidentialAddress, r.BusinessAddress, r.BusinessNature, r.PhoneHome, r.PhoneOffice,
+                r.PhoneMobile, r.DeclarationAcceptedAt)).ToList();
+
+            var saved = await ApiClient.ReplaceGuarantorsAsync(_application.Id, new ReplaceApplicationGuarantorsRequest(entries));
+            _guarantorRows = saved.OrderBy(g => g.SequenceNumber).Select(GuarantorRowModel.FromDto).ToList();
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task FinishAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpdateApplicationAsync(_application.Id, BuildUpdateRequest());
+            Toast.Success($"Application {_application.ApplicationNumber} completed");
+            await OnClosed.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task RefreshDocumentStateAsync()
+    {
+        // Categories without a manifest never render a Documents page or the completeness
+        // checklist in this wizard — nothing here would be displayed, so skip both round trips.
+        if (_application is null || !CategoryHasManifest)
+        {
+            return;
+        }
+
+        _documents = await SafeCallAsync(() => ApiClient.GetDocumentsForApplicationAsync(_application.Id)) ?? _documents;
+
+        _isCompletenessLoading = true;
+        try
+        {
+            _completeness = await ApiClient.GetApplicationCompletenessAsync(_application.Id);
+        }
+        catch (ApiException)
+        {
+            // Non-fatal — Finish just stays gated on whatever completeness state we last had.
+        }
+        finally
+        {
+            _isCompletenessLoading = false;
+        }
+    }
+
+    private static async Task<T?> SafeCallAsync<T>(Func<Task<T>> call) where T : class
+    {
+        try
+        {
+            return await call();
+        }
+        catch (ApiException)
+        {
+            return null;
+        }
+    }
+
+    private async Task RequestCloseAsync()
+    {
+        if (_application is null)
+        {
+            // Nothing saved server-side yet — safe to close without confirmation.
+            await CloseImmediatelyAsync();
+            return;
+        }
+
+        _showCloseConfirm = true;
+    }
+
+    private async Task CloseImmediatelyAsync() => await OnClosed.InvokeAsync();
+
+    private class RequestFormModel
+    {
+        [Required(ErrorMessage = "Category is required.")]
+        public Guid? ApplicationCategoryId { get; set; }
+        [Required(ErrorMessage = "Fund is required.")]
+        public Guid? FundCategoryId { get; set; }
+        [Range(0.01, double.MaxValue, ErrorMessage = "Enter a requested amount.")]
+        public decimal RequestedAmount { get; set; }
+        public string Priority { get; set; } = "Normal";
+        public DateOnly ApplicationDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string? Purpose { get; set; }
+        public string IntakeChannel { get; set; } = "InApp";
+        public string? ExternalFormReference { get; set; }
+        public DateTimeOffset? SubmittedAt { get; set; }
+    }
+
+    private class HouseholdFormModel
+    {
+        public decimal? DeclaredMonthlyIncome { get; set; }
+        public int? DeclaredHouseholdSize { get; set; }
+        public int? DeclaredEarningMembers { get; set; }
+        public string? DeclaredResidentialAddress { get; set; }
+        public string? DeclaredBusinessAddress { get; set; }
+        public string? DeclaredHouseStatus { get; set; }
+    }
+
+    private class DeclarationFormModel
+    {
+        public DateTimeOffset? DeclarationAcceptedAt { get; set; }
+        public DateTimeOffset? TermsAcceptedAt { get; set; }
+
+        public bool DeclarationAcceptedBool
+        {
+            get => DeclarationAcceptedAt is not null;
+            set => DeclarationAcceptedAt = value ? DateTimeOffset.UtcNow : null;
+        }
+
+        public bool TermsAcceptedBool
+        {
+            get => TermsAcceptedAt is not null;
+            set => TermsAcceptedAt = value ? DateTimeOffset.UtcNow : null;
+        }
+    }
+}

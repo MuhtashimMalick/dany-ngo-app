@@ -1,0 +1,117 @@
+@* Renders an ApplicationCompletenessDto as a clear ✓/✗ checklist — missing fields grouped by
+   SectionLabel, then unsatisfied document slots. Used in two places per the milestone brief: (1)
+   inside ApplicationWizard's Documents/Declaration pages, so staff see exactly what's still
+   missing before Finish is even clickable; (2) in the manage modal's Details tab, so "why can't I
+   approve this" is answered inline instead of staff hitting a 422 with no context. Both call
+   sites pass the exact same DTO the Approved-transition gate itself evaluates
+   (ApiClient.GetApplicationCompletenessAsync), so this can never show something the gate
+   disagrees with. *@
+@inject IJSRuntime JS
+
+<div class="completeness-checklist" id="@_rootId">
+    @if (IsLoading)
+    {
+        <Skeleton Rows="2" Columns="1" />
+    }
+    else if (Completeness is not null)
+    {
+        @if (IsEffectivelyComplete)
+        {
+            <div class="alert alert-success">
+                <Icon Name="check-circle" Size="18" />
+                <span>All required information and documents are present.</span>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                <Icon Name="alert-circle" Size="18" />
+                <span>This application is missing information and/or documents required before it can be Approved.</span>
+            </div>
+
+            @foreach (var group in MissingFieldGroups)
+            {
+                <div class="completeness-group">
+                    <div class="completeness-group-title">@group.SectionLabel</div>
+                    <ul class="completeness-item-list">
+                        @foreach (var field in group.Fields)
+                        {
+                            <li class="completeness-item completeness-item-missing">
+                                <Icon Name="x-circle" Size="15" />
+                                <span>@field.Label</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (MissingSlots.Count > 0)
+            {
+                <div class="completeness-group">
+                    <div class="completeness-group-title">Documents</div>
+                    <ul class="completeness-item-list">
+                        @foreach (var slot in MissingSlots)
+                        {
+                            <li class="completeness-item completeness-item-missing">
+                                <Icon Name="x-circle" Size="15" />
+                                <span>
+                                    @slot.Label
+                                    @(slot.GuarantorSequenceNumber is { } seq ? $" (Guarantor {seq})" : "")
+                                    @(slot.MinCount > 1 ? $" — {slot.Documents.Count} of {slot.MinCount} uploaded" : "")
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public ApplicationCompletenessDto? Completeness { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>Section labels to exclude from the missing-fields list and from the "all complete"
+    /// determination — used by the wizard's Declaration page, where Terms/Declaration acceptance is
+    /// tracked locally (see ApplicationWizard's DeclarationSectionLabel/DeclarationFieldsValid) and
+    /// only ever persisted to the server by Finish itself, so the server's view of them is stale by
+    /// design until then. The manage-modal call site leaves this empty and shows real server state.</summary>
+    [Parameter] public IReadOnlyCollection<string> HiddenSectionLabels { get; set; } = [];
+
+    private readonly string _rootId = $"completeness-{Guid.NewGuid():N}";
+    private int _lastRenderedMissingCount = -1;
+
+    private List<MissingFieldDto> FilteredMissingFields =>
+        Completeness is null
+            ? []
+            : Completeness.MissingFields.Where(f => !HiddenSectionLabels.Contains(f.SectionLabel)).ToList();
+
+    private List<(string SectionLabel, List<MissingFieldDto> Fields)> MissingFieldGroups =>
+        FilteredMissingFields
+            .GroupBy(f => f.SectionLabel)
+            .Select(g => (SectionLabel: g.Key, Fields: g.ToList()))
+            .ToList();
+
+    private List<DocumentSlotStatusDto> MissingSlots =>
+        Completeness?.Slots.Where(s => !s.IsSatisfied).ToList() ?? [];
+
+    /// <summary>Locally recomputed "all complete" signal — driving the banner off this instead of
+    /// <see cref="ApplicationCompletenessDto.IsComplete"/> directly means hidden sections (declaration/
+    /// terms, tracked live elsewhere) don't keep the amber banner showing once everything else is
+    /// actually done.</summary>
+    private bool IsEffectivelyComplete =>
+        Completeness is not null && FilteredMissingFields.Count == 0 && MissingSlots.Count == 0;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var missingCount = FilteredMissingFields.Count + MissingSlots.Count;
+        if (missingCount != _lastRenderedMissingCount)
+        {
+            _lastRenderedMissingCount = missingCount;
+            if (!firstRender)
+            {
+                await JS.InvokeVoidAsync("ngoFundMotion.animateChecklistItems", $"#{_rootId} .completeness-item");
+            }
+        }
+    }
+}

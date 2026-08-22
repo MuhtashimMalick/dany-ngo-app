@@ -13,10 +13,15 @@ namespace NgoFund.Api.Controllers;
 [Authorize]
 public class ApplicationsController(
     IFundApplicationService applicationService,
+    IApplicationDetailsService detailsService,
     IValidator<CreateApplicationRequest> createValidator,
     IValidator<UpdateApplicationRequest> updateValidator,
     IValidator<ChangeApplicationStatusRequest> statusValidator,
-    IValidator<AddRemarkRequest> remarkValidator) : ControllerBase
+    IValidator<AddRemarkRequest> remarkValidator,
+    IValidator<UpsertHousingApplicationDetailsRequest> housingValidator,
+    IValidator<UpsertMarriageApplicationDetailsRequest> marriageValidator,
+    IValidator<UpsertBusinessLoanApplicationDetailsRequest> businessLoanValidator,
+    IValidator<ReplaceApplicationGuarantorsRequest> guarantorsValidator) : ControllerBase
 {
     [HttpGet]
     [HasPermission("applications.view")]
@@ -57,6 +62,11 @@ public class ApplicationsController(
         return NoContent();
     }
 
+    [HttpGet("{id:guid}/completeness")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<ApplicationCompletenessDto>> GetCompleteness(Guid id, CancellationToken cancellationToken)
+        => Ok(await applicationService.GetCompletenessAsync(id, cancellationToken));
+
     [HttpGet("{id:guid}/history")]
     [HasPermission("applications.view")]
     public async Task<ActionResult<IReadOnlyList<ApplicationStatusHistoryDto>>> GetHistory(Guid id, CancellationToken cancellationToken)
@@ -73,5 +83,66 @@ public class ApplicationsController(
     {
         await remarkValidator.ValidateAndThrowAsync(request, cancellationToken);
         return Ok(await applicationService.AddRemarkAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/details/housing")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<HousingApplicationDetailsDto>> GetHousingDetails(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await detailsService.GetHousingDetailsAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/details/housing")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<HousingApplicationDetailsDto>> UpsertHousingDetails(Guid id, UpsertHousingApplicationDetailsRequest request, CancellationToken cancellationToken)
+    {
+        await housingValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.UpsertHousingDetailsAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/details/marriage")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<MarriageApplicationDetailsDto>> GetMarriageDetails(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await detailsService.GetMarriageDetailsAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/details/marriage")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<MarriageApplicationDetailsDto>> UpsertMarriageDetails(Guid id, UpsertMarriageApplicationDetailsRequest request, CancellationToken cancellationToken)
+    {
+        await marriageValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.UpsertMarriageDetailsAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/details/business-loan")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<BusinessLoanApplicationDetailsDto>> GetBusinessLoanDetails(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await detailsService.GetBusinessLoanDetailsAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/details/business-loan")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<BusinessLoanApplicationDetailsDto>> UpsertBusinessLoanDetails(Guid id, UpsertBusinessLoanApplicationDetailsRequest request, CancellationToken cancellationToken)
+    {
+        await businessLoanValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.UpsertBusinessLoanDetailsAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/guarantors")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<IReadOnlyList<ApplicationGuarantorDto>>> GetGuarantors(Guid id, CancellationToken cancellationToken)
+        => Ok(await detailsService.GetGuarantorsAsync(id, cancellationToken));
+
+    [HttpPut("{id:guid}/guarantors")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<IReadOnlyList<ApplicationGuarantorDto>>> ReplaceGuarantors(Guid id, ReplaceApplicationGuarantorsRequest request, CancellationToken cancellationToken)
+    {
+        await guarantorsValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.ReplaceGuarantorsAsync(id, request, cancellationToken));
     }
 }

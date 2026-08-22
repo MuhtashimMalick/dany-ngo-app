@@ -53,12 +53,18 @@ internal static class RoleSeed
         }
 
         // AccountsManager: donors/donations/payments/fund categories/dashboard/reports, plus read-only applications.
+        // NOTE: "loans" is deliberately NOT in this blanket list — write-off must stay Admin/SuperAdmin
+        // only, so AccountsManager's loan permissions are granted explicitly below instead.
         string[] accountsManagerModules = ["donors", "donations", "payments", "fundcategories", "dashboard", "reports", "documents"];
         foreach (var p in all.Where(p => accountsManagerModules.Contains(p.Module)))
         {
             yield return Map(AccountsManagerId, p.Module, p.Action);
         }
         yield return Map(AccountsManagerId, "applications", "view");
+        yield return Map(AccountsManagerId, "loans", "view");
+        yield return Map(AccountsManagerId, "loans", "manage");
+        yield return Map(AccountsManagerId, "loans", "repay");
+        yield return Map(AccountsManagerId, "loans", "void");
 
         // DataEntryOperator: create/edit applicants & applications, upload documents, view dashboard/donors.
         yield return Map(DataEntryOperatorId, "applicants", "view");

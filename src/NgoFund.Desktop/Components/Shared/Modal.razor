@@ -8,13 +8,17 @@
 @implements IAsyncDisposable
 
 <div class="modal-backdrop" @onclick="RequestCloseAsync">
-    <div class="modal modal-@Size" id="@_id" role="dialog" aria-modal="true" aria-labelledby="@_titleId" @onclick:stopPropagation="true">
+    <div class="modal modal-@Size @(SubHeader is not null ? "modal-has-subheader" : "")" id="@_id" role="dialog" aria-modal="true" aria-labelledby="@_titleId" @onclick:stopPropagation="true">
         <header class="modal-header">
             <h3 id="@_titleId">@Title</h3>
             <button type="button" class="modal-close" aria-label="Close dialog" @onclick="RequestCloseAsync">
                 <Icon Name="close" Size="18" />
             </button>
         </header>
+        @if (SubHeader is not null)
+        {
+            <div class="modal-subheader">@SubHeader</div>
+        }
         <div class="modal-body">
             @ChildContent
         </div>
@@ -31,6 +35,10 @@
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     /// <summary>One of "sm" (420px), "md" (560px, default), "lg" (760px).</summary>
     [Parameter] public string Size { get; set; } = "md";
+    /// <summary>Optional fixed strip between the title bar and the scrolling body — e.g. a
+    /// persistent record-summary header that must stay visible while the body's tab content
+    /// scrolls underneath it. Unlike <see cref="ChildContent"/>, this never scrolls.</summary>
+    [Parameter] public RenderFragment? SubHeader { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
     [Parameter, EditorRequired] public EventCallback OnClose { get; set; }

@@ -1,0 +1,27 @@
+@* Applicant-background field group, split out of BusinessLoanDetailsSection — backs the wizard's
+   "Applicant Background" page and the manage modal's single-block editor. Pairs with
+   BusinessProposalFields.razor; see ApplicationDetailModels.cs's doc comment. *@
+<div class="form-grid">
+    <FormField Label="Paper Form Number" For="paperFormNumber">
+        <InputText id="paperFormNumber" @bind-Value="Model.PaperFormNumber" />
+    </FormField>
+    <FormField Label="Education" For="education">
+        <InputText id="education" @bind-Value="Model.Education" />
+    </FormField>
+    <FormField Label="Skill" For="skill">
+        <InputText id="skill" @bind-Value="Model.Skill" />
+    </FormField>
+    <FormField Label="Experience" For="experience">
+        <InputText id="experience" @bind-Value="Model.Experience" />
+    </FormField>
+    <FormField Label="Other Income Sources" For="otherIncome">
+        <InputText id="otherIncome" @bind-Value="Model.OtherIncomeSources" />
+    </FormField>
+    <FormField Label="Total Monthly Expenses (PKR)" For="totalExpenses">
+        <InputNumber id="totalExpenses" @bind-Value="Model.TotalMonthlyExpenses" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BusinessLoanDetailsFormModel Model { get; set; } = null!;
+}

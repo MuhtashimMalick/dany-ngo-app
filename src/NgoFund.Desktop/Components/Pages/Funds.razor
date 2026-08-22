@@ -5,12 +5,17 @@
 @inject IJSRuntime JS
 
 <div class="page-header">
+    @* Fund creation is hidden from the UI — the org only operates the General and Zakat funds
+       seeded at setup, and the client wants that to read as fixed, not user-manageable. The
+       backend endpoint and this form still work; only the entry point is removed. Restore this
+       block if a third fund is ever needed.
     @if (AuthState.HasPermission("fundcategories.manage"))
     {
         <SectionContent SectionName="page-actions">
             <button class="btn btn-primary" @onclick="OpenCreateModal">New Fund Category</button>
         </SectionContent>
     }
+    *@
 </div>
 
 @if (_errorMessage is not null)
@@ -18,23 +23,9 @@
     <div class="alert alert-error">@_errorMessage</div>
 }
 
-<div class="metric-row" id="fund-balance-cards">
-    @foreach (var balance in _balances)
-    {
-        <div class="card metric-tile">
-            <div class="flex justify-between items-center gap-2">
-                <span class="metric-label">@balance.Name</span>
-                @if (balance.IsZakat)
-                {
-                    <span class="badge badge-underreview">Zakat</span>
-                }
-            </div>
-            <div class="metric-value">@balance.Balance.ToString("N2")</div>
-            <div class="metric-hint">Collected @balance.TotalCollected.ToString("N2") &middot; Utilized @balance.TotalUtilized.ToString("N2")</div>
-        </div>
-    }
-</div>
-
+@* Fund category table (list + edit) is hidden for the same reason as the create button above —
+   the client sees a fixed General/Zakat setup, not a manageable fund list. _categories is still
+   loaded (LoadAsync) because the Applicant Ledgers tabs below depend on it.
 <DataTable TItem="FundCategoryDto" Items="_categories" IsLoading="_isLoading" RowsContainerId="fund-rows"
            EmptyText="No fund categories yet." EmptyDescription="Fund categories you create will appear here." EmptyIcon="funds">
     <HeaderRow>
@@ -59,6 +50,41 @@
         </tr>
     </RowTemplate>
 </DataTable>
+*@
+
+@if (_isLoading)
+{
+    <Skeleton Rows="6" Columns="6" />
+}
+else if (AuthState.HasPermission("payments.view") && AuthState.HasPermission("loans.view") && _categories.Count > 0)
+{
+    <Tabs AriaLabel="Fund applicant ledgers" ActiveTitleChanged="OnActiveFundTitleChanged">
+        <HeaderExtra>
+            @{
+                var activeBalance = _balances.FirstOrDefault(b => b.Name == _activeFundTitle);
+            }
+            @if (activeBalance is not null)
+            {
+                <div class="tabs-balance-summary" id="fund-balance-summary">
+                    <span class="tabs-balance-value">@activeBalance.Balance.ToString("N2")</span>
+                    @if (activeBalance.IsZakat)
+                    {
+                        <span class="badge badge-underreview">Zakat</span>
+                    }
+                    <span class="tabs-balance-hint">Collected @activeBalance.TotalCollected.ToString("N2") &middot; Repaid @activeBalance.TotalRepaid.ToString("N2") &middot; Utilized @activeBalance.TotalUtilized.ToString("N2")</span>
+                </div>
+            }
+        </HeaderExtra>
+        <ChildContent>
+            @foreach (var category in _categories)
+            {
+                <TabPanel Title="@category.Name" @key="category.Id">
+                    <FundTransactionLedgerTable FundCategoryId="@category.Id" />
+                </TabPanel>
+            }
+        </ChildContent>
+    </Tabs>
+}
 
 @if (_showForm)
 {
@@ -120,7 +146,8 @@
     private IReadOnlyList<FundCategoryDto> _categories = [];
     private bool _isLoading = true;
     private string? _errorMessage;
-    private bool _pendingRowAnimation;
+    private string? _activeFundTitle;
+    private bool _pendingBalanceAnimation;
 
     private bool _showForm;
     private bool _isSaving;
@@ -132,10 +159,10 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_pendingRowAnimation)
+        if (_pendingBalanceAnimation)
         {
-            _pendingRowAnimation = false;
-            await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#fund-balance-cards > div");
+            _pendingBalanceAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateTabPanel", "#fund-balance-summary");
         }
     }
 
@@ -146,7 +173,7 @@
         {
             _balances = await ApiClient.GetFundBalancesAsync();
             _categories = await ApiClient.GetFundCategoriesAsync();
-            _pendingRowAnimation = true;
+            _activeFundTitle ??= _categories.FirstOrDefault()?.Name;
         }
         catch (ApiException ex)
         {
@@ -156,6 +183,21 @@
         {
             _isLoading = false;
         }
+    }
+
+    // Bound to Tabs' ActiveTitleChanged — fires on initial mount (first-registered panel) and on
+    // every tab switch, passing the newly-active TabPanel's Title. FundCategoryDto.Name is what
+    // Title is set to below, and it's also FundBalanceDto.Name, so matching on that string is the
+    // whole bridge between "which tab is active" and "which balance to show" — no numeric id
+    // needed since TabPanel.Key is an internal random id with no meaning outside Tabs.razor.
+    private void OnActiveFundTitleChanged(string title)
+    {
+        if (_activeFundTitle == title)
+        {
+            return;
+        }
+        _activeFundTitle = title;
+        _pendingBalanceAnimation = true;
     }
 
     private void OpenCreateModal()

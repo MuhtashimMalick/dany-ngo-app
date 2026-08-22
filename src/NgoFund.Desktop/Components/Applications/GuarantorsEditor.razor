@@ -1,0 +1,156 @@
+@* ROZGAR guarantors editor — 0-2 repeating rows (never arbitrary N, so no generic list-field
+   framework), upsert-in-place save via PUT .../guarantors (ReplaceApplicationGuarantorsRequest):
+   each row's server Id (null for a row never saved before) is sent along with its fields, so an
+   edit to an already-saved guarantor updates that row rather than recreating it — this keeps
+   documents.application_guarantor_id valid across edits instead of orphaning previously uploaded
+   documents.
+
+   Per-row field markup lives in GuarantorFields.razor, shared with the create-flow wizard's
+   single-row-per-page "Guarantor 1"/"Guarantor 2" pages (see that component's doc comment).
+   Document upload no longer lives on this editor at all: guarantor documents are uploaded and
+   viewed exclusively through the Documents tab/page's guarantor-grouped DocumentSlotList, which
+   needs a saved guarantor Id to exist first — hence the "Save Guarantors" hint below for
+   never-saved rows. *@
+@inject ApiClient ApiClient
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<FormSection Title="@($"Guarantors ({_rows.Count} of {RequiredCount})")"
+             Description="Required before this application can be moved to Approved. Upload each guarantor's documents from the Documents tab once saved here.">
+    @if (_error is not null)
+    {
+        <div class="alert alert-error">@_error</div>
+    }
+
+    @if (_isLoading)
+    {
+        <Skeleton Rows="2" Columns="2" />
+    }
+    else
+    {
+        @foreach (var row in _rows)
+        {
+            <div class="card guarantor-row" id="@($"guarantor-row-{row.ClientKey:N}")" @key="row.ClientKey">
+                <div class="guarantor-row-header">
+                    <span class="guarantor-row-title">Guarantor @row.SequenceNumber</span>
+                    <button type="button" class="icon-btn" aria-label="Remove guarantor" @onclick="() => RemoveRowAsync(row)"><Icon Name="trash" Size="16" /></button>
+                </div>
+
+                <GuarantorFields Row="row" />
+
+                @if (row.Id is null)
+                {
+                    <p class="field-hint">Save guarantors to enable document upload for this row on the Documents tab.</p>
+                }
+            </div>
+        }
+
+        @if (_rows.Count < MaxRows)
+        {
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="AddRowAsync">
+                <Icon Name="plus" Size="15" />Add Guarantor
+            </button>
+        }
+
+        <div style="margin-top: var(--space-4);">
+            <button type="button" class="btn btn-primary" disabled="@_isSaving" @onclick="SaveAsync">@(_isSaving ? "Saving..." : "Save Guarantors")</button>
+        </div>
+    }
+</FormSection>
+
+@code {
+    private const int MaxRows = 2;
+
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+    [Parameter] public int RequiredCount { get; set; } = 2;
+    [Parameter] public EventCallback<int> OnCountChanged { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private string? _error;
+    private List<GuarantorRowModel> _rows = [];
+    private Guid? _pendingAnimateRowKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var existing = await ApiClient.GetGuarantorsAsync(ApplicationId);
+            _rows = existing.OrderBy(g => g.SequenceNumber).Select(GuarantorRowModel.FromDto).ToList();
+            await OnCountChanged.InvokeAsync(_rows.Count);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingAnimateRowKey is { } key)
+        {
+            _pendingAnimateRowKey = null;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateGuarantorRowIn", $"#guarantor-row-{key:N}");
+        }
+    }
+
+    private void AddRowAsync()
+    {
+        if (_rows.Count >= MaxRows)
+        {
+            return;
+        }
+
+        var nextSequence = _rows.Count == 0 ? 1 : _rows.Max(r => r.SequenceNumber) + 1;
+        var row = new GuarantorRowModel { SequenceNumber = nextSequence };
+        _rows.Add(row);
+        _pendingAnimateRowKey = row.ClientKey;
+    }
+
+    private async Task RemoveRowAsync(GuarantorRowModel row)
+    {
+        await JS.InvokeVoidAsync("ngoFundMotion.animateGuarantorRowOut", $"#guarantor-row-{row.ClientKey:N}");
+        _rows.Remove(row);
+
+        // Renumber 1..N so a gap never persists after removing guarantor 1 while guarantor 2 exists.
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            _rows[i].SequenceNumber = i + 1;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            var entries = _rows.Select(r => new GuarantorEntry(
+                r.Id, r.SequenceNumber, r.MembershipNumber, r.FullName, r.FatherName, r.GrandfatherName, r.Surname,
+                r.Cnic, r.ResidentialAddress, r.BusinessAddress, r.BusinessNature, r.PhoneHome, r.PhoneOffice,
+                r.PhoneMobile, r.DeclarationAcceptedAt)).ToList();
+
+            var saved = await ApiClient.ReplaceGuarantorsAsync(ApplicationId, new ReplaceApplicationGuarantorsRequest(entries));
+
+            // Refresh local rows from the response instead of only patching Id onto them —
+            // update-in-place on the server now keeps an existing row's Id stable across an edit,
+            // so there's no more Id-churn to compensate for.
+            _rows = saved.OrderBy(g => g.SequenceNumber).Select(GuarantorRowModel.FromDto).ToList();
+
+            Toast.Success("Guarantors saved");
+            await OnCountChanged.InvokeAsync(_rows.Count);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

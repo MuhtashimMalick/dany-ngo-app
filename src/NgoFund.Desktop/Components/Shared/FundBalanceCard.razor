@@ -10,17 +10,21 @@
     <div class="fund-balance-value" data-countup="@Balance.Balance.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-countup-decimals="2">
         @Balance.Balance.ToString("N2")
     </div>
-    <div class="fund-balance-bar" role="img" aria-label="@($"{UtilizationPercent:N0}% of collected funds utilized")">
+    <div class="fund-balance-bar" role="img" aria-label="@($"{UtilizationPercent:N0}% of total inflow utilized")">
         <div class="fund-balance-bar-fill" style="width:@(UtilizationPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></div>
     </div>
     @if (MonthlyBurn is not null)
     {
         <div class="fund-balance-runway">@RunwayHint(Balance.Balance, MonthlyBurn.Value)</div>
     }
-    <div class="fund-balance-columns">
+    <div class="fund-balance-columns fund-balance-columns-4">
         <div>
             <div class="fund-balance-col-label">Collected</div>
             <div class="fund-balance-col-value">@Balance.TotalCollected.ToString("N2")</div>
+        </div>
+        <div>
+            <div class="fund-balance-col-label">Repaid</div>
+            <div class="fund-balance-col-value">@Balance.TotalRepaid.ToString("N2")</div>
         </div>
         <div>
             <div class="fund-balance-col-label">Utilized</div>
@@ -54,10 +58,19 @@
     /// as <see cref="Committed"/>.</summary>
     [Parameter] public decimal? MonthlyBurn { get; set; }
 
-    private double UtilizationPercent =>
-        Balance.TotalCollected <= 0
-            ? 0
-            : (double)Math.Min(1m, Math.Max(0m, Balance.TotalUtilized / Balance.TotalCollected)) * 100;
+    // Denominator is total inflow (TotalCollected + TotalRepaid), not TotalCollected alone — a loan
+    // repayment re-credits the fund and can be redisbursed, so counting only original donations
+    // would push utilization past 100% once loans are repaid and re-lent.
+    private double UtilizationPercent
+    {
+        get
+        {
+            var totalInflow = Balance.TotalCollected + Balance.TotalRepaid;
+            return totalInflow <= 0
+                ? 0
+                : (double)Math.Min(1m, Math.Max(0m, Balance.TotalUtilized / totalInflow)) * 100;
+        }
+    }
 
     // Guarded against both "∞" (zero/near-zero burn) and a technically-correct but meaningless
     // multi-decade estimate — trailing-window burn rates are too noisy to project that far out.

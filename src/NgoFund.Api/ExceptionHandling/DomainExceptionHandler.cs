@@ -5,7 +5,6 @@ using NgoFund.Domain.Exceptions;
 namespace NgoFund.Api.ExceptionHandling;
 
 /// <summary>
-/// The system's one and only error-response mechanism (see ): every
 /// <see cref="DomainException"/> raised anywhere in Domain/Application becomes an RFC-9457
 /// <c>ProblemDetails</c> response here. No controller should ever hand-roll an error shape.
 /// </summary>
@@ -28,17 +27,27 @@ public class DomainExceptionHandler(IProblemDetailsService problemDetailsService
 
         httpContext.Response.StatusCode = status;
 
+        var problemDetails = new ProblemDetails
+        {
+            Status = status,
+            Title = title,
+            Detail = domainException.Message,
+            Type = $"https://ngofund.local/problems/{domainException.GetType().Name}",
+        };
+
+        if (domainException is IProblemDetailExtensions extensions)
+        {
+            foreach (var (key, value) in extensions.GetProblemDetailExtensions())
+            {
+                problemDetails.Extensions[key] = value;
+            }
+        }
+
         return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = httpContext,
             Exception = domainException,
-            ProblemDetails = new ProblemDetails
-            {
-                Status = status,
-                Title = title,
-                Detail = domainException.Message,
-                Type = $"https://ngofund.local/problems/{domainException.GetType().Name}",
-            },
+            ProblemDetails = problemDetails,
         });
     }
 }

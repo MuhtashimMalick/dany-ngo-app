@@ -35,4 +35,9 @@ public interface IFundApplicationService
     Task<IReadOnlyList<ApplicationRemarkDto>> GetRemarksAsync(Guid id, CancellationToken cancellationToken);
 
     Task<ApplicationRemarkDto> AddRemarkAsync(Guid id, AddRemarkRequest request, CancellationToken cancellationToken);
+
+    /// <summary>The completeness gate's evaluation, exposed read-only — backs the wizard's upload
+    /// step and the manage-view checklist, using the exact same evaluator the Approved-transition
+    /// gate in <see cref="ChangeStatusAsync"/> runs, so the two can never disagree.</summary>
+    Task<ApplicationCompletenessDto> GetCompletenessAsync(Guid id, CancellationToken cancellationToken);
 }

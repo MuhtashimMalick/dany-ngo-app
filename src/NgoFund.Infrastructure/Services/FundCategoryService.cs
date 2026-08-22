@@ -26,7 +26,7 @@ public class FundCategoryService(AppDbContext dbContext) : IFundCategoryService
         // match FundBalanceDto's properties (fund_category_id -> FundCategoryId, etc.).
         return await dbContext.Database.SqlQuery<FundBalanceDto>(
             $"""
-            SELECT fund_category_id, code, name, is_zakat, total_collected, total_utilized, balance
+            SELECT fund_category_id, code, name, is_zakat, total_collected, total_utilized, balance, total_repaid
             FROM vw_fund_balances
             ORDER BY name
             """).ToListAsync(cancellationToken);
