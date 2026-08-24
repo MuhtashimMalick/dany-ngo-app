@@ -24,8 +24,6 @@ public class Donation : BaseEntity, IUpdateAuditable
 
     public PaymentMethod PaymentMethod { get; set; }
 
-    public string? ReceiptReference { get; set; }
-
     public string? BankName { get; set; }
 
     public string? InstrumentNumber { get; set; }

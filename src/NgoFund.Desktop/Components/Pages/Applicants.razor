@@ -330,6 +330,28 @@
             </div>
         </div>
 
+        <h4>Documents</h4>
+        @if (_isLoadingDocuments)
+        {
+            <Skeleton Rows="2" Columns="1" />
+        }
+        else if (VisibleApplicantDocuments.Count == 0)
+        {
+            <EmptyState Icon="file" Title="No documents uploaded" />
+        }
+        else
+        {
+            <ul class="plain-list" id="applicant-documents-rows">
+                @foreach (var document in VisibleApplicantDocuments)
+                {
+                    <li>
+                        <span class="flex-1">@document.FileName</span>
+                        <button type="button" class="icon-btn" aria-label="View document" @onclick="() => _viewingDocument = document"><Icon Name="eye" Size="16" /></button>
+                    </li>
+                }
+            </ul>
+        }
+
         <h4>Application History</h4>
         <div class="table-wrapper">
             <table class="data-table">
@@ -386,6 +408,8 @@
         </Footer>
     </Modal>
 }
+
+<DocumentViewer Document="_viewingDocument" OnClose="() => _viewingDocument = null" />
 
 @if (_showPhotoLightbox && _viewingApplicant?.PhotoDocumentId is not null)
 {
@@ -459,6 +483,20 @@
     private ElementReference _photoTileRef;
     private ElementReference _photoTileOverlayRef;
 
+    // Task 4: the applicant's own documents (CNIC front/back, membership card, etc.) — fetched
+    // alongside their application history when the detail modal opens, not eagerly on page load.
+    // The profile photo is excluded by exact DocumentId comparison (never string-matched on
+    // DocumentType) since it's already shown separately via the photo tile + lightbox above.
+    private IReadOnlyList<DocumentDto> _applicantDocuments = [];
+    private bool _isLoadingDocuments;
+    private bool _pendingDocumentsAnimation;
+    private DocumentDto? _viewingDocument;
+
+    private List<DocumentDto> VisibleApplicantDocuments =>
+        _viewingApplicant is null
+            ? []
+            : _applicantDocuments.Where(d => d.Id != _viewingApplicant.PhotoDocumentId).ToList();
+
     // Same box recipe as .webcam-frame/.webcam-preview in app.css (100% width, 4:3 aspect ratio,
     // radius-md, 1px border) so a saved photo doesn't visibly jump size/shape relative to the
     // "just captured" and "live camera" states in the same column — DocumentThumbnail's own
@@ -495,16 +533,27 @@
         _viewingApplicant = applicant;
         _detailError = null;
         _applicantApplications = [];
+        _applicantDocuments = [];
         _showPhotoLightbox = false;
 
+        _isLoadingDocuments = true;
         try
         {
-            var page = await ApiClient.GetApplicationsAsync(1, 100, applicantId: applicant.Id);
-            _applicantApplications = page.Items;
+            var applicationsTask = ApiClient.GetApplicationsAsync(1, 100, applicantId: applicant.Id);
+            var documentsTask = ApiClient.GetDocumentsForApplicantAsync(applicant.Id);
+            await Task.WhenAll(applicationsTask, documentsTask);
+
+            _applicantApplications = applicationsTask.Result.Items;
+            _applicantDocuments = documentsTask.Result;
+            _pendingDocumentsAnimation = true;
         }
         catch (ApiException ex)
         {
             _detailError = ex.Message;
+        }
+        finally
+        {
+            _isLoadingDocuments = false;
         }
     }
 
@@ -530,6 +579,7 @@
     private void CloseDetailModal()
     {
         _viewingApplicant = null;
+        _viewingDocument = null;
 
         // Drop the query-string id so navigating away and back doesn't try to re-open a modal
         // that's already been closed — same convention as Applications.razor's CloseManageModal.
@@ -545,6 +595,14 @@
         {
             _pendingRowAnimation = false;
             await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#applicants-rows tr");
+        }
+        if (_pendingDocumentsAnimation)
+        {
+            _pendingDocumentsAnimation = false;
+            if (VisibleApplicantDocuments.Count > 0)
+            {
+                await JS.InvokeVoidAsync("ngoFundMotion.animateChecklistItems", "#applicant-documents-rows li");
+            }
         }
     }
 

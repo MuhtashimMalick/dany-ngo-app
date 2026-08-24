@@ -10,6 +10,7 @@
    from the append-only fund_transactions ledger server-side and must always agree with
    vw_fund_balances (see FundTransactionLedgerRowDto's doc comment). *@
 @inject ApiClient ApiClient
+@inject AuthState AuthState
 @inject IJSRuntime JS
 
 <FilterBar>
@@ -22,6 +23,17 @@
         <label for="ledgerToDate-@FundCategoryId">To</label>
         <input id="ledgerToDate-@FundCategoryId" type="date" @bind="_toDate" @bind:after="() => LoadPageAsync(1)" />
     </div>
+    @if (AuthState.HasPermission("reports.export"))
+    {
+        <div class="filter-bar-actions">
+            <button type="button" id="@ExportButtonId("csv")" class="btn btn-secondary" disabled="@(_exportingFormat is not null)" @onclick='() => ExportAsync("csv")'>
+                <Icon Name="download" Size="16" />@(_exportingFormat == "csv" ? "Downloading..." : "Download CSV")
+            </button>
+            <button type="button" id="@ExportButtonId("pdf")" class="btn btn-secondary" disabled="@(_exportingFormat is not null)" @onclick='() => ExportAsync("pdf")'>
+                <Icon Name="download" Size="16" />@(_exportingFormat == "pdf" ? "Downloading..." : "Download PDF")
+            </button>
+        </div>
+    }
 </FilterBar>
 @if (_fromDate is not null || _toDate is not null || !string.IsNullOrWhiteSpace(_search))
 {
@@ -78,8 +90,11 @@
     private DateOnly? _toDate;
     private string? _errorMessage;
     private bool _pendingRowAnimation;
+    private string? _exportingFormat;
 
     private string RowsContainerId => $"fund-transaction-rows-{FundCategoryId:N}";
+
+    private string ExportButtonId(string format) => $"download-{format}-btn-{FundCategoryId:N}";
 
     private bool HasActiveFilter => !string.IsNullOrWhiteSpace(_search) || _fromDate is not null || _toDate is not null;
 
@@ -112,6 +127,33 @@
         catch (ApiException ex)
         {
             _errorMessage = ex.Message;
+        }
+    }
+
+    // fromDate/toDate/search are passed through exactly as the ledger load uses them — the server
+    // derives omitted dates from the actual row data and returns a server-computed filename via
+    // Content-Disposition, so this never builds a filename or a date range itself.
+    private async Task ExportAsync(string format)
+    {
+        _errorMessage = null;
+        _exportingFormat = format;
+        var iconSelector = $"#{ExportButtonId(format)} svg";
+        await JS.InvokeVoidAsync("ngoFundMotion.startButtonSpin", iconSelector);
+        try
+        {
+            var (bytes, fileName) = await ApiClient.ExportFundTransactionLedgerAsync(
+                FundCategoryId, format, _fromDate, _toDate, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            var contentType = format == "pdf" ? "application/pdf" : "text/csv";
+            await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(bytes), fileName, contentType);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _exportingFormat = null;
+            await JS.InvokeVoidAsync("ngoFundMotion.stopButtonSpin", iconSelector);
         }
     }
 

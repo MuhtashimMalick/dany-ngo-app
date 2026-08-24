@@ -22,4 +22,10 @@ public interface IFundTransactionLedgerService
     /// the filtered subset.</summary>
     Task<PagedResult<FundTransactionLedgerRowDto>> GetFundTransactionLedgerAsync(
         Guid fundCategoryId, PagedQuery query, DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken);
+
+    /// <summary>The same ledger as <see cref="GetFundTransactionLedgerAsync"/>, unpaginated — every
+    /// matching row, for CSV/PDF export. Still ordered chronologically with <c>RunningBalance</c>
+    /// computed over the fund's entire history before the date/search filter is applied.</summary>
+    Task<IReadOnlyList<FundTransactionLedgerRowDto>> GetFullFundTransactionLedgerAsync(
+        Guid fundCategoryId, DateOnly? fromDate, DateOnly? toDate, string? search, CancellationToken cancellationToken);
 }

@@ -62,17 +62,10 @@
             }
         }
 
-        @if (AuthState.HasPermission("reports.view") || AuthState.HasPermission("users.view"))
+        @if (AuthState.HasPermission("users.view"))
         {
             <div class="nav-group-label">Administration</div>
-            @if (AuthState.HasPermission("reports.view"))
-            {
-                <NavLink class="nav-item" href="reports" title="Reports"><Icon Name="reports" CssClass="nav-icon" /><span class="nav-label">Reports</span></NavLink>
-            }
-            @if (AuthState.HasPermission("users.view"))
-            {
-                <NavLink class="nav-item" href="users" title="Users"><Icon Name="users" CssClass="nav-icon" /><span class="nav-label">Users</span></NavLink>
-            }
+            <NavLink class="nav-item" href="users" title="Users"><Icon Name="users" CssClass="nav-icon" /><span class="nav-label">Users</span></NavLink>
         }
     </nav>
 
@@ -118,7 +111,6 @@
         ["applications"] = "Applications",
         ["payments"] = "Payments",
         ["loans"] = "Loans",
-        ["reports"] = "Reports",
         ["users"] = "Users",
         ["audit-logs"] = "Audit Log",
         ["settings"] = "Settings",

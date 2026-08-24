@@ -35,8 +35,7 @@ public class DonationService(AppDbContext dbContext, INumberGenerator numberGene
             var term = query.Search.Trim();
             donationsQuery = donationsQuery.Where(d =>
                 EF.Functions.ILike(d.DonationNumber, $"%{term}%") ||
-                EF.Functions.ILike(d.Donor.FullName, $"%{term}%") ||
-                (d.ReceiptReference != null && EF.Functions.ILike(d.ReceiptReference, $"%{term}%")));
+                EF.Functions.ILike(d.Donor.FullName, $"%{term}%"));
         }
 
         var totalCount = await donationsQuery.CountAsync(cancellationToken);
@@ -85,7 +84,6 @@ public class DonationService(AppDbContext dbContext, INumberGenerator numberGene
             Amount = request.Amount,
             DonationDate = request.DonationDate,
             PaymentMethod = Enum.Parse<PaymentMethod>(request.PaymentMethod),
-            ReceiptReference = request.ReceiptReference,
             BankName = request.BankName,
             InstrumentNumber = request.InstrumentNumber,
             Notes = request.Notes,
@@ -146,6 +144,6 @@ public class DonationService(AppDbContext dbContext, INumberGenerator numberGene
 
     private static DonationDto Map(Donation d) => new(
         d.Id, d.DonationNumber, d.DonorId, d.Donor.FullName, d.FundCategoryId, d.FundCategory.Name,
-        d.Amount, d.DonationDate, d.PaymentMethod.ToString(), d.ReceiptReference, d.BankName,
+        d.Amount, d.DonationDate, d.PaymentMethod.ToString(), d.BankName,
         d.InstrumentNumber, d.Notes, d.Status.ToString(), d.VoidedAt, d.VoidReason);
 }

@@ -4,6 +4,7 @@
 
 window.ngoFundMotion = (() => {
   const mm = gsap.matchMedia();
+  const spinTweens = new Map();
 
   function withReducedMotionGuard(runAnimation) {
     mm.add(
@@ -352,6 +353,49 @@ window.ngoFundMotion = (() => {
           overwrite: true,
         });
       });
+    },
+
+    // FundTransactionLedgerTable.razor's Download CSV/PDF buttons — a continuous icon spin for
+    // the (possibly multi-second, full-history) export request, keyed by selector so paired
+    // start/stop calls from Blazor don't need to hold a JS object reference across the await.
+    // Under reduced motion this is a no-op: the button's own disabled + "Downloading..." label
+    // swap is still the loading signal, just without the spin.
+    //
+    // This is a *toggleable* (repeat: -1) animation, unlike every other helper in this file which
+    // is fire-and-forget — so it can't share the module-level `mm` via withReducedMotionGuard()
+    // above. That shared instance is never reverted, by design: its handlers are meant to live for
+    // the app's lifetime and simply replay a finished entrance animation if prefers-reduced-motion
+    // changes later, which is harmless. An infinite spin is not harmless to leave registered that
+    // way — every start would add another permanent listener on the shared `mm`, and a later
+    // prefers-reduced-motion change would re-fire all of them, resurrecting spins whose export
+    // already finished. So each spin gets its own scoped gsap.matchMedia() instance, reverted (not
+    // just tween.kill()'d) in stopButtonSpin, leaving zero registered listeners once stopped.
+    startButtonSpin(selector) {
+      const existing = spinTweens.get(selector);
+      if (existing) {
+        existing.tween?.kill();
+        existing.mm.revert();
+      }
+
+      const spinMm = gsap.matchMedia();
+      const entry = { mm: spinMm, tween: null };
+      spinTweens.set(selector, entry);
+
+      spinMm.add({ reduceMotion: '(prefers-reduced-motion: reduce)' }, (context) => {
+        const { reduceMotion } = context.conditions;
+        if (reduceMotion) return;
+        entry.tween = gsap.to(selector, { rotation: 360, duration: 0.8, ease: 'none', repeat: -1 });
+      });
+    },
+
+    stopButtonSpin(selector) {
+      const entry = spinTweens.get(selector);
+      if (entry) {
+        entry.tween?.kill();
+        entry.mm.revert();
+        gsap.set(selector, { clearProps: 'rotation' });
+        spinTweens.delete(selector);
+      }
     },
   };
 })();

@@ -14,7 +14,6 @@ public class CreateDonationRequestValidator : AbstractValidator<CreateDonationRe
         RuleFor(x => x.DonationDate).NotEqual(default(DateOnly));
         RuleFor(x => x.PaymentMethod).NotEmpty().Must(v => Enum.TryParse<PaymentMethod>(v, out _))
             .WithMessage($"PaymentMethod must be one of: {string.Join(", ", Enum.GetNames<PaymentMethod>())}.");
-        RuleFor(x => x.ReceiptReference).MaximumLength(100);
         RuleFor(x => x.BankName).MaximumLength(150);
         RuleFor(x => x.InstrumentNumber).MaximumLength(100);
     }

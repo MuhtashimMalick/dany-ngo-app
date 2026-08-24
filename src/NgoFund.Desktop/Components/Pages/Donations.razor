@@ -14,7 +14,7 @@
 </div>
 
 <FilterBar>
-    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by donation no., donor, receipt ref…" />
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by donation no., donor…" />
 </FilterBar>
 
 @if (_errorMessage is not null)
@@ -46,6 +46,7 @@
             <td>@donation.PaymentMethod</td>
             <td><StatusBadge Status="@donation.Status" /></td>
             <td class="table-actions">
+                <button class="icon-btn" aria-label="View donation" @onclick="() => OpenDetailModal(donation)"><Icon Name="eye" Size="16" /></button>
                 @if (AuthState.HasPermission("donations.void") && donation.Status != "Voided")
                 {
                     <OverflowMenu>
@@ -124,10 +125,6 @@
                             <option value="InKind">In Kind</option>
                         </InputSelect>
                     </FormField>
-
-                    <FormField Label="Receipt Reference" For="receiptReference" CssClass="span-2">
-                        <InputText id="receiptReference" @bind-Value="_form.ReceiptReference" />
-                    </FormField>
                 </div>
             </FormSection>
 
@@ -170,6 +167,33 @@
     </Modal>
 }
 
+@if (_viewingDonation is not null)
+{
+    <Modal Title="@_viewingDonation.DonationNumber" Size="md" OnClose="CloseDetailModal">
+        <ChildContent>
+        <DetailList>
+            <DetailItem Label="Donor" Value="@_viewingDonation.DonorName" />
+            <DetailItem Label="Fund" Value="@_viewingDonation.FundCategoryName" />
+            <DetailItem Label="Amount" Value="@_viewingDonation.Amount.ToString("N2")" IsNumeric="true" />
+            <DetailItem Label="Donation Date" Value="@_viewingDonation.DonationDate.ToString("yyyy-MM-dd")" />
+            <DetailItem Label="Payment Method" Value="@_viewingDonation.PaymentMethod" />
+            <DetailItem Label="Status">
+                <StatusBadge Status="@_viewingDonation.Status" />
+            </DetailItem>
+            <DetailItem Label="Notes" Value="@(_viewingDonation.Notes ?? "-")" SpanFull="true" />
+            @if (_viewingDonation.Status == "Voided")
+            {
+                <DetailItem Label="Voided At" Value="@(_viewingDonation.VoidedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")" />
+                <DetailItem Label="Void Reason" Value="@(_viewingDonation.VoidReason ?? "-")" SpanFull="true" />
+            }
+        </DetailList>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseDetailModal">Close</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     private const int PageSize = 25;
     private PagedResult<DonationDto>? _page;
@@ -191,6 +215,8 @@
     private string? _voidError;
     private string _voidReason = "";
     private DonationDto? _donationPendingVoid;
+
+    private DonationDto? _viewingDonation;
 
     protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
 
@@ -265,7 +291,7 @@
         {
             var created = await ApiClient.CreateDonationAsync(new CreateDonationRequest(
                 _selectedDonor.Id, Guid.Parse(_form.FundCategoryId), _form.Amount, _form.DonationDate,
-                _form.PaymentMethod, _form.ReceiptReference, null, null, _form.Notes));
+                _form.PaymentMethod, null, null, _form.Notes));
 
             Toast.Success($"Donation recorded · {created.DonationNumber}");
             _showForm = false;
@@ -290,6 +316,10 @@
     }
 
     private void CloseVoidModal() => _showVoidModal = false;
+
+    private void OpenDetailModal(DonationDto donation) => _viewingDonation = donation;
+
+    private void CloseDetailModal() => _viewingDonation = null;
 
     private async Task ConfirmVoidAsync()
     {
@@ -329,7 +359,6 @@
         [Range(0.01, double.MaxValue)] public decimal Amount { get; set; }
         public DateOnly DonationDate { get; set; }
         public string PaymentMethod { get; set; } = "Cash";
-        public string? ReceiptReference { get; set; }
         public string? Notes { get; set; }
     }
 }

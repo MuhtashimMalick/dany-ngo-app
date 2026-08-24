@@ -14,6 +14,7 @@ namespace NgoFund.Desktop;
 public partial class App : Application
 {
     // Default matches docker-compose.yml's well-known port for a same-host dev setup (see
+    // ). Overridable per-deployment via an "ApiBaseUrl" key in an optional
     // appsettings.json placed next to the .exe — see docs/deployment.md — so pointing a shipped
     // build at a different server never requires a recompile.
     private const string DefaultApiBaseUrl = "http://localhost:8080/";

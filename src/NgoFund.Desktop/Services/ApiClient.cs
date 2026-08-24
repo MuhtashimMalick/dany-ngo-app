@@ -177,6 +177,35 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         return await ReadOrThrowAsync<PagedResult<FundTransactionLedgerRowDto>>(response, cancellationToken);
     }
 
+    // fromDate/toDate/search are passed through as-is (including nulls) — the server derives
+    // omitted dates from the actual row data and computes the returned filename itself, so the
+    // client never builds a filename or a date range on its own.
+    public async Task<(byte[] Bytes, string FileName)> ExportFundTransactionLedgerAsync(
+        Guid fundCategoryId, string format, DateOnly? fromDate, DateOnly? toDate, string? search, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/fund-categories/{fundCategoryId}/transaction-ledger/export?format={format}";
+        if (fromDate is not null)
+        {
+            url += $"&fromDate={fromDate:yyyy-MM-dd}";
+        }
+
+        if (toDate is not null)
+        {
+            url += $"&toDate={toDate:yyyy-MM-dd}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            url += $"&search={Uri.EscapeDataString(search)}";
+        }
+
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, url, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        await ThrowIfErrorAsync(response);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return (bytes, response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? $"fund-transaction-ledger.{format}");
+    }
+
     public async Task<ApplicantLedgerDto> GetApplicantLedgerAsync(Guid applicantId, CancellationToken cancellationToken = default)
     {
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/applicants/{applicantId}/ledger", cancellationToken);
@@ -734,24 +763,6 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/reports/loan-repayments?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", cancellationToken);
         var response = await httpClient.SendAsync(request, cancellationToken);
         return await ReadOrThrowAsync<List<MonthlySummaryRowDto>>(response, cancellationToken);
-    }
-
-    public async Task<(byte[] Bytes, string FileName)> ExportMonthlyDonationsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
-    {
-        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/reports/donations/monthly/export?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", cancellationToken);
-        var response = await httpClient.SendAsync(request, cancellationToken);
-        await ThrowIfErrorAsync(response);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        return (bytes, response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "donations.csv");
-    }
-
-    public async Task<(byte[] Bytes, string FileName)> ExportMonthlyPaymentsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
-    {
-        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/reports/payments/monthly/export?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", cancellationToken);
-        var response = await httpClient.SendAsync(request, cancellationToken);
-        await ThrowIfErrorAsync(response);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        return (bytes, response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "payments.csv");
     }
 
     public async Task<IReadOnlyList<AppSettingDto>> GetSettingsAsync(CancellationToken cancellationToken = default)

@@ -56,7 +56,7 @@ public class DonationLedgerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         var generalFund = fundCategories.Single(f => f.Code == "GENERAL");
 
         var donationResponse = await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor.Id, generalFund.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", "RCPT-1", null, null, null));
+            donor.Id, generalFund.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null));
 
         var donationBody = await donationResponse.Content.ReadAsStringAsync();
         Assert.True(donationResponse.StatusCode == HttpStatusCode.Created, $"Expected Created, got {donationResponse.StatusCode}: {donationBody}");
@@ -81,7 +81,7 @@ public class DonationLedgerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         var generalFund = fundCategories.Single(f => f.Code == "GENERAL");
 
         var donationResponse = await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor.Id, generalFund.Id, 2500m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null));
+            donor.Id, generalFund.Id, 2500m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null));
         var donation = (await donationResponse.Content.ReadFromJsonAsync<DonationDto>())!;
 
         var voidResponse = await client.PostAsJsonAsync($"/api/donations/{donation.Id}/void", new VoidDonationRequest("Entered by mistake"));

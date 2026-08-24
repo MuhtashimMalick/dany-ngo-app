@@ -201,12 +201,6 @@
                     <InputDate id="firstDueDate" @bind-Value="_planForm.FirstDueDate" @bind-Value:after="SchedulePreviewAsync" />
                 </FormField>
 
-                <FormField Label="Frequency" For="frequency" Hint="Only Monthly is supported right now.">
-                    <select id="frequency" disabled>
-                        <option>Monthly</option>
-                    </select>
-                </FormField>
-
                 <FormField Label="Notes" For="notes" CssClass="span-2">
                     <InputTextArea id="notes" @bind-Value="_planForm.Notes" />
                 </FormField>
@@ -214,7 +208,6 @@
         </EditForm>
 
         <div class="form-section-legend" style="margin-top: var(--space-4);">Preview</div>
-        <p class="field-hint">Computed by the server — no rate, no interest, remainder absorbed by the final installment.</p>
 
         @if (_previewError is not null)
         {

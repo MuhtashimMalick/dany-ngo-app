@@ -42,7 +42,7 @@ else
     <div class="metric-row" id="dashboard-fund-cards">
         @foreach (var fund in _summary.FundBalances)
         {
-            <FundBalanceCard Balance="fund" Committed="CommittedFor(fund.FundCategoryId)" MonthlyBurn="MonthlyBurnFor(fund.FundCategoryId)" />
+            <FundBalanceCard Balance="fund" Committed="CommittedFor(fund.FundCategoryId)" />
         }
     </div>
 
@@ -276,7 +276,6 @@ else
     // slow/broken insights endpoint never blanks the dashboard sections that already worked before
     // this feature existed (see LoadInsightsSafeAsync below).
     private DashboardInsightsDto? _insights;
-    private Dictionary<Guid, decimal> _fundMonthlyBurn = [];
 
     private int StatusTotal => _summary?.ApplicationsByStatus.Sum(s => s.Count) ?? 0;
 
@@ -368,15 +367,12 @@ else
         return $"{arrow} {Math.Abs(pct):N0}% new donors vs last month";
     }
 
-    // ---- F4 fund commitment + runway ----
+    // ---- F4 fund commitment ----
 
     private decimal? CommittedFor(Guid fundCategoryId) =>
         _insights?.OutstandingCommitments.FirstOrDefault(c => c.FundCategoryId == fundCategoryId) is { } commitment
             ? commitment.ApprovedOutstanding
             : null;
-
-    private decimal? MonthlyBurnFor(Guid fundCategoryId) =>
-        _fundMonthlyBurn.TryGetValue(fundCategoryId, out var burn) ? burn : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -425,14 +421,6 @@ else
                 donations.Where(r => r.Year == m.Year && r.Month == m.Month).Sum(r => r.Total),
                 payments.Where(r => r.Year == m.Year && r.Month == m.Month).Sum(r => r.Total)
             )).ToList();
-
-            // Per-fund average monthly burn for the FundBalanceCard runway hint (F4) — derived from
-            // the same trend rows already fetched for the chart above (MonthlySummaryRowDto carries
-            // FundCategoryId even though the chart's own MonthPoint aggregates it away), so this
-            // costs no extra API call.
-            _fundMonthlyBurn = payments
-                .GroupBy(p => p.FundCategoryId)
-                .ToDictionary(g => g.Key, g => g.Sum(p => p.Total) / months.Count);
 
             _appsReceivedThisMonth = appsThisMonthTask.Result.TotalCount;
             _appsReceivedLastMonth = appsLastMonthTask.Result.TotalCount;
@@ -507,6 +495,7 @@ else
         _ => "var(--status-neutral-solid)",
     };
 
+    // Hand-built inline SVG — no charting package (see 's "prefer the framework/standard
     // library" rule). Rendered at the exact pixel size ChartCanvas measures via ResizeObserver, so
     // 1 SVG user unit is always 1 CSS pixel — axis text and gridline stroke-width never scale with
     // the container (the fix for the previous "9px label renders at 18px" bug).

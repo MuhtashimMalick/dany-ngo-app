@@ -48,9 +48,9 @@ public class FundTransactionLedgerTests(AuthApiFactory factory) : IClassFixture<
             .Content.ReadFromJsonAsync<DonorDto>())!;
 
         var donation1 = await ReadOrFailAsync<DonationDto>(await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor1.Id, zakatFundId, 20000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null)), HttpStatusCode.Created);
+            donor1.Id, zakatFundId, 20000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null)), HttpStatusCode.Created);
         var donation2 = await ReadOrFailAsync<DonationDto>(await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor2.Id, zakatFundId, 15000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null)), HttpStatusCode.Created);
+            donor2.Id, zakatFundId, 15000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null)), HttpStatusCode.Created);
 
         var application1 = await CreateApprovedApplicationAsync(client, "70110-1111111-1", healthCategoryId, zakatFundId, 3000m);
         var payment1 = await ReadOrFailAsync<PaymentDto>(await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(

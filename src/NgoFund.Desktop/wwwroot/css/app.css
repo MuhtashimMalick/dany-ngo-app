@@ -471,6 +471,14 @@ input[type="radio"] {
   border-radius: var(--radius-lg);
 }
 
+/* Trailing action group inside a .filter-bar (e.g. export buttons) — pushed to the row's end so
+   it reads as "acting on the filtered view" rather than another filter control. */
+.filter-bar-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -2706,14 +2714,8 @@ table.data-table {
   color: var(--color-foreground);
 }
 
-/* Optional fund-commitment + runway add-ons (F4) — only rendered when Dashboard.razor supplies
-   Committed/MonthlyBurn; the Funds page never passes them, so its cards are unaffected. */
-.fund-balance-runway {
-  font-size: var(--text-2xs);
-  color: var(--color-muted-foreground);
-  margin-bottom: var(--space-3);
-}
-
+/* Optional fund-commitment add-on (F4) — only rendered when Dashboard.razor supplies Committed;
+   the Funds page never passes it, so its cards are unaffected. */
 .fund-balance-commitment {
   display: flex;
   flex-direction: column;

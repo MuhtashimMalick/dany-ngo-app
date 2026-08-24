@@ -9,6 +9,7 @@ using NgoFund.Infrastructure.Persistence;
 using NgoFund.Infrastructure.Persistence.Interceptors;
 using NgoFund.Infrastructure.Security;
 using NgoFund.Infrastructure.Services;
+using NgoFund.Infrastructure.Services.Reports;
 using NgoFund.Infrastructure.Storage;
 
 namespace NgoFund.Infrastructure;
@@ -21,6 +22,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // Community license is free for charitable/non-profit organizations regardless of revenue —
+        // this is an NGO. Must be set once before any PDF render or QuestPDF.Fluent throws at
+        // runtime. Set here (not in NgoFund.Api's Program.cs) because QuestPDF and the
+        // FundLedgerPdfBuilder that uses it both live in this project — any future host of
+        // AddInfrastructure() (Migrator, a worker, a test constructing the builder directly) needs
+        // this too, not just the Api process.
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Connection string 'Default' is not configured.");
 
@@ -79,6 +88,8 @@ public static class DependencyInjection
         services.AddScoped<ILoanService, LoanService>();
         services.AddScoped<IApplicantLedgerService, ApplicantLedgerService>();
         services.AddScoped<IFundTransactionLedgerService, FundTransactionLedgerService>();
+        services.AddScoped<IFundLedgerCsvBuilder, FundLedgerCsvBuilder>();
+        services.AddScoped<IFundLedgerPdfBuilder, FundLedgerPdfBuilder>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IAppSettingService, AppSettingService>();
 

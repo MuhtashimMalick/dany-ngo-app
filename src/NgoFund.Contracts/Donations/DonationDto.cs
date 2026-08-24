@@ -10,7 +10,6 @@ public record DonationDto(
     decimal Amount,
     DateOnly DonationDate,
     string PaymentMethod,
-    string? ReceiptReference,
     string? BankName,
     string? InstrumentNumber,
     string? Notes,

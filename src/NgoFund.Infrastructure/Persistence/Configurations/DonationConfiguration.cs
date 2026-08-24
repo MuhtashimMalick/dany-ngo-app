@@ -11,7 +11,6 @@ public class DonationConfiguration : IEntityTypeConfiguration<Donation>
         builder.ToTable("donations", t => t.HasCheckConstraint("ck_donations_amount_positive", "amount > 0"));
 
         builder.Property(e => e.DonationNumber).HasMaxLength(30).IsRequired();
-        builder.Property(e => e.ReceiptReference).HasMaxLength(100);
         builder.Property(e => e.BankName).HasMaxLength(150);
         builder.Property(e => e.InstrumentNumber).HasMaxLength(100);
         builder.Property(e => e.VoidReason).HasMaxLength(500);

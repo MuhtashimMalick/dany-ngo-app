@@ -47,7 +47,7 @@ internal static class PaymentTestHelpers
         var donor = (await donorResponse.Content.ReadFromJsonAsync<DonorDto>())!;
 
         var donationResponse = await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor.Id, fundCategoryId, amount, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null));
+            donor.Id, fundCategoryId, amount, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null));
         await ReadOrFailAsync<DonationDto>(donationResponse, HttpStatusCode.Created);
     }
 

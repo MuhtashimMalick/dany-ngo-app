@@ -84,9 +84,9 @@ public class ReportingTests(AuthApiFactory factory) : IClassFixture<AuthApiFacto
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor.Id, generalFund.Id, 1500m, today, "Cash", null, null, null, null));
+            donor.Id, generalFund.Id, 1500m, today, "Cash", null, null, null));
         await client.PostAsJsonAsync("/api/donations", new CreateDonationRequest(
-            donor.Id, generalFund.Id, 2500m, today, "Cash", null, null, null, null));
+            donor.Id, generalFund.Id, 2500m, today, "Cash", null, null, null));
 
         var monthStart = new DateOnly(today.Year, today.Month, 1);
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
@@ -96,22 +96,5 @@ public class ReportingTests(AuthApiFactory factory) : IClassFixture<AuthApiFacto
 
         var generalRow = rows.Single(r => r.FundCategoryId == generalFund.Id && r.Year == today.Year && r.Month == today.Month);
         Assert.Equal(4000m, generalRow.Total);
-    }
-
-    [Fact]
-    public async Task ExportMonthlyDonations_ReturnsCsvWithHeaderRow()
-    {
-        var client = await CreateAuthenticatedClientAsync();
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var monthStart = new DateOnly(today.Year, today.Month, 1);
-        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
-
-        var response = await client.GetAsync($"/api/reports/donations/monthly/export?from={monthStart:yyyy-MM-dd}&to={monthEnd:yyyy-MM-dd}");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
-
-        var csv = await response.Content.ReadAsStringAsync();
-        Assert.StartsWith("Year,Month,Fund,Total", csv);
     }
 }

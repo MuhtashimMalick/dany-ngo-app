@@ -27,7 +27,7 @@ WORKDIR /app
 
 # curl is needed for docker-compose's own HTTP healthcheck against /health; not in the base image.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libfontconfig1 libfreetype6 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r appgroup && useradd -r -g appgroup appuser \
     && mkdir -p /app/storage && chown -R appuser:appgroup /app

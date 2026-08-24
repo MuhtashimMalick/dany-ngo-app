@@ -45,5 +45,5 @@
     [Parameter] public decimal RequestedAmount { get; set; }
 
     private string CapitalHint =>
-        $"The loan amount needed is the application's Requested Amount (PKR {RequestedAmount:N2}) — there's no separate loan-amount field here.";
+        $"What the business needs in total — a separate, applicant-entered figure from the Requested Amount (PKR {RequestedAmount:N2}), which is what's being asked of the NGO. A gap between the two is expected: it's meant to be covered by \"Capital Already Available\" below, not an error or something to be deducted.";
 }

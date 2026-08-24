@@ -19,4 +19,12 @@
     <ProjectReference Include="..\NgoFund.Contracts\NgoFund.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The org's logo, used as the logo-only letterhead on exported fund ledger PDFs
+         (FundLedgerPdfBuilder reads it from AppContext.BaseDirectory at runtime). -->
+    <None Include="Assets\report-logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

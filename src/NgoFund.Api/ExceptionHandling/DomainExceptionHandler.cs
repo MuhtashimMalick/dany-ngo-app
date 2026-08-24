@@ -5,6 +5,7 @@ using NgoFund.Domain.Exceptions;
 namespace NgoFund.Api.ExceptionHandling;
 
 /// <summary>
+/// The system's one and only error-response mechanism (see ): every
 /// <see cref="DomainException"/> raised anywhere in Domain/Application becomes an RFC-9457
 /// <c>ProblemDetails</c> response here. No controller should ever hand-roll an error shape.
 /// </summary>

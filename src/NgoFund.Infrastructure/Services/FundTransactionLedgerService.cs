@@ -22,16 +22,34 @@ public class FundTransactionLedgerService(AppDbContext dbContext) : IFundTransac
     {
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var pattern = string.IsNullOrWhiteSpace(query.Search) ? null : $"%{query.Search.Trim()}%";
+        var pattern = ToPattern(query.Search);
 
-        // Count and rows below both build on the identical full_history CTE (verbatim — same joins,
-        // same column list) and the identical outer WHERE (date range + search). EF's SqlQuery
-        // interpolation turns every {} hole into a bound parameter, not raw SQL text, so the CTE
-        // can't be factored into a shared C# string; it's duplicated on purpose, the same way
-        // ApplicantLedgerService duplicates its "pairs"/"ledger" CTEs between row and count queries.
-        // If the two WHERE clauses ever drift apart, paging will report a TotalCount that doesn't
-        // match what the rows query actually returns — keep them in lockstep.
-        var totalCount = await dbContext.Database.SqlQuery<int>(
+        var totalCount = await GetTotalCountAsync(fundCategoryId, fromDate, toDate, pattern, cancellationToken);
+        var rows = await QueryRowsAsync(fundCategoryId, fromDate, toDate, pattern, (page - 1) * pageSize, pageSize, cancellationToken);
+
+        return new PagedResult<FundTransactionLedgerRowDto>(rows, totalCount, page, pageSize);
+    }
+
+    public async Task<IReadOnlyList<FundTransactionLedgerRowDto>> GetFullFundTransactionLedgerAsync(
+        Guid fundCategoryId, DateOnly? fromDate, DateOnly? toDate, string? search, CancellationToken cancellationToken)
+        => await QueryRowsAsync(fundCategoryId, fromDate, toDate, ToPattern(search), offset: null, limit: null, cancellationToken);
+
+    private static string? ToPattern(string? search) => string.IsNullOrWhiteSpace(search) ? null : $"%{search.Trim()}%";
+
+    // GetTotalCountAsync and QueryRowsAsync both build on the identical full_history CTE (verbatim
+    // — same joins, same column list) and the identical outer WHERE (date range + search). EF's
+    // SqlQuery interpolation turns every {} hole into a bound parameter, not raw SQL text, so the
+    // CTE can't be factored into a shared C# string; it's duplicated on purpose, the same way
+    // ApplicantLedgerService duplicates its "pairs"/"ledger" CTEs between row and count queries.
+    // QueryRowsAsync itself IS shared — parameterized by nullable offset/limit — between the
+    // paginated ledger (GetFundTransactionLedgerAsync, real offset/pageSize) and the full
+    // unpaginated export (GetFullFundTransactionLedgerAsync, offset/limit both null, which
+    // PostgreSQL treats as OFFSET 0 / LIMIT ALL). If GetTotalCountAsync's WHERE ever drifts from
+    // QueryRowsAsync's, paging will report a TotalCount that doesn't match what the rows query
+    // actually returns — keep them in lockstep.
+    private async Task<int> GetTotalCountAsync(Guid fundCategoryId, DateOnly? fromDate, DateOnly? toDate, string? pattern, CancellationToken cancellationToken)
+    {
+        return await dbContext.Database.SqlQuery<int>(
             $"""
             WITH full_history AS (
                 SELECT
@@ -75,8 +93,19 @@ public class FundTransactionLedgerService(AppDbContext dbContext) : IFundTransac
                   OR case_number ILIKE {pattern}
                   OR reference_number ILIKE {pattern})
             """).SingleAsync(cancellationToken);
+    }
 
-        var rows = await dbContext.Database.SqlQuery<FundTransactionLedgerRowDto>(
+    /// <summary>
+    /// Rows for either the paginated ledger or the full export. <paramref name="offset"/>/
+    /// <paramref name="limit"/> null means "no pagination" — PostgreSQL treats <c>OFFSET NULL</c>
+    /// as <c>OFFSET 0</c> and <c>LIMIT NULL</c> as <c>LIMIT ALL</c>, so the one query serves both
+    /// callers. The explicit <c>::bigint</c> casts are needed because Npgsql can't infer a
+    /// parameter type from a C# <c>int?</c> that might be null.
+    /// </summary>
+    private async Task<List<FundTransactionLedgerRowDto>> QueryRowsAsync(
+        Guid fundCategoryId, DateOnly? fromDate, DateOnly? toDate, string? pattern, int? offset, int? limit, CancellationToken cancellationToken)
+    {
+        return await dbContext.Database.SqlQuery<FundTransactionLedgerRowDto>(
             $"""
             WITH full_history AS (
                 -- The running balance MUST be computed here, over the fund's entire history,
@@ -144,10 +173,8 @@ public class FundTransactionLedgerService(AppDbContext dbContext) : IFundTransac
                   OR case_number ILIKE {pattern}
                   OR reference_number ILIKE {pattern})
             ORDER BY transaction_date, id
-            OFFSET {(page - 1) * pageSize}
-            LIMIT {pageSize}
+            OFFSET {offset}::bigint
+            LIMIT {limit}::bigint
             """).ToListAsync(cancellationToken);
-
-        return new PagedResult<FundTransactionLedgerRowDto>(rows, totalCount, page, pageSize);
     }
 }

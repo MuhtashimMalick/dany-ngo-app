@@ -8,7 +8,6 @@ using static NgoFund.IntegrationTests.PaymentTestHelpers;
 
 namespace NgoFund.IntegrationTests;
 
-
 public class LoanRepaymentLedgerTests(AuthApiFactory factory) : IClassFixture<AuthApiFactory>
 {
     private static async Task<FundBalanceDto> GetFundBalanceAsync(HttpClient client, string code)
