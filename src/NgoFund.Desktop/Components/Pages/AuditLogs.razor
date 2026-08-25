@@ -3,7 +3,12 @@
 @inject IJSRuntime JS
 
 <FilterBar>
-    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search by entity or user…" />
+    <SearchBox @bind-Value="_search" OnSearch="() => LoadPageAsync(1)" Placeholder="Search activity or user…" />
+    <div class="filter-bar-actions">
+        <button type="button" id="download-jsonl-btn" class="btn btn-secondary" disabled="@_isExporting" @onclick="ExportAsync">
+            <Icon Name="download" Size="16" />@(_isExporting ? "Downloading..." : "Download JSONL")
+        </button>
+    </div>
 </FilterBar>
 
 @if (_errorMessage is not null)
@@ -11,37 +16,32 @@
     <div class="alert alert-error">@_errorMessage</div>
 }
 
-<DataTable TItem="AuditLogDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
+<DataTable TItem="ActivityLogDto" Items="_page?.Items ?? []" IsLoading="_page is null" ShowPagination="true"
            Page="_currentPage" PageSize="PageSize" TotalCount="_page?.TotalCount ?? 0"
-           OnPageChange="LoadPageAsync" RowsContainerId="audit-log-rows" EmptyText="No audit log entries found."
-           EmptyDescription="Activity across the app will appear here." EmptyIcon="audit">
+           OnPageChange="LoadPageAsync" RowsContainerId="audit-log-rows" EmptyText="No activity recorded yet."
+           EmptyDescription="Changes to donors, applications, payments and loans will appear here." EmptyIcon="audit">
     <HeaderRow>
-        <th>When</th>
+        <th>Activity</th>
         <th>User</th>
-        <th>Action</th>
-        <th>Entity</th>
-        <th>Entity Id</th>
-        <th>Changed Columns</th>
+        <th class="num">When</th>
     </HeaderRow>
     <RowTemplate Context="entry">
         <tr>
-            <td>@entry.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+            <td>@entry.Summary</td>
             <td>@(entry.UserName ?? "System")</td>
-            <td>@entry.Action</td>
-            <td>@entry.EntityName</td>
-            <td>@entry.EntityId</td>
-            <td>@(entry.ChangedColumns is { Count: > 0 } cols ? string.Join(", ", cols) : "-")</td>
+            <td class="num">@entry.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
         </tr>
     </RowTemplate>
 </DataTable>
 
 @code {
     private const int PageSize = 25;
-    private PagedResult<AuditLogDto>? _page;
+    private PagedResult<ActivityLogDto>? _page;
     private int _currentPage = 1;
     private string _search = "";
     private string? _errorMessage;
     private bool _pendingRowAnimation;
+    private bool _isExporting;
 
     protected override async Task OnInitializedAsync() => await LoadPageAsync(1);
 
@@ -59,13 +59,37 @@
         _errorMessage = null;
         try
         {
-            _page = await ApiClient.GetAuditLogsAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _page = await ApiClient.GetActivityLogAsync(page, PageSize, string.IsNullOrWhiteSpace(_search) ? null : _search);
             _currentPage = page;
             _pendingRowAnimation = true;
         }
         catch (ApiException ex)
         {
             _errorMessage = ex.Message;
+        }
+    }
+
+    // search is passed through exactly as the list load uses it — the server derives the export
+    // filename itself, same pattern as FundTransactionLedgerTable's ExportAsync.
+    private async Task ExportAsync()
+    {
+        _errorMessage = null;
+        _isExporting = true;
+        const string iconSelector = "#download-jsonl-btn svg";
+        await JS.InvokeVoidAsync("ngoFundMotion.startButtonSpin", iconSelector);
+        try
+        {
+            var (bytes, fileName) = await ApiClient.ExportActivityLogAsync(string.IsNullOrWhiteSpace(_search) ? null : _search);
+            await JS.InvokeVoidAsync("ngoFundFiles.downloadBase64", Convert.ToBase64String(bytes), fileName, "application/x-ndjson");
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isExporting = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.stopButtonSpin", iconSelector);
         }
     }
 }

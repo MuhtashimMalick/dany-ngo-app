@@ -717,7 +717,7 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         await ThrowIfErrorAsync(response);
     }
 
-    public async Task<PagedResult<AuditLogDto>> GetAuditLogsAsync(int page = 1, int pageSize = 25, string? search = null, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<ActivityLogDto>> GetActivityLogAsync(int page = 1, int pageSize = 25, string? search = null, CancellationToken cancellationToken = default)
     {
         var url = $"api/audit-logs?page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(search))
@@ -727,7 +727,25 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
 
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, url, cancellationToken);
         var response = await httpClient.SendAsync(request, cancellationToken);
-        return await ReadOrThrowAsync<PagedResult<AuditLogDto>>(response, cancellationToken);
+        return await ReadOrThrowAsync<PagedResult<ActivityLogDto>>(response, cancellationToken);
+    }
+
+    // search is passed through as-is (including null) — the server derives the returned filename
+    // itself from the actual exported rows' date range, same pattern as
+    // ExportFundTransactionLedgerAsync above.
+    public async Task<(byte[] Bytes, string FileName)> ExportActivityLogAsync(string? search, CancellationToken cancellationToken = default)
+    {
+        var url = "api/audit-logs/export";
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            url += $"?search={Uri.EscapeDataString(search)}";
+        }
+
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, url, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        await ThrowIfErrorAsync(response);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        return (bytes, response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "activity-log.jsonl");
     }
 
     public async Task<DashboardSummaryDto> GetDashboardSummaryAsync(CancellationToken cancellationToken = default)

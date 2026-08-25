@@ -2438,19 +2438,25 @@ table.data-table {
   flex: 1;
 }
 
-/* Photo source toggle (Applicants.razor) — lets the user pick webcam vs. manual upload before
-   either has produced a photo; both paths feed the same _pendingPhotoBytes/_pendingPhotoDataUrl
-   state, so once a photo exists this toggle is gone and only the shared preview + Replace Photo
-   button (styled above) shows. Plain .btn-sm pair, no new component — the active choice just gets
-   the same .btn-primary treatment every other selected state in this app uses. */
-.photo-source-toggle {
+/* Photo capture panel (Applicants.razor) — camera and manual-upload controls are both shown at
+   once, camera on top and the drop zone directly beneath, instead of behind a mode toggle (the
+   client flagged the old "Use Camera" / "Upload File" toggle as redundant with WebcamCapture's own
+   "Start Camera" button). Either path feeds the same _pendingPhotoBytes/_pendingPhotoDataUrl state,
+   so once a photo exists this whole panel is replaced by the shared preview + Replace Photo button
+   (styled above). */
+.applicant-photo-capture {
   display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-.photo-source-toggle .btn {
-  flex: 1;
+/* FileDrop's default padding is sized to be the sole upload control on a page; stacked under a
+   camera preview here, that reads oversized, so it gets a page-scoped compact override rather than
+   a new Compact parameter on the shared component (that component has other consumers elsewhere in
+   the app — see the Identity Documents section further down this same page, which keeps the
+   default full size). */
+.applicant-photo-capture .file-drop {
+  padding: var(--space-3);
 }
 
 /* ---------- Applicant photo (View/Detail modal) ----------

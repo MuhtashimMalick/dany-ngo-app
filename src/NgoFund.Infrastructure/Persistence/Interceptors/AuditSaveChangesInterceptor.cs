@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using NgoFund.Application.Abstractions;
 using NgoFund.Domain.Common;
 using NgoFund.Domain.Entities;
+using NgoFund.Infrastructure.Identity;
+using NgoFund.Infrastructure.Persistence.Auditing;
 
 namespace NgoFund.Infrastructure.Persistence.Interceptors;
 
@@ -17,6 +19,16 @@ namespace NgoFund.Infrastructure.Persistence.Interceptors;
 /// </summary>
 public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : SaveChangesInterceptor
 {
+    /// <summary>Entity types that are pure plumbing (login sessions, number-sequence counters) —
+    /// never worth an audit row even when they change. Audit-column stamping still runs for these
+    /// first when applicable; this only suppresses the <see cref="AuditLog"/> row itself.</summary>
+    private static readonly HashSet<Type> NeverAudited = [typeof(RefreshToken), typeof(NumberSequence)];
+
+    /// <summary>Values written as <c>"***"</c> in the forensic jsonb instead of the real secret —
+    /// the property's presence/change stays visible, the value never leaks into audit_logs.</summary>
+    private static readonly HashSet<string> RedactedProperties =
+        new(StringComparer.Ordinal) { "PasswordHash", "SecurityStamp", "ConcurrencyStamp", "TokenHash", "ReplacedByTokenHash" };
+
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         Apply(eventData.Context);
@@ -47,6 +59,8 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
                 continue; // never audit the audit log itself
             }
 
+            var neverAudited = NeverAudited.Contains(entry.Entity.GetType());
+
             switch (entry.State)
             {
                 case EntityState.Added:
@@ -55,7 +69,12 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
                         added.CreatedAt = now;
                         added.CreatedBy = currentUser.UserId;
                     }
-                    auditLogs.Add(BuildLog(entry, "Create", now));
+
+                    if (!neverAudited)
+                    {
+                        auditLogs.Add(BuildLog(entry, "Create", now));
+                    }
+
                     break;
 
                 case EntityState.Modified:
@@ -64,7 +83,12 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
                         updated.UpdatedAt = now;
                         updated.UpdatedBy = currentUser.UserId;
                     }
-                    auditLogs.Add(BuildLog(entry, "Update", now));
+
+                    if (!neverAudited && !AuditNoiseFilter.IsNoiseOnlyChange(entry))
+                    {
+                        auditLogs.Add(BuildLog(entry, "Update", now));
+                    }
+
                     break;
 
                 case EntityState.Deleted:
@@ -74,12 +98,17 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
                         softDeletable.IsDeleted = true;
                         softDeletable.DeletedAt = now;
                         softDeletable.DeletedBy = currentUser.UserId;
-                        auditLogs.Add(BuildLog(entry, "SoftDelete", now));
+
+                        if (!neverAudited)
+                        {
+                            auditLogs.Add(BuildLog(entry, "SoftDelete", now));
+                        }
                     }
-                    else
+                    else if (!neverAudited)
                     {
                         auditLogs.Add(BuildLog(entry, "Delete", now));
                     }
+
                     break;
             }
         }
@@ -94,11 +123,16 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
     {
         var keyValue = entry.Properties.FirstOrDefault(p => p.Metadata.IsPrimaryKey())?.CurrentValue;
 
-        var changedProperties = action switch
+        // "actually changed" (OriginalValue != CurrentValue), not just IsModified — Identity's EF
+        // UserStore calls Context.Update(user) internally on every UserManager.UpdateAsync call,
+        // which blanket-flags every property Modified even when only LastLoginAt really changed.
+        IReadOnlyList<PropertyEntry> changedProperties = action switch
         {
-            "Update" or "SoftDelete" => entry.Properties.Where(p => p.IsModified).ToList(),
+            "Update" or "SoftDelete" => entry.GetActuallyChangedProperties(),
             _ => entry.Properties.ToList(),
         };
+
+        var narration = ActivityNarrator.Narrate(entry, action);
 
         return new AuditLog
         {
@@ -108,17 +142,24 @@ public class AuditSaveChangesInterceptor(ICurrentUserService currentUser) : Save
             EntityName = entry.Entity.GetType().Name,
             EntityId = keyValue?.ToString() ?? string.Empty,
             OldValues = action is "Update" or "SoftDelete"
-                ? JsonSerializer.Serialize(changedProperties.ToDictionary(p => p.Metadata.Name, p => p.OriginalValue))
+                ? JsonSerializer.Serialize(changedProperties.ToDictionary(p => p.Metadata.Name, p => Redact(p.Metadata.Name, p.OriginalValue)))
                 : null,
             NewValues = action is "Create" or "Update" or "SoftDelete"
-                ? JsonSerializer.Serialize(changedProperties.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue))
+                ? JsonSerializer.Serialize(changedProperties.ToDictionary(p => p.Metadata.Name, p => Redact(p.Metadata.Name, p.CurrentValue)))
                 : null,
             ChangedColumns = changedProperties.Select(p => p.Metadata.Name).ToArray(),
             IpAddress = TryParseIp(currentUser.IpAddress),
             MachineName = currentUser.MachineName,
             OccurredAt = now,
+            EntityLabel = narration?.EntityLabel,
+            EntityNumber = narration?.EntityNumber,
+            Verb = narration?.Verb,
+            Summary = narration?.Summary,
         };
     }
+
+    private static object? Redact(string propertyName, object? value) =>
+        value is not null && RedactedProperties.Contains(propertyName) ? "***" : value;
 
     private static IPAddress? TryParseIp(string? ip) => IPAddress.TryParse(ip, out var parsed) ? parsed : null;
 }

@@ -88,22 +88,11 @@
                 }
                 else
                 {
-                    <div class="photo-source-toggle" role="group" aria-label="Photo source">
-                        <button type="button" class="btn btn-sm @(_photoSource == PhotoSource.Camera ? "btn-primary" : "btn-secondary")"
-                                @onclick="() => _photoSource = PhotoSource.Camera">Use Camera</button>
-                        <button type="button" class="btn btn-sm @(_photoSource == PhotoSource.Upload ? "btn-primary" : "btn-secondary")"
-                                @onclick="() => _photoSource = PhotoSource.Upload">Upload File</button>
-                    </div>
-
-                    @if (_photoSource == PhotoSource.Camera)
-                    {
+                    <div class="applicant-photo-capture">
                         <WebcamCapture OnCaptured="OnPhotoCapturedAsync" />
-                    }
-                    else
-                    {
                         <FileDrop OnFileSelected="OnPhotoFileSelectedAsync" Accept=".jpg,.jpeg,.png,.webp"
                                   MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="JPG, PNG or WEBP up to 10 MB" />
-                    }
+                    </div>
                 }
             </div>
 
@@ -454,7 +443,6 @@
     private Guid? _editingId;
     private ApplicantDto? _editingApplicant;
     private Guid? _photoDocumentId;
-    private PhotoSource _photoSource = PhotoSource.Camera;
     private byte[]? _pendingPhotoBytes;
     private string? _pendingPhotoDataUrl;
     private string _pendingPhotoFileName = "photo.jpg";
@@ -468,8 +456,6 @@
     private PendingUpload? _cnicFrontUpload;
     private PendingUpload? _cnicBackUpload;
     private PendingUpload? _membershipCardUpload;
-
-    private enum PhotoSource { Camera, Upload }
 
     private record PendingUpload(string FileName, string ContentType, byte[] Bytes);
 
@@ -626,7 +612,6 @@
         _editingId = null;
         _editingApplicant = null;
         _photoDocumentId = null;
-        _photoSource = PhotoSource.Camera;
         _pendingPhotoBytes = null;
         _pendingPhotoDataUrl = null;
         _pendingPhotoFileName = "photo.jpg";
@@ -644,7 +629,6 @@
         _editingId = applicant.Id;
         _editingApplicant = applicant;
         _photoDocumentId = applicant.PhotoDocumentId;
-        _photoSource = PhotoSource.Camera;
         _pendingPhotoBytes = null;
         _pendingPhotoDataUrl = null;
         _form = new ApplicantFormModel

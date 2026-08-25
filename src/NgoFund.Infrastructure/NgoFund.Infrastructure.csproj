@@ -31,4 +31,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- ActivityNarrator is internal — NgoFund.UnitTests exercises it directly (no DB) instead of
+         going through a real SaveChanges. -->
+    <InternalsVisibleTo Include="NgoFund.UnitTests" />
+  </ItemGroup>
+
 </Project>
