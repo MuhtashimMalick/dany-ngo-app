@@ -5,6 +5,7 @@
    across its own "Guardian & Bride's Information" and "Groom's Information & Wedding Dates"
    pages instead of reusing this wrapper — see HousingDetailsSection's doc comment for why. *@
 @inject ApiClient ApiClient
+@inject AuthState AuthState
 @inject ToastService Toast
 
 <FormSection Title="Marriage Assistance Details" Description="From the applicant's Marriage Assistance form.">
@@ -23,10 +24,15 @@
             <DataAnnotationsValidator />
             <ValidationSummary class="validation-summary" />
 
-            <MarriageBrideFields Model="_form" />
-            <MarriageGroomFields Model="_form" />
+            <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                <MarriageBrideFields Model="_form" />
+                <MarriageGroomFields Model="_form" />
+            </fieldset>
 
-            <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Marriage Details")</button>
+            @if (CanEdit)
+            {
+                <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Marriage Details")</button>
+            }
         </EditForm>
     }
 </FormSection>
@@ -38,6 +44,8 @@
     private bool _isSaving;
     private string? _error;
     private MarriageDetailsFormModel _form = new();
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
 
     protected override async Task OnInitializedAsync()
     {

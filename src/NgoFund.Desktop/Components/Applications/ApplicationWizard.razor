@@ -99,7 +99,7 @@
                         <div class="form-grid">
                             <FormField Label="Category *" For="wizardCategory"
                                        Hint="@(_application is not null ? "Category is fixed once the application is created." : null)">
-                                <InputSelect id="wizardCategory" @bind-Value="_requestForm.ApplicationCategoryId" disabled="@(_application is not null)">
+                                <InputSelect id="wizardCategory" @bind-Value="_requestForm.ApplicationCategoryId" @bind-Value:after="OnCategoryChanged" disabled="@(_application is not null)">
                                     <option value="">Select category</option>
                                     @foreach (var category in Categories)
                                     {
@@ -107,15 +107,12 @@
                                     }
                                 </InputSelect>
                             </FormField>
-                            <FormField Label="Fund *" For="wizardFund"
-                                       Hint="@(SelectedCategoryIsZakatEligible ? null : "This category isn't Zakat-eligible — only the General fund is payable.")">
-                                <InputSelect id="wizardFund" @bind-Value="_requestForm.FundCategoryId">
+                            <FormField Label="Fund *" For="wizardFund" Hint="@FundHintText">
+                                <InputSelect id="wizardFund" @bind-Value="_requestForm.FundCategoryId" disabled="@IsFundSelectorLocked">
                                     <option value="">Select fund</option>
-                                    @foreach (var fund in Funds)
+                                    @foreach (var fund in EligibleFunds)
                                     {
-                                        <option value="@fund.Id" disabled="@(fund.IsZakat && !SelectedCategoryIsZakatEligible)">
-                                            @fund.Name@(fund.IsZakat && !SelectedCategoryIsZakatEligible ? " (not eligible)" : "")
-                                        </option>
+                                        <option value="@fund.Id">@fund.Name</option>
                                     }
                                 </InputSelect>
                             </FormField>
@@ -289,8 +286,8 @@
 </Modal>
 
 <ConfirmDialog IsOpen="_showZakatConfirm" IsOpenChanged="v => _showZakatConfirm = v"
-               Title="Zakat-eligible category on the General fund"
-               Message="This application's category is normally paid from the Zakat fund, but you selected the General fund. Paying from the General fund makes this a repayable Qard al-Hasan loan, not a grant — the applicant will be expected to repay it in interest-free installments. Continue?"
+               Title="Confirm General fund for this application"
+               Message="You've selected the General fund for this application. This makes it a repayable interest-free (Qard al-Hasan) loan rather than a Zakat grant — the applicant will be expected to repay it in installments. Continue?"
                ConfirmText="Yes, treat as a loan" CancelText="Cancel" OnConfirmed="ConfirmZakatAndCreateAsync" />
 
 <ConfirmDialog IsOpen="_showCloseConfirm" IsOpenChanged="v => _showCloseConfirm = v"
@@ -347,16 +344,63 @@
     private ApplicationCategoryDto? SelectedCategory =>
         Categories.FirstOrDefault(c => c.Id == _requestForm.ApplicationCategoryId);
 
-    private bool SelectedCategoryIsZakatEligible =>
-        _requestForm.ApplicationCategoryId is null || (SelectedCategory?.IsZakatEligible ?? true);
+    /// <summary>The fund type (Zakat vs. General) forced by the current category's eligibility —
+    /// <c>true</c> for <c>ZakatOnly</c> (SHAADI, HEALTH, EDUCATION, HOUSE_RENT, EMERGENCY),
+    /// <c>false</c> for <c>GeneralOnly</c> (ROZGAR), <c>null</c> for <c>Either</c> (OTHER) or no
+    /// category selected yet, where nothing is forced.</summary>
+    private bool? RequiredIsZakat => SelectedCategory?.FundEligibility switch
+    {
+        "ZakatOnly" => true,
+        "GeneralOnly" => false,
+        _ => null,
+    };
+
+    /// <summary>The funds a user could legitimately pick for the current category: active-only and
+    /// (when <see cref="RequiredIsZakat"/> is forced) filtered to the matching <c>IsZakat</c> type.
+    /// <c>Funds</c> itself (see <see cref="ApiClient.GetFundCategoriesAsync"/>) includes inactive
+    /// funds, so this is what the dropdown and the auto-selected default in
+    /// <see cref="OnCategoryChanged"/> both render from — never the raw <c>Funds</c> list — so a
+    /// deactivated fund can never be silently bound or offered. Unfiltered for <c>Either</c>, same
+    /// as before: OTHER is a real, symmetric two-fund choice, not something to narrow down.</summary>
+    private IReadOnlyList<FundCategoryDto> EligibleFunds =>
+        RequiredIsZakat is { } required ? Funds.Where(f => f.IsActive && f.IsZakat == required).ToList() : Funds;
+
+    /// <summary>Locked only when the category forces a fund type (<see cref="RequiredIsZakat"/> is
+    /// not null) AND there's at most one eligible active fund to choose from — the common case
+    /// today (one seeded Zakat fund, one seeded General fund), where this behaves identically to a
+    /// hard lock. If an admin ever activates a second fund of the required type, the selector stays
+    /// enabled so the user can choose among the legitimate options instead of silently getting
+    /// whichever sorts first by <c>DisplayOrder</c> — <see cref="OnCategoryChanged"/> still fills in
+    /// a sensible default so the required-field check passes even if the user never touches it.
+    /// Always false for <c>Either</c> (OTHER) — that's a real, unconstrained choice between exactly
+    /// two options.</summary>
+    private bool IsFundSelectorLocked =>
+        RequiredIsZakat is not null && EligibleFunds.Count <= 1;
+
+    /// <summary>Three-way hint under the Fund field, matching <see cref="IsFundSelectorLocked"/>'s
+    /// three cases: the two forced categories each state the one consequence that applies, and
+    /// <c>Either</c> (OTHER) states both branches plainly up front since that's the one category
+    /// where staff make a real fund choice with a real consequence.</summary>
+    private string? FundHintText => SelectedCategory?.FundEligibility switch
+    {
+        "ZakatOnly" => "Paid from the Zakat fund.",
+        "GeneralOnly" => "Paid from the General fund as an interest-free (Qard al-Hasan) loan, repayable in installments.",
+        "Either" => "Zakat fund: a grant, no repayment. General fund: an interest-free loan, repayable in installments.",
+        _ => null,
+    };
 
     /// <summary>0-based position of the current page among the (possibly N > 2, see F3) contiguous
     /// Guarantor pages in `_pages` — indexes both `_guarantorRows` and the "Guarantor N" title.</summary>
     private int CurrentGuarantorIndex => _pages.Take(_pageIndex).Count(p => p == WizardPageKind.Guarantor);
 
+    /// <summary>Fires the "you picked General for a Zakat-eligible category" confirm only for the
+    /// one category where that's an actual choice (<c>Either</c> — OTHER) and the actual choice was
+    /// General. Must NOT fire for ROZGAR ("GeneralOnly") + General — that's forced/expected, not a
+    /// decision, and Rozgar's seeded terms text already discloses the loan upfront (see the
+    /// milestone brief / item 3 of the fund-eligibility rename).</summary>
     private bool PendingZakatWarning =>
         _requestForm.ApplicationCategoryId is not null && _requestForm.FundCategoryId is not null &&
-        SelectedCategoryIsZakatEligible &&
+        SelectedCategory?.FundEligibility == "Either" &&
         !(Funds.FirstOrDefault(f => f.Id == _requestForm.FundCategoryId)?.IsZakat ?? false);
 
     /// <summary>Only HOUSE_RENT/SHAADI/ROZGAR have a document manifest — completeness is fetched
@@ -590,6 +634,23 @@
     }
 
     private void SelectApplicant(ApplicantDto applicant) => _selectedApplicant = applicant;
+
+    /// <summary>Runs on every category selection change (initial pick, or the user changing their
+    /// mind before Finish). Writes a sensible default fund into the form for the two type-forced
+    /// categories — the first <see cref="EligibleFunds"/> entry (active + matching type) — so the
+    /// required-field check ~<see cref="CurrentPageMissingMessage"/> can actually be satisfied even
+    /// when the selector ends up disabled (<see cref="IsFundSelectorLocked"/>, the common single-
+    /// eligible-fund case). When more than one eligible fund exists the selector stays enabled, so
+    /// this default is just a starting point the user can still change. Leaves
+    /// <see cref="RequestFormModel.FundCategoryId"/> alone for <c>Either</c>/no-category, since
+    /// that's a real user choice this must not clobber.</summary>
+    private void OnCategoryChanged()
+    {
+        if (RequiredIsZakat is not null)
+        {
+            _requestForm.FundCategoryId = EligibleFunds.FirstOrDefault()?.Id;
+        }
+    }
 
     private async Task HandleRequestNextAsync()
     {

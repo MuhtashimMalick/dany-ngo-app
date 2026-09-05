@@ -59,6 +59,15 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         return funds.Single(f => f.Code == "GENERAL").Id;
     }
 
+    // HOUSE_RENT and SHAADI are ZakatOnly under the v1.5 FundEligibility amendment (they used to
+    // be dual-eligible), so the housing/marriage-details tests below need a Zakat fund, not
+    // General — these tests are about the category-details endpoints, not the Zakat rule itself.
+    private static async Task<Guid> LoadZakatFundIdAsync(HttpClient client)
+    {
+        var funds = (await client.GetFromJsonAsync<List<FundCategoryDto>>("/api/fund-categories"))!;
+        return funds.Single(f => f.Code == "ZAKAT").Id;
+    }
+
     private static async Task<ApplicationDto> CreateApplicationAsync(HttpClient client, Guid applicantId, Guid categoryId, Guid fundId, decimal amount = 10000m) =>
         await ReadOrFailAsync<ApplicationDto>(
             await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
@@ -72,8 +81,8 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var applicant = await CreateApplicantAsync(client, "40001-4000001-1");
         var categories = await LoadCategoriesAsync(client);
         var (houseRentCode, houseRentId) = categories.Single(c => c.Code == "HOUSE_RENT");
-        var generalFundId = await LoadGeneralFundIdAsync(client);
-        var application = await CreateApplicationAsync(client, applicant.Id, houseRentId, generalFundId);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateApplicationAsync(client, applicant.Id, houseRentId, zakatFundId);
 
         var request = new UpsertHousingApplicationDetailsRequest(
             ApplicantAge: 45, CurrentHouseValue: 2000000m, MonthlyRent: 15000m, AdvancePaid: 45000m,
@@ -99,8 +108,8 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var applicant = await CreateApplicantAsync(client, "40002-4000002-2");
         var categories = await LoadCategoriesAsync(client);
         var shaadiId = categories.Single(c => c.Code == "SHAADI").Id;
-        var generalFundId = await LoadGeneralFundIdAsync(client);
-        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, generalFundId);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, zakatFundId);
 
         var request = new UpsertMarriageApplicationDetailsRequest(
             GuardianRelationshipToBride: "Father", BrideName: "Bride Name", BrideFatherName: "Bride Father",
@@ -127,8 +136,8 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var applicant = await CreateApplicantAsync(client, "40003-4000003-3");
         var categories = await LoadCategoriesAsync(client);
         var shaadiId = categories.Single(c => c.Code == "SHAADI").Id;
-        var generalFundId = await LoadGeneralFundIdAsync(client);
-        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, generalFundId);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, zakatFundId);
 
         var request = new UpsertMarriageApplicationDetailsRequest(
             null, "Bride", null, null, null, null, null, null, null,
@@ -173,8 +182,8 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var applicant = await CreateApplicantAsync(client, "40005-4000005-5");
         var categories = await LoadCategoriesAsync(client);
         var shaadiId = categories.Single(c => c.Code == "SHAADI").Id; // not HOUSE_RENT
-        var generalFundId = await LoadGeneralFundIdAsync(client);
-        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, generalFundId);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateApplicationAsync(client, applicant.Id, shaadiId, zakatFundId);
 
         var request = new UpsertHousingApplicationDetailsRequest(
             null, null, null, null, null, null, false, null, false, false, false, false);

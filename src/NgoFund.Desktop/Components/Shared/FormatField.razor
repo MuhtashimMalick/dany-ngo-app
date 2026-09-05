@@ -1,14 +1,22 @@
 @* Wraps FormField, owning the input's own value/@oninput so format validity (red/green border +
-   example hint / error message) updates on every keystroke instead of on blur. @oninput is
+   error message) updates on every keystroke instead of on blur. The format is shown inside the
+   input itself via an X-mask placeholder (e.g. "XXXXX-XXXXXXX-X"), so no separate hint is
+   rendered below the field. @oninput is
    deliberate over @bind/@bind-Value: those two commit on the input's `onchange` event (blur), but
    the ask here is "as soon as value is being input." An empty field is always neutral — required-
    ness is a separate, page-level concern (CurrentPageValid etc.), this component only reports
-   FORMAT correctness once something has actually been typed. *@
+   FORMAT correctness once something has actually been typed.
+
+   Also owns the input mask: every keystroke is stripped to digits, capped at the format's digit
+   count, and re-joined with dashes at the right group boundaries — so the user only ever types
+   digits and the component inserts the dashes, and the value is always stored in the same dashed
+   format it displays in (no separate display-layer formatter needed). *@
 @using System.Text.RegularExpressions
 @using NgoFund.Contracts.Common
+@inject IJSRuntime JS
 
-<FormField Label="@DisplayLabel" For="@For" CssClass="@CssClass" ErrorMessage="@ErrorMessage" Hint="@Hint">
-    <input id="@For" value="@Value" @oninput="OnInput" class="@InputCssClass" />
+<FormField Label="@DisplayLabel" For="@For" CssClass="@CssClass" ErrorMessage="@ErrorMessage">
+    <input id="@For" @ref="_inputRef" value="@Value" placeholder="@MaskPlaceholder" maxlength="@MaxLength" @oninput="OnInput" class="@InputCssClass" />
 </FormField>
 
 @code {
@@ -31,22 +39,66 @@
     private string InputCssClass => IsEmpty ? "" : IsValid ? "is-valid" : "is-invalid";
 
     private string? ErrorMessage => !IsEmpty && !IsValid ? Message : null;
-    private string? Hint => IsEmpty || IsValid ? Example : null;
 
-    private (string Pattern, string Message, string Example) FormatSpec => Format switch
+    private (string Pattern, string Message) FormatSpec => Format switch
     {
-        FieldFormat.Cnic => (PakistaniFormats.CnicPattern, PakistaniFormats.CnicMessage, PakistaniFormats.CnicExample),
-        FieldFormat.MobilePhone => (PakistaniFormats.MobilePhonePattern, PakistaniFormats.MobilePhoneMessage, PakistaniFormats.MobilePhoneExample),
+        FieldFormat.Cnic => (PakistaniFormats.CnicPattern, PakistaniFormats.CnicMessage),
+        FieldFormat.MobilePhone => (PakistaniFormats.MobilePhonePattern, PakistaniFormats.MobilePhoneMessage),
         _ => throw new ArgumentOutOfRangeException(nameof(Format)),
     };
 
     private string Pattern => FormatSpec.Pattern;
     private string Message => FormatSpec.Message;
-    private string Example => FormatSpec.Example;
+
+    // Digit-group sizes the dashes get inserted between — CNIC is 5-7-1, mobile is 4-7 (see the
+    // examples/patterns in PakistaniFormats). Desktop-only formatting detail, not shared with the
+    // server, so it lives here rather than in PakistaniFormats alongside the digit-count caps.
+    private (int MaxDigits, int[] Groups) MaskSpec => Format switch
+    {
+        FieldFormat.Cnic => (PakistaniFormats.CnicDigitCount, [5, 7, 1]),
+        FieldFormat.MobilePhone => (PakistaniFormats.MobilePhoneDigitCount, [4, 7]),
+        _ => throw new ArgumentOutOfRangeException(nameof(Format)),
+    };
+
+    // Native maxlength hard-stops the browser from ever accepting a keystroke past the cap, which
+    // matters because the <input> is one-way (value="@Value" + @oninput, no @bind): if ApplyMask
+    // ever produces the same string twice in a row (e.g. already at the digit cap), Blazor's
+    // diffing sees no change in rendered output and won't push a DOM update, so without a native
+    // cap the browser's own element could still show extra typed characters Value never captured.
+    private int MaxLength => MaskSpec.MaxDigits + (MaskSpec.Groups.Length - 1);
+
+    // "XXXXX-XXXXXXX-X" / "XXXX-XXXXXXX" — an X-mask derived from the same Groups the masking
+    // logic uses, so it can't drift out of sync with ApplyMask, and doesn't show a real-looking
+    // number in the placeholder.
+    private string MaskPlaceholder => string.Join('-', MaskSpec.Groups.Select(g => new string('X', g)));
+
+    private ElementReference _inputRef;
 
     private async Task OnInput(ChangeEventArgs e)
     {
-        Value = e.Value?.ToString();
+        Value = ApplyMask(e.Value?.ToString() ?? "");
         await ValueChanged.InvokeAsync(Value);
+        await JS.InvokeVoidAsync("ngoFundMask.syncValue", _inputRef, Value);
+    }
+
+    private string ApplyMask(string raw)
+    {
+        var (maxDigits, groups) = MaskSpec;
+
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length > maxDigits)
+            digits = digits[..maxDigits];
+
+        var parts = new List<string>();
+        var pos = 0;
+        foreach (var size in groups)
+        {
+            if (pos >= digits.Length) break;
+            var take = Math.Min(size, digits.Length - pos);
+            parts.Add(digits.Substring(pos, take));
+            pos += take;
+        }
+
+        return string.Join('-', parts);
     }
 }

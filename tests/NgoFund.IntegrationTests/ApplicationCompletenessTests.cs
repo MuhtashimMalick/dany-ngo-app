@@ -26,8 +26,9 @@ public class ApplicationCompletenessTests(AuthApiFactory factory) : IClassFixtur
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50101-1111111-1");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], zakatFundId);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
 
@@ -46,12 +47,13 @@ public class ApplicationCompletenessTests(AuthApiFactory factory) : IClassFixtur
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50101-1111111-2");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], zakatFundId);
 
         await client.PutAsJsonAsync($"/api/applications/{application.Id}/details/marriage", FullyValidMarriageDetails);
         await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
-            categories["SHAADI"], generalFundId, application.RequestedAmount, null, "Normal", "Test",
+            categories["SHAADI"], zakatFundId, application.RequestedAmount, null, "Normal", "Test",
             DeclarationAcceptedAt: DateTimeOffset.UtcNow, TermsAcceptedAt: DateTimeOffset.UtcNow));
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
@@ -68,12 +70,13 @@ public class ApplicationCompletenessTests(AuthApiFactory factory) : IClassFixtur
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50101-1111111-3");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], zakatFundId);
 
         await client.PutAsJsonAsync($"/api/applications/{application.Id}/details/marriage", FullyValidMarriageDetails);
         await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
-            categories["SHAADI"], generalFundId, application.RequestedAmount, null, "Normal", "Test",
+            categories["SHAADI"], zakatFundId, application.RequestedAmount, null, "Normal", "Test",
             DeclarationAcceptedAt: DateTimeOffset.UtcNow, TermsAcceptedAt: DateTimeOffset.UtcNow));
         await UploadAllRequiredShaadiDocumentsAsync(client, application.Id);
 
@@ -90,12 +93,13 @@ public class ApplicationCompletenessTests(AuthApiFactory factory) : IClassFixtur
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50101-1111111-4");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         await client.PutAsJsonAsync($"/api/applications/{application.Id}/details/housing", FullyValidHousingDetails);
         await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(
-            categories["HOUSE_RENT"], generalFundId, application.RequestedAmount, null, "Normal", "Test",
+            categories["HOUSE_RENT"], zakatFundId, application.RequestedAmount, null, "Normal", "Test",
             DeclaredMonthlyIncome: 30000m, DeclaredHouseholdSize: 5, DeclaredResidentialAddress: "123 Main St",
             DeclaredHouseStatus: "Rented",
             DeclarationAcceptedAt: DateTimeOffset.UtcNow, TermsAcceptedAt: DateTimeOffset.UtcNow));

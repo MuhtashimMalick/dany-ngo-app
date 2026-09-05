@@ -33,3 +33,6 @@ node_modules/
 # Logs
 *.log
 logs/
+
+# Client migration data (real donor/applicant PII — never commit)
+migration_data/

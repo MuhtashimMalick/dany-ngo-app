@@ -7,10 +7,10 @@ namespace NgoFund.UnitTests.Domain;
 
 public class FundApplicationTests
 {
-    private static ApplicationCategory Category(bool isZakatEligible) => new()
+    private static ApplicationCategory Category(FundEligibility fundEligibility) => new()
     {
         Name = "Test Category",
-        IsZakatEligible = isZakatEligible,
+        FundEligibility = fundEligibility,
     };
 
     private static FundCategory Fund(bool isZakat) => new()
@@ -19,29 +19,44 @@ public class FundApplicationTests
         IsZakat = isZakat,
     };
 
+    // --- The Zakat rule (three-state): all 3 FundEligibility values x both fund types. ---
+
     [Fact]
-    public void EnsureFundIsCompatible_ZakatEligibleCategory_AgainstZakatFund_Succeeds()
+    public void EnsureFundIsCompatible_ZakatOnlyCategory_AgainstZakatFund_Succeeds()
     {
-        FundApplication.EnsureFundIsCompatible(Category(isZakatEligible: true), Fund(isZakat: true));
+        FundApplication.EnsureFundIsCompatible(Category(FundEligibility.ZakatOnly), Fund(isZakat: true));
     }
 
     [Fact]
-    public void EnsureFundIsCompatible_ZakatEligibleCategory_AgainstGeneralFund_Succeeds()
-    {
-        FundApplication.EnsureFundIsCompatible(Category(isZakatEligible: true), Fund(isZakat: false));
-    }
-
-    [Fact]
-    public void EnsureFundIsCompatible_NonZakatEligibleCategory_AgainstGeneralFund_Succeeds()
-    {
-        FundApplication.EnsureFundIsCompatible(Category(isZakatEligible: false), Fund(isZakat: false));
-    }
-
-    [Fact]
-    public void EnsureFundIsCompatible_NonZakatEligibleCategory_AgainstZakatFund_Throws()
+    public void EnsureFundIsCompatible_ZakatOnlyCategory_AgainstGeneralFund_Throws()
     {
         Assert.Throws<ZakatFundMismatchException>(() =>
-            FundApplication.EnsureFundIsCompatible(Category(isZakatEligible: false), Fund(isZakat: true)));
+            FundApplication.EnsureFundIsCompatible(Category(FundEligibility.ZakatOnly), Fund(isZakat: false)));
+    }
+
+    [Fact]
+    public void EnsureFundIsCompatible_GeneralOnlyCategory_AgainstGeneralFund_Succeeds()
+    {
+        FundApplication.EnsureFundIsCompatible(Category(FundEligibility.GeneralOnly), Fund(isZakat: false));
+    }
+
+    [Fact]
+    public void EnsureFundIsCompatible_GeneralOnlyCategory_AgainstZakatFund_Throws()
+    {
+        Assert.Throws<ZakatFundMismatchException>(() =>
+            FundApplication.EnsureFundIsCompatible(Category(FundEligibility.GeneralOnly), Fund(isZakat: true)));
+    }
+
+    [Fact]
+    public void EnsureFundIsCompatible_EitherCategory_AgainstZakatFund_Succeeds()
+    {
+        FundApplication.EnsureFundIsCompatible(Category(FundEligibility.Either), Fund(isZakat: true));
+    }
+
+    [Fact]
+    public void EnsureFundIsCompatible_EitherCategory_AgainstGeneralFund_Succeeds()
+    {
+        FundApplication.EnsureFundIsCompatible(Category(FundEligibility.Either), Fund(isZakat: false));
     }
 
     // --- Guarantor gate (E2): categories with RequiresGuarantors > 0 (2 for ROZGAR) block Approved
@@ -50,7 +65,7 @@ public class FundApplicationTests
     private static ApplicationCategory CategoryRequiringGuarantors(int requiresGuarantors) => new()
     {
         Name = "Rozgar/Business Help",
-        IsZakatEligible = false,
+        FundEligibility = FundEligibility.GeneralOnly,
         RequiresGuarantors = requiresGuarantors,
     };
 

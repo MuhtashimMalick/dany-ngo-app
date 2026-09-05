@@ -43,10 +43,13 @@ public record ApplicationDto(
     int RequiresGuarantors,
     int GuarantorCount,
     /// <summary>
-    /// True when this application's category is Zakat-eligible but its currently-selected fund is
-    /// the General (non-Zakat) fund — the signal the Desktop needs to show the blocking
-    /// confirmation dialog before letting staff save that combination. Distinct from
-    /// <see cref="RequiresLoanPlan"/>: that flag is about whether a loan agreement is needed before
-    /// payments, this one is purely "is this an unusual Zakat-eligible-on-General choice".
+    /// True when this application's category is dual-eligible (<c>FundEligibility.Either</c> —
+    /// under the current mapping, only OTHER) but its currently-selected fund is the General
+    /// (non-Zakat) fund — the signal the Desktop needs to show the blocking confirmation dialog
+    /// before letting staff save that combination, since it makes this a repayable loan rather
+    /// than a grant. Distinct from <see cref="RequiresLoanPlan"/>: that flag is about whether a
+    /// loan agreement is needed before payments, this one is purely "did the operator have a
+    /// genuine fund choice and pick General". Never true for a <c>GeneralOnly</c> category
+    /// (e.g. ROZGAR), where General is the only legal choice, not an unusual one.
     /// </summary>
-    bool ZakatEligibleCategoryOnGeneralFund);
+    bool DualEligibleCategoryOnGeneralFund);

@@ -111,6 +111,10 @@
                         <div class="fund-balance-col-label">Approved</div>
                         <div class="fund-balance-col-value">@(_managing.ApprovedAmount?.ToString("N2") ?? "-")</div>
                     </div>
+                    <div>
+                        <div class="fund-balance-col-label">Remaining</div>
+                        <div class="fund-balance-col-value">@(PaymentsRemaining?.ToString("N2") ?? "-")</div>
+                    </div>
                 </div>
             </div>
         </SubHeader>

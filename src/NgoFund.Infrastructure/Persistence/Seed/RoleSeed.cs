@@ -17,9 +17,9 @@ internal static class RoleSeed
         (Guid Id, string Name, string Description)[] roles =
         [
             (SuperAdminId, "SuperAdmin", "Full system access, including role/permission and settings management."),
-            (AdminId, "Admin", "Full operational access; cannot manage roles/permissions or system settings."),
-            (AccountsManagerId, "AccountsManager", "Manages donors, donations, payments and financial reports."),
-            (DataEntryOperatorId, "DataEntryOperator", "Creates and edits applicants and applications; no financial or approval access."),
+            (AdminId, "Admin", "Read-only access to operational data; cannot manage roles/permissions or system settings."),
+            (AccountsManagerId, "AccountsManager", "Read-only access to donor, donation, payment and financial report data."),
+            (DataEntryOperatorId, "DataEntryOperator", "Read-only access to applicants and applications."),
             (ViewerId, "Viewer", "Read-only access across the system."),
         ];
 
@@ -36,6 +36,15 @@ internal static class RoleSeed
         builder.Entity<RolePermission>().HasData(BuildRolePermissions());
     }
 
+    /// <summary>
+    /// Only SuperAdmin may write/create/update/delete/approve/void anything. Every other role is
+    /// read-only — this is what "read-only" means everywhere below: an action of "view" or
+    /// "export" (keyed off <see cref="PermissionSeed.Definitions"/>'s own Action field, so a
+    /// permission added later is automatically excluded from every non-SuperAdmin role unless its
+    /// action is view/export — nothing to remember to update here).
+    /// </summary>
+    private static bool IsReadOnly(string action) => action is "view" or "export";
+
     private static IEnumerable<RolePermission> BuildRolePermissions()
     {
         var all = PermissionSeed.Definitions;
@@ -46,38 +55,29 @@ internal static class RoleSeed
             yield return Map(SuperAdminId, p.Module, p.Action);
         }
 
-        // Admin: everything except role/permission and settings management (reserved for SuperAdmin).
-        foreach (var p in all.Where(p => !(p.Module == "roles" && p.Action == "manage") && !(p.Module == "settings" && p.Action == "manage")))
+        // Admin: read-only across every module (previously full access except role/settings
+        // management; module scope unchanged, now filtered to view/export only).
+        foreach (var p in all.Where(p => IsReadOnly(p.Action)))
         {
             yield return Map(AdminId, p.Module, p.Action);
         }
 
-        // AccountsManager: donors/donations/payments/fund categories/dashboard/reports, plus read-only applications.
-        // NOTE: "loans" is deliberately NOT in this blanket list — write-off must stay Admin/SuperAdmin
-        // only, so AccountsManager's loan permissions are granted explicitly below instead.
-        string[] accountsManagerModules = ["donors", "donations", "payments", "fundcategories", "dashboard", "reports", "documents"];
-        foreach (var p in all.Where(p => accountsManagerModules.Contains(p.Module)))
+        // AccountsManager: read-only donors/donations/payments/fund categories/dashboard/reports/
+        // documents, plus read-only applications and loans (same module scope as before, now
+        // view/export only).
+        string[] accountsManagerModules = ["donors", "donations", "payments", "fundcategories", "dashboard", "reports", "documents", "applications", "loans"];
+        foreach (var p in all.Where(p => accountsManagerModules.Contains(p.Module) && IsReadOnly(p.Action)))
         {
             yield return Map(AccountsManagerId, p.Module, p.Action);
         }
-        yield return Map(AccountsManagerId, "applications", "view");
-        yield return Map(AccountsManagerId, "loans", "view");
-        yield return Map(AccountsManagerId, "loans", "manage");
-        yield return Map(AccountsManagerId, "loans", "repay");
-        yield return Map(AccountsManagerId, "loans", "void");
 
-        // DataEntryOperator: create/edit applicants & applications, upload documents, view dashboard/donors.
-        yield return Map(DataEntryOperatorId, "applicants", "view");
-        yield return Map(DataEntryOperatorId, "applicants", "create");
-        yield return Map(DataEntryOperatorId, "applicants", "edit");
-        yield return Map(DataEntryOperatorId, "applications", "view");
-        yield return Map(DataEntryOperatorId, "applications", "create");
-        yield return Map(DataEntryOperatorId, "applications", "edit");
-        yield return Map(DataEntryOperatorId, "documents", "upload");
-        yield return Map(DataEntryOperatorId, "documents", "view");
-        yield return Map(DataEntryOperatorId, "donors", "view");
-        yield return Map(DataEntryOperatorId, "donations", "view");
-        yield return Map(DataEntryOperatorId, "dashboard", "view");
+        // DataEntryOperator: read-only applicants/applications/documents/donors/donations/dashboard
+        // (same module scope as before, now view/export only).
+        string[] dataEntryOperatorModules = ["applicants", "applications", "documents", "donors", "donations", "dashboard"];
+        foreach (var p in all.Where(p => dataEntryOperatorModules.Contains(p.Module) && IsReadOnly(p.Action)))
+        {
+            yield return Map(DataEntryOperatorId, p.Module, p.Action);
+        }
 
         // Viewer: every *.view permission, plus dashboard and reports viewing.
         foreach (var p in all.Where(p => p.Action == "view"))

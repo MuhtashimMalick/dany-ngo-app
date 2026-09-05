@@ -87,6 +87,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         configurationBuilder.Properties<HouseStatus>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ApplicationIntakeChannel>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<ActivityVerb>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FundEligibility>().HaveConversion<string>().HaveMaxLength(20);
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

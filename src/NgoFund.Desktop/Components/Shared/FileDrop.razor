@@ -8,7 +8,10 @@
      @ondragleave="() => _isDragOver = false"
      @ondragover:preventDefault="true"
      @ondrop="() => _isDragOver = false">
-    <InputFile OnChange="OnChangeAsync" class="file-drop-input" accept="@Accept" />
+    @* @key forces Blazor to tear down and recreate this DOM node when cleared, which resets the
+       native <InputFile>'s value — otherwise picking the exact same file again wouldn't refire
+       onchange, since the browser sees no change to the underlying <input type="file">. *@
+    <InputFile @key="_inputKey" OnChange="OnChangeAsync" class="file-drop-input" accept="@Accept" />
     <div class="file-drop-content">
         <Icon Name="upload-cloud" Size="26" StrokeWidth="1.6" CssClass="file-drop-icon" />
         <p class="file-drop-title">Drag a file here or <span>click to browse</span></p>
@@ -28,11 +31,15 @@
         <span class="file-drop-selected-name">@_selected.Name</span>
         <span class="file-drop-selected-size">@FormatSize(_selected.Size)</span>
         <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove selected file" @onclick="RemoveSelectedAsync">
+            <Icon Name="close" Size="14" />
+        </button>
     </div>
 }
 
 @code {
     [Parameter, EditorRequired] public EventCallback<IBrowserFile> OnFileSelected { get; set; }
+    [Parameter] public EventCallback OnFileRemoved { get; set; }
     [Parameter] public string Accept { get; set; } = "";
     [Parameter] public long MaxSizeBytes { get; set; } = 10 * 1024 * 1024;
     [Parameter] public string Hint { get; set; } = "PDF, JPG or PNG up to 10 MB";
@@ -40,6 +47,7 @@
     private bool _isDragOver;
     private string? _error;
     private IBrowserFile? _selected;
+    private Guid _inputKey = Guid.NewGuid();
 
     private async Task OnChangeAsync(InputFileChangeEventArgs e)
     {
@@ -55,6 +63,14 @@
 
         _selected = file;
         await OnFileSelected.InvokeAsync(file);
+    }
+
+    private async Task RemoveSelectedAsync()
+    {
+        _selected = null;
+        _error = null;
+        _inputKey = Guid.NewGuid();
+        await OnFileRemoved.InvokeAsync();
     }
 
     private static string FormatSize(long bytes) =>

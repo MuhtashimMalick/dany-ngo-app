@@ -51,11 +51,16 @@ internal static class PaymentTestHelpers
         await ReadOrFailAsync<DonationDto>(donationResponse, HttpStatusCode.Created);
     }
 
-    public static async Task<(Guid HealthCategoryId, Guid ZakatFundId, Guid GeneralFundId)> LoadSeededIdsAsync(HttpClient client)
+    // OTHER, not HEALTH: this is shared by payment/loan-workflow tests that pair the returned
+    // category with BOTH the Zakat and the General fund across different call sites, and needs a
+    // category valid against both — HEALTH became ZakatOnly under the v1.5 FundEligibility
+    // amendment (it used to be dual-eligible), so OTHER (the sole Either category) is used
+    // instead. These tests are about payments/loans, not the Zakat rule itself.
+    public static async Task<(Guid CategoryId, Guid ZakatFundId, Guid GeneralFundId)> LoadSeededIdsAsync(HttpClient client)
     {
         var categories = (await client.GetFromJsonAsync<List<ApplicationCategoryDto>>("/api/application-categories"))!;
         var funds = (await client.GetFromJsonAsync<List<FundCategoryDto>>("/api/fund-categories"))!;
-        return (categories.Single(c => c.Code == "HEALTH").Id, funds.Single(f => f.Code == "ZAKAT").Id, funds.Single(f => f.Code == "GENERAL").Id);
+        return (categories.Single(c => c.Code == "OTHER").Id, funds.Single(f => f.Code == "ZAKAT").Id, funds.Single(f => f.Code == "GENERAL").Id);
     }
 
     /// <summary>Creates an applicant + application and drives it to Approved, ready to accept payments.</summary>

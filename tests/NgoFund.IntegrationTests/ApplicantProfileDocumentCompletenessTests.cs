@@ -35,7 +35,10 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
         // own profile (A3/v1.4) — nothing is uploaded onto the application itself below.
         var applicant = await CreateApplicantAsync(client, $"50104-{Math.Abs(categoryCode.GetHashCode()) % 10000000:D7}-1");
         var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories[categoryCode], generalFundId);
+        // ROZGAR is GeneralOnly; HOUSE_RENT/SHAADI are ZakatOnly under the v1.5 FundEligibility
+        // amendment (they used to be dual-eligible) — pick whichever fund this category accepts.
+        var fundId = categoryCode == "ROZGAR" ? generalFundId : await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories[categoryCode], fundId);
 
         var completeness = await ReadOrFailAsync<ApplicationCompletenessDto>(
             await client.GetAsync($"/api/applications/{application.Id}/completeness"), HttpStatusCode.OK);
@@ -63,8 +66,9 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50104-2222222-2");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["SHAADI"], zakatFundId);
 
         var completeness = await ReadOrFailAsync<ApplicationCompletenessDto>(
             await client.GetAsync($"/api/applications/{application.Id}/completeness"), HttpStatusCode.OK);
@@ -89,7 +93,8 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
     public async Task LegacyApplicationOwnedCnic_UnderOldSlotKey_StillReportsSatisfied_EvenWithNoApplicantDocuments()
     {
         var client = await factory.CreateAuthenticatedClientAsync();
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
 
         Guid applicationId;
         using (var scope = factory.Services.CreateScope())
@@ -105,7 +110,7 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
                 ApplicationNumber = "LEGACY-0001",
                 ApplicantId = applicant.Id,
                 ApplicationCategoryId = categories["HOUSE_RENT"],
-                FundCategoryId = generalFundId,
+                FundCategoryId = zakatFundId,
                 RequestedAmount = 10000m,
                 ApplicationDate = DateOnly.FromDateTime(DateTime.UtcNow),
             };
@@ -147,8 +152,9 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50104-4444444-4");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         var completeness = await ReadOrFailAsync<ApplicationCompletenessDto>(
             await client.GetAsync($"/api/applications/{application.Id}/completeness"), HttpStatusCode.OK);

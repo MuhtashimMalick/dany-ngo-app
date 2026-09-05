@@ -42,7 +42,10 @@ public class InstallmentScheduleTotalsTriggerTests : IAsyncLifetime
 
     private async Task<LoanAgreement> SeedApprovedAgreementShellAsync(decimal principal)
     {
-        var healthId = await _db.ApplicationCategories.Where(c => c.Code == "HEALTH").Select(c => c.Id).SingleAsync();
+        // OTHER, not HEALTH: this test targets the loan-schedule-totals trigger, unrelated to the
+        // application category's Zakat rule, and needs a category valid against General — HEALTH
+        // became ZakatOnly under the v1.5 FundEligibility amendment, so it no longer qualifies.
+        var categoryId = await _db.ApplicationCategories.Where(c => c.Code == "OTHER").Select(c => c.Id).SingleAsync();
         var generalFundId = await _db.FundCategories.Where(f => f.Code == "GENERAL").Select(f => f.Id).SingleAsync();
 
         var applicant = new Applicant { Cnic = "90001-9000001-1", FullName = "Schedule Totals Trigger Applicant", Gender = Gender.Male };
@@ -52,7 +55,7 @@ public class InstallmentScheduleTotalsTriggerTests : IAsyncLifetime
         {
             ApplicationNumber = $"SCHTRG-{Guid.NewGuid():N}"[..20],
             ApplicantId = applicant.Id,
-            ApplicationCategoryId = healthId,
+            ApplicationCategoryId = categoryId,
             FundCategoryId = generalFundId,
             RequestedAmount = principal,
             ApprovedAmount = principal,

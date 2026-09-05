@@ -41,7 +41,11 @@ public class LoanPlanBeforeDisbursementTriggerTests : IAsyncLifetime
 
     private async Task<FundApplication> SeedApprovedApplicationAsync(decimal amount, Guid fundCategoryId)
     {
-        var healthId = await _db.ApplicationCategories.Where(c => c.Code == "HEALTH").Select(c => c.Id).SingleAsync();
+        // OTHER, not HEALTH: this fixture is called with both the Zakat and the General fund
+        // across the tests below, and needs a category valid against both — HEALTH became
+        // ZakatOnly under the v1.5 FundEligibility amendment, so OTHER (the sole Either category)
+        // is used instead. Unrelated to the loan-plan-before-disbursement trigger under test.
+        var categoryId = await _db.ApplicationCategories.Where(c => c.Code == "OTHER").Select(c => c.Id).SingleAsync();
 
         var applicant = new Applicant { Cnic = "80001-8000001-1", FullName = "Loan Plan Trigger Applicant", Gender = Gender.Male };
         _db.Applicants.Add(applicant);
@@ -50,7 +54,7 @@ public class LoanPlanBeforeDisbursementTriggerTests : IAsyncLifetime
         {
             ApplicationNumber = $"PLANTRG-{Guid.NewGuid():N}"[..20],
             ApplicantId = applicant.Id,
-            ApplicationCategoryId = healthId,
+            ApplicationCategoryId = categoryId,
             FundCategoryId = fundCategoryId,
             RequestedAmount = amount,
             ApprovedAmount = amount,

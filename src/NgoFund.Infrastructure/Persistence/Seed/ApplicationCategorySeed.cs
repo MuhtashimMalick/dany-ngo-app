@@ -1,12 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using NgoFund.Domain.Entities;
+using NgoFund.Domain.Enums;
 
 namespace NgoFund.Infrastructure.Persistence.Seed;
 
 /// <summary>
-/// The application categories from the client scope document. "- Z" marked categories are
-/// Zakat-eligible; Rozgar/Business Help and Other are not, per the client's explicit ruling on
-/// the Zakat rule.
+/// The application categories from the client scope document, with the client's confirmed final
+/// per-category fund eligibility (v1.5 amendment, see docs/scope.md): Shaadi, Health, Education,
+/// House Rent/Help and Emergency are <see cref="FundEligibility.ZakatOnly"/> (the original "- Z"
+/// footnote reinterpreted as "must draw from Zakat"); Rozgar/Business Help remains
+/// <see cref="FundEligibility.GeneralOnly"/>; Other is the sole <see cref="FundEligibility.Either"/>
+/// category.
 /// </summary>
 internal static class ApplicationCategorySeed
 {
@@ -119,15 +123,15 @@ internal static class ApplicationCategorySeed
 
         // RequiresGuarantors is data-driven: only ROZGAR (Business Loan) gates Approved on
         // guarantor count, per the client's ruling — every other category is 0 (no gate).
-        (Guid Id, string Code, string Name, bool IsZakatEligible, int Order, int RequiresGuarantors, string? TermsText, string? TermsVersion)[] rows =
+        (Guid Id, string Code, string Name, FundEligibility FundEligibility, int Order, int RequiresGuarantors, string? TermsText, string? TermsVersion)[] rows =
         [
-            (ShaadiId, "SHAADI", "Shaadi Fund Request", true, 1, 0, MarriageTermsText, TermsVersion),
-            (HealthId, "HEALTH", "Health Fund Request", true, 2, 0, null, null),
-            (EducationId, "EDUCATION", "Education Support", true, 3, 0, null, null),
-            (HouseRentId, "HOUSE_RENT", "House Rent/Help", true, 4, 0, HousingTermsText, TermsVersion),
-            (EmergencyId, "EMERGENCY", "Emergency Support", true, 5, 0, null, null),
-            (RozgarId, "ROZGAR", "Rozgar/Business Help", false, 6, 2, BusinessLoanTermsText, TermsVersion),
-            (OtherId, "OTHER", "Other", false, 7, 0, null, null),
+            (ShaadiId, "SHAADI", "Shaadi Fund Request", FundEligibility.ZakatOnly, 1, 0, MarriageTermsText, TermsVersion),
+            (HealthId, "HEALTH", "Health Fund Request", FundEligibility.ZakatOnly, 2, 0, null, null),
+            (EducationId, "EDUCATION", "Education Support", FundEligibility.ZakatOnly, 3, 0, null, null),
+            (HouseRentId, "HOUSE_RENT", "House Rent/Help", FundEligibility.ZakatOnly, 4, 0, HousingTermsText, TermsVersion),
+            (EmergencyId, "EMERGENCY", "Emergency Support", FundEligibility.ZakatOnly, 5, 0, null, null),
+            (RozgarId, "ROZGAR", "Rozgar/Business Help", FundEligibility.GeneralOnly, 6, 2, BusinessLoanTermsText, TermsVersion),
+            (OtherId, "OTHER", "Other", FundEligibility.Either, 7, 0, null, null),
         ];
 
         builder.Entity<ApplicationCategory>().HasData(rows.Select(r => new ApplicationCategory
@@ -135,7 +139,7 @@ internal static class ApplicationCategorySeed
             Id = r.Id,
             Code = r.Code,
             Name = r.Name,
-            IsZakatEligible = r.IsZakatEligible,
+            FundEligibility = r.FundEligibility,
             IsActive = true,
             DisplayOrder = r.Order,
             RequiresGuarantors = r.RequiresGuarantors,

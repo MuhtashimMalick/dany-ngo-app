@@ -3,6 +3,7 @@ using System;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NgoFund.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NgoFund.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260902120415_RestrictWritePermissionsToSuperAdmin")]
+    partial class RestrictWritePermissionsToSuperAdmin
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -512,12 +515,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("display_order");
 
-                    b.Property<string>("FundEligibility")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("fund_eligibility");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -525,6 +522,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsZakatEligible")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_zakat_eligible");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -560,10 +561,7 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_application_categories_code");
 
-                    b.ToTable("application_categories", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_application_categories_fund_eligibility", "fund_eligibility IN ('ZakatOnly','GeneralOnly','Either')");
-                        });
+                    b.ToTable("application_categories", (string)null);
 
                     b.HasData(
                         new
@@ -572,9 +570,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "SHAADI",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 1,
-                            FundEligibility = "ZakatOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = true,
                             Name = "Shaadi Fund Request",
                             RequiresGuarantors = 0,
                             TermsText = "اہم ہدایات\n\n1. درخواست کے ساتھ جماعت کے ممبر شپ کارڈ کی فوٹو کاپی اور اصل شادی کارڈ منسلک کرنا ضروری ہے۔\nA photocopy of the Jamaat membership card and the original marriage card must be attached with the application.\n\n2. درخواست فارم صرف متعلقہ دولہا/دلہن کے نام سے وصول کیا جائے گا۔\nThe application form will only be accepted in the name of the concerned bride/groom.\n\n3. کمیٹی کو کسی بھی درخواست کی تفصیلی انکوائری کا حق حاصل ہے۔\nThe committee reserves the right to conduct a detailed inquiry into any application.\n\n4. فارم کے تمام اندراجات پُر کرنا ضروری ہے، نامکمل فارم مسترد کر دیا جائے گا۔\nAll entries in the form must be completed; an incomplete form will be rejected.\n\n5. غلط معلومات فراہم کرنے کی صورت میں فارم مسترد کر دیا جائے گا۔\nThe form will be rejected if incorrect information is provided.\n\n6. دلہن کے شناختی کارڈ یا فارم \"ب\" کی کاپی لازمی طور پر منسلک کریں، ورنہ فارم مسترد کر دیا جائے گا۔\nA copy of the bride's CNIC or Form-B must be attached, otherwise the form will be rejected.\n\n7. درخواست فارم شادی سے کم از کم ایک ماہ قبل جمع کروانا لازمی ہے، جس کے ساتھ اصل شادی کارڈ، شناختی کارڈ (دولہا/دلہن) کی کاپی، اور جماعت کی ممبر شپ کی کاپی منسلک کریں۔\nThe application must be submitted at least one month before the wedding, together with the original marriage card, a copy of CNIC (groom/bride), and a copy of the Jamaat membership card.",
@@ -586,9 +584,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "HEALTH",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 2,
-                            FundEligibility = "ZakatOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = true,
                             Name = "Health Fund Request",
                             RequiresGuarantors = 0
                         },
@@ -598,9 +596,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "EDUCATION",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 3,
-                            FundEligibility = "ZakatOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = true,
                             Name = "Education Support",
                             RequiresGuarantors = 0
                         },
@@ -610,9 +608,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "HOUSE_RENT",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 4,
-                            FundEligibility = "ZakatOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = true,
                             Name = "House Rent/Help",
                             RequiresGuarantors = 0,
                             TermsText = "مکان مدد کے قوانین و ضوابط\n\n1. مکان مدد کی درخواست کی ادائیگی زکوٰۃ فنڈ سے کی جائے گی۔\nPayment for housing assistance will be made from the Zakat Fund.\n\n2. درخواست گزار کا جماعت کا فعال ممبر ہونا ضروری ہے۔\nThe applicant must be an active Jamaat member.\n\n3. درخواست کے ساتھ قومی شناختی کارڈ اور جماعت کے ممبر شپ کارڈ کی کاپیاں منسلک کرنا لازمی ہے۔\nCopies of CNIC and Jamaat membership card must be attached with the application.\n\n4. عورت اپنے شوہر کی موجودگی میں اپنے شوہر کے نام سے درخواست جمع کروانے کی پابند ہو گی۔\nA woman must submit the application in her husband's name and in his presence.\n\n5. درخواست کے ساتھ گزشتہ تین ماہ کے بلوں (بجلی، گیس، فون، پانی) اور کرایہ کی رسیدوں کی فوٹو کاپیاں منسلک کرنا لازمی ہے۔\nPhotocopies of the last three months' utility bills (electricity, gas, phone, water) and rent receipts must be attached.\n\n6. مکان مدد کمیٹی جب بھی درخواست گزار کو بلائے، اسے حاضر ہو کر تمام تفصیلات سے آگاہ کرنا ہو گا؛ ضرورت پڑنے پر موجودہ رہائش کا معائنہ اور جانچ پڑتال کروانے کا بھی پابند ہو گا۔\nWhenever called by the Housing Assistance Committee, the applicant must appear and provide full details, and must allow inspection of the current residence if required.\n\n7. مکان کا کرایہ، بجلی، گیس، پانی، ٹیکس اور دیگر اخراجات وقت پر ادا کرنے کا پابند ہو گا۔\nThe applicant must pay house rent, electricity, gas, water, tax and other expenses on time.\n\n8. درخواست منظور یا مسترد کرنے کا مکمل اختیار مجلسِ عامہ کے پاس ہے، درخواست گزار کسی قسم کی مداخلت نہیں کرے گا۔\nFull authority to approve or reject the application rests with the General Council; the applicant will not interfere in any way.\n\n9. نامکمل یا غلط بیانی کی صورت میں درخواست فارم مسترد ہو جائے گا۔\nAn incomplete application or false statement will result in rejection of the form.",
@@ -624,9 +622,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "EMERGENCY",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 5,
-                            FundEligibility = "ZakatOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = true,
                             Name = "Emergency Support",
                             RequiresGuarantors = 0
                         },
@@ -636,9 +634,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "ROZGAR",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 6,
-                            FundEligibility = "GeneralOnly",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = false,
                             Name = "Rozgar/Business Help",
                             RequiresGuarantors = 2,
                             TermsText = "شرائط و ضوابط\n\n1. آپ اپنے کاروبار کی تفصیل بتا کر ٹرسٹ سے قابلِ واپسی قرض لے سکتے ہیں۔ درخواست صحیح اور مکمل بھر کر ضروری دستاویزات کے ساتھ جمع کروائیں؛ نامکمل درخواست منظور نہیں کی جائے گی۔\nYou may apply for a repayable loan from the Trust by describing your business. The application must be complete and accurate, with required documents attached; incomplete applications will not be approved.\n\n2. قرض کی وصولی کی تاریخ سے ماہوار اقساط پیشگی چیک کے ذریعے وصول کی جائیں گی، اس لیے درخواست گزار کا بینک اکاؤنٹ ہونا لازمی ہے۔\nMonthly installments will be collected via post-dated cheque from the date of loan disbursement, so the applicant must have a bank account.\n\n3. درخواست گزار ہر تین ماہ بعد اپنے کاروبار کی تفصیلی رپورٹ خود کمیٹی کے روبرو پیش کرے گا۔\nThe applicant must present a detailed report of their business in person before the committee every three months.\n\n4. کاروبار کی ناکامی یا دھوکہ دہی کی صورت میں کمیٹی باقی رقم یکمشت وصول کرنے کا فیصلہ کر سکتی ہے۔\nIn case of business failure or fraud, the committee may decide to recover the remaining amount in a lump sum.\n\n5. اگر درخواست گزار نے بینک یا کسی اور ادارے سے قرض لیا ہے تو اس کی تفصیل درخواست میں درج کرنا لازمی ہے۔\nIf the applicant has an existing loan from a bank or any other institution, its details must be disclosed in the application.\n\n6. درخواست ایک مرتبہ مسترد ہونے کی صورت میں چھ ماہ تک دوبارہ جمع نہیں کروائی جا سکے گی۔\nA rejected application cannot be resubmitted for six months.\n\n7. دونوں ضامن افراد کا اے-زی ڈینی ویلفیئر ٹرسٹ کا ممبر اور کاروباری شخصیت ہونا لازمی ہے۔ درخواست گزار کسی وجہ سے ادائیگی میں ناکام ہو تو دونوں ضامن باقی رقم روزگار اسکیم کمیٹی کو واپس ادا کریں گے۔\nBoth guarantors must be A.Z Dany Welfare Trust members and business persons. If the applicant defaults for any reason, both guarantors will repay the remaining amount to the Rozgar Scheme Committee.\n\n8. تمام عہدے داران، مبلغ، ورکنگ کمیٹی اور نامزد اراکین درخواست فارم پر ضامن نہیں بن سکتے۔\nAll office bearers, missionaries, working committee members, and nominated members cannot act as guarantors.\n\n9. روزگار اسکیم کمیٹی کو یہ اختیار حاصل ہے کہ وہ کوئی وجہ بتائے بغیر کسی بھی درخواست کو منظور یا مسترد کر دے؛ اس کا فیصلہ حتمی اور آخری ہو گا۔\nThe Rozgar Scheme Committee has the authority to approve or reject any application without stating a reason; its decision is final.",
@@ -650,9 +648,9 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "OTHER",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayOrder = 7,
-                            FundEligibility = "Either",
                             IsActive = true,
                             IsDeleted = false,
+                            IsZakatEligible = false,
                             Name = "Other",
                             RequiresGuarantors = 0
                         });

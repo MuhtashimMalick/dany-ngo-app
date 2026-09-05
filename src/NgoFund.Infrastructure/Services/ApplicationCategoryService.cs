@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NgoFund.Application.Abstractions;
 using NgoFund.Contracts.ApplicationCategories;
 using NgoFund.Domain.Entities;
+using NgoFund.Domain.Enums;
 using NgoFund.Domain.Exceptions;
 using NgoFund.Infrastructure.Persistence;
 
@@ -30,7 +31,7 @@ public class ApplicationCategoryService(AppDbContext dbContext) : IApplicationCa
         {
             Code = request.Code,
             Name = request.Name,
-            IsZakatEligible = request.IsZakatEligible,
+            FundEligibility = Enum.Parse<FundEligibility>(request.FundEligibility),
             DefaultMaxAmount = request.DefaultMaxAmount,
             IsActive = true,
             DisplayOrder = request.DisplayOrder,
@@ -58,6 +59,6 @@ public class ApplicationCategoryService(AppDbContext dbContext) : IApplicationCa
     }
 
     private static ApplicationCategoryDto Map(ApplicationCategory c) =>
-        new(c.Id, c.Code, c.Name, c.IsZakatEligible, c.DefaultMaxAmount, c.IsActive, c.DisplayOrder,
+        new(c.Id, c.Code, c.Name, c.FundEligibility.ToString(), c.DefaultMaxAmount, c.IsActive, c.DisplayOrder,
             c.RequiresGuarantors, c.TermsText, c.TermsVersion);
 }

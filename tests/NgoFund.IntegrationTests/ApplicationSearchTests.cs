@@ -44,7 +44,9 @@ public class ApplicationSearchTests(AuthApiFactory factory) : IClassFixture<Auth
         var categories = (await client.GetFromJsonAsync<List<ApplicationCategoryDto>>("/api/application-categories"))!;
         var funds = (await client.GetFromJsonAsync<List<FundCategoryDto>>("/api/fund-categories"))!;
         var category = categories.Single(c => c.Code == "EDUCATION");
-        var fund = funds.Single(f => f.Code == "GENERAL");
+        // EDUCATION is ZakatOnly under the v1.5 FundEligibility amendment (it used to be
+        // dual-eligible), so it needs the Zakat fund now, not General.
+        var fund = funds.Single(f => f.Code == "ZAKAT");
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
             "SEARCH-001", "Search Test Applicant", null, "11122-3344556-7", "Female", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -70,6 +72,9 @@ public class ApplicationSearchTests(AuthApiFactory factory) : IClassFixture<Auth
         var healthCategory = categories.Single(c => c.Code == "HEALTH");
         var rozgarCategory = categories.Single(c => c.Code == "ROZGAR");
         var generalFund = funds.Single(f => f.Code == "GENERAL");
+        // HEALTH is ZakatOnly under the v1.5 FundEligibility amendment (it used to be
+        // dual-eligible); ROZGAR stays GeneralOnly, unaffected.
+        var zakatFund = funds.Single(f => f.Code == "ZAKAT");
 
         var applicantResponse = await client.PostAsJsonAsync("/api/applicants", new CreateApplicantRequest(
             null, "Filter Test Applicant", null, "22233-4455667-8", "Male", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -86,7 +91,7 @@ public class ApplicationSearchTests(AuthApiFactory factory) : IClassFixture<Auth
 
         // Matches both.
         var recentHealthResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
-            applicant.Id, healthCategory.Id, generalFund.Id, 2000m, "Normal", recentDate, "Recent, right category"));
+            applicant.Id, healthCategory.Id, zakatFund.Id, 2000m, "Normal", recentDate, "Recent, right category"));
         var recentHealth = await ReadOrFailAsync<ApplicationDto>(recentHealthResponse, HttpStatusCode.Created);
 
         var url = $"/api/applications?categoryId={healthCategory.Id}&dateFrom={recentDate.AddDays(-1):yyyy-MM-dd}&dateTo={recentDate.AddDays(1):yyyy-MM-dd}";

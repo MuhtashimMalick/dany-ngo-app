@@ -7,6 +7,7 @@
    alert-warning banner (not alert-error) that animates in only when it newly appears after a save,
    per gsap-core: motion should mark the moment something changed, not replay on every render. *@
 @inject ApiClient ApiClient
+@inject AuthState AuthState
 @inject ToastService Toast
 @inject IJSRuntime JS
 
@@ -31,10 +32,15 @@
             <DataAnnotationsValidator />
             <ValidationSummary class="validation-summary" />
 
-            <BusinessBackgroundFields Model="_form" />
-            <BusinessProposalFields Model="_form" RequestedAmount="RequestedAmount" />
+            <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                <BusinessBackgroundFields Model="_form" />
+                <BusinessProposalFields Model="_form" RequestedAmount="RequestedAmount" />
+            </fieldset>
 
-            <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Business Loan Details")</button>
+            @if (CanEdit)
+            {
+                <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Business Loan Details")</button>
+            }
         </EditForm>
     }
 </FormSection>
@@ -49,6 +55,8 @@
     private string? _error;
     private string? _warning;
     private BusinessLoanDetailsFormModel _form = new();
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
 
     protected override async Task OnInitializedAsync()
     {

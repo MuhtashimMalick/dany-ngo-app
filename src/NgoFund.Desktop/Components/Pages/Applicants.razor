@@ -179,6 +179,9 @@
                                         <Icon Name="file" Size="16" />
                                         <span class="file-drop-selected-name">@_cnicFrontUpload.FileName</span>
                                         <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove CNIC (Front)" @onclick="() => _cnicFrontUpload = null">
+                                            <Icon Name="close" Size="14" />
+                                        </button>
                                     </div>
                                 }
                                 else
@@ -203,6 +206,9 @@
                                         <Icon Name="file" Size="16" />
                                         <span class="file-drop-selected-name">@_cnicBackUpload.FileName</span>
                                         <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove CNIC (Back)" @onclick="() => _cnicBackUpload = null">
+                                            <Icon Name="close" Size="14" />
+                                        </button>
                                     </div>
                                 }
                                 else
@@ -227,6 +233,9 @@
                                         <Icon Name="file" Size="16" />
                                         <span class="file-drop-selected-name">@_membershipCardUpload.FileName</span>
                                         <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove Jamaat Membership Card" @onclick="() => _membershipCardUpload = null">
+                                            <Icon Name="close" Size="14" />
+                                        </button>
                                     </div>
                                 }
                                 else

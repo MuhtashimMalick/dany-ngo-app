@@ -22,8 +22,9 @@ public class DocumentSlotValidationTests(AuthApiFactory factory) : IClassFixture
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50103-1111111-1");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         var response = await UploadAsync(client, application.Id, "CnicFront", "HOUSE_RENT.NOT_A_REAL_SLOT");
 
@@ -35,8 +36,9 @@ public class DocumentSlotValidationTests(AuthApiFactory factory) : IClassFixture
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50103-1111111-2");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         // MEMBERSHIP_CARD only accepts MembershipCard, not UtilityBill.
         var response = await UploadAsync(client, application.Id, "UtilityBill", "HOUSE_RENT.MEMBERSHIP_CARD");
@@ -63,8 +65,9 @@ public class DocumentSlotValidationTests(AuthApiFactory factory) : IClassFixture
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50103-1111111-4");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         // HOUSE_RENT.APPLICANT_CNIC is Applicant-scoped (v1.4) so it can no longer be uploaded
         // against the application itself — RENT_RECEIPTS stays Application-scoped and exercises

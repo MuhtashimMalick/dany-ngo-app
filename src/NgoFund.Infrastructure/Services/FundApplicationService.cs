@@ -540,8 +540,11 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         TermsVersion: a.TermsVersion,
         RequiresGuarantors: a.ApplicationCategory.RequiresGuarantors,
         GuarantorCount: guarantorCount,
-        // The blocking-confirmation signal (E1): Zakat-eligible category currently pointed at the
-        // General (non-Zakat) fund. Distinct from RequiresLoanPlan, which is about whether payments
-        // need a loan agreement first, not about whether this fund choice is the unusual one.
-        ZakatEligibleCategoryOnGeneralFund: a.ApplicationCategory.IsZakatEligible && !a.FundCategory.IsZakat);
+        // The blocking-confirmation signal (E1): a dual-eligible (FundEligibility.Either) category
+        // currently pointed at the General (non-Zakat) fund — under the final mapping this only
+        // ever fires for OTHER, the sole dual-eligible category; ROZGAR (GeneralOnly) is forced
+        // onto General and correctly never flags this. Distinct from RequiresLoanPlan, which is
+        // about whether payments need a loan agreement first, not about whether this fund choice
+        // is the unusual one.
+        DualEligibleCategoryOnGeneralFund: a.ApplicationCategory.FundEligibility == FundEligibility.Either && !a.FundCategory.IsZakat);
 }

@@ -16,6 +16,14 @@ public static class PakistaniFormats
     /// <summary>e.g. "0333-2909639" (length 12).</summary>
     public const string MobilePhonePattern = @"^03\d{2}-\d{7}$";
 
+    /// <summary>Digit count of a CNIC once dashes are stripped (5+7+1) — the cap Desktop's live
+    /// input mask (<c>FormatField</c>) enforces while auto-inserting dashes as the user types.</summary>
+    public const int CnicDigitCount = 13;
+
+    /// <summary>Digit count of a mobile number once dashes are stripped (4+7) — the cap Desktop's
+    /// live input mask (<c>FormatField</c>) enforces while auto-inserting dashes as the user types.</summary>
+    public const int MobilePhoneDigitCount = 11;
+
     /// <summary>
     /// Jamaat membership numbers are deliberately free text with no prefix/format requirement — the
     /// client dropped the "J-" prefix format in 2026-08 feedback, so only a length cap remains. This

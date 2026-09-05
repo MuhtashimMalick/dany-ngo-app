@@ -125,10 +125,6 @@
                         <div class="fund-balance-col-value">@(_selectedApplication.ApprovedAmount?.ToString("N2") ?? "-")</div>
                     </div>
                     <div>
-                        <div class="fund-balance-col-label">Paid to date</div>
-                        <div class="fund-balance-col-value">@PaidToDate.ToString("N2")</div>
-                    </div>
-                    <div>
                         <div class="fund-balance-col-label">Remaining</div>
                         <div class="fund-balance-col-value">@_remainingAmount.ToString("N2")</div>
                     </div>
@@ -154,10 +150,6 @@
 
             <FormSection Title="Payment">
                 <div class="form-grid">
-                    <FormField Label="Amount" For="amount" ValidationFor="() => _form.Amount">
-                        <InputNumber id="amount" @bind-Value="_form.Amount" />
-                    </FormField>
-
                     <FormField Label="Payment Date" For="paymentDate">
                         <InputDate id="paymentDate" @bind-Value="_form.PaymentDate" />
                     </FormField>
@@ -194,9 +186,7 @@
                         <InputText id="paidToName" @bind-Value="_form.PaidToName" />
                     </FormField>
 
-                    <FormField Label="Paid To (CNIC)" For="paidToCnic">
-                        <InputText id="paidToCnic" @bind-Value="_form.PaidToCnic" />
-                    </FormField>
+                    <FormatField Label="Paid To (CNIC)" For="paidToCnic" Format="FieldFormat.Cnic" @bind-Value="_form.PaidToCnic" />
 
                     <FormField Label="Relation to Applicant" For="paidToRelation" CssClass="span-2">
                         <InputText id="paidToRelation" @bind-Value="_form.PaidToRelation" />
@@ -311,7 +301,6 @@
     private PaymentFormModel _form = new();
     private ApplicationDto? _selectedApplication;
     private decimal _remainingAmount;
-    private decimal PaidToDate => Math.Max(0m, (_selectedApplication?.ApprovedAmount ?? 0m) - _remainingAmount);
 
     private bool _showVoidModal;
     private bool _isVoiding;

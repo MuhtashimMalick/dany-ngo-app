@@ -4,7 +4,7 @@ public record ApplicationCategoryDto(
     Guid Id,
     string Code,
     string Name,
-    bool IsZakatEligible,
+    string FundEligibility,
     decimal? DefaultMaxAmount,
     bool IsActive,
     int DisplayOrder,

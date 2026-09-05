@@ -24,8 +24,12 @@ public class ApplicationCompletenessRegressionTests(AuthApiFactory factory) : IC
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, $"50102-{Math.Abs(categoryCode.GetHashCode()) % 10000000:D7}-1");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories[categoryCode], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        // Zakat, not General: HEALTH/EDUCATION/EMERGENCY are ZakatOnly under the v1.5
+        // FundEligibility amendment, and OTHER (Either) accepts Zakat too, so this one fund works
+        // for all four categories in this Theory.
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories[categoryCode], zakatFundId);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
         var response = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null));
@@ -38,8 +42,9 @@ public class ApplicationCompletenessRegressionTests(AuthApiFactory factory) : IC
     {
         var client = await factory.CreateAuthenticatedClientAsync();
         var applicant = await CreateApplicantAsync(client, "50102-1111111-7");
-        var (categories, generalFundId) = await LoadSeedIdsAsync(client);
-        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], generalFundId);
+        var (categories, _) = await LoadSeedIdsAsync(client);
+        var zakatFundId = await LoadZakatFundIdAsync(client);
+        var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HOUSE_RENT"], zakatFundId);
 
         var before = await ReadOrFailAsync<ApplicationCompletenessDto>(
             await client.GetAsync($"/api/applications/{application.Id}/completeness"), HttpStatusCode.OK);

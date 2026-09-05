@@ -679,6 +679,21 @@ window.ngoFundTabs = {
   },
 };
 
+// FormatField.razor's CNIC/mobile masked inputs — forces the real DOM <input> value to match
+// the C#-computed masked value on every keystroke. Needed because Blazor's render diff skips
+// writing `value` back to the DOM when the newly computed string equals what was already
+// rendered (e.g. typing a letter contributes no digits, so the mask output is unchanged) — the
+// browser's own <input> already has that stray character sitting in its live DOM value by the
+// time the C# handler runs, and without this, Blazor never touches `.value` again to remove it.
+window.ngoFundMask = {
+  syncValue(el, value) {
+    if (!el || el.value === value) return;
+    el.value = value;
+    const pos = value.length;
+    el.setSelectionRange(pos, pos);
+  },
+};
+
 // Handles bytes handed back from the API (base64-encoded, since IJSRuntime can't pass a raw
 // byte[] as a JS ArrayBuffer without extra interop plumbing) — either as a named-file download,
 // or as a blob: URL an <img>/<iframe> can point at for in-app preview.

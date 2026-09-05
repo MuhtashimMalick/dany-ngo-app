@@ -17,8 +17,10 @@ public class FundCategory : BaseEntity, IUpdateAuditable, ISoftDeletable
     public string? Description { get; set; }
 
     /// <summary>
-    /// Whether this fund is subject to the Zakat rule: a non-Zakat-eligible application category
-    /// may never be paid from a fund where <see cref="IsZakat"/> is true.
+    /// Whether this fund is a Zakat fund. Drives the Zakat rule together with
+    /// <see cref="ApplicationCategory.FundEligibility"/>: a <c>ZakatOnly</c> category may only be
+    /// paid from a fund where this is true, and a <c>GeneralOnly</c> category only from a fund
+    /// where this is false.
     /// </summary>
     public bool IsZakat { get; set; }
 

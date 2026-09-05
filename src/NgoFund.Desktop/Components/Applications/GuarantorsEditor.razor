@@ -12,6 +12,7 @@
    needs a saved guarantor Id to exist first — hence the "Save Guarantors" hint below for
    never-saved rows. *@
 @inject ApiClient ApiClient
+@inject AuthState AuthState
 @inject ToastService Toast
 @inject IJSRuntime JS
 
@@ -33,10 +34,15 @@
             <div class="card guarantor-row" id="@($"guarantor-row-{row.ClientKey:N}")" @key="row.ClientKey">
                 <div class="guarantor-row-header">
                     <span class="guarantor-row-title">Guarantor @row.SequenceNumber</span>
-                    <button type="button" class="icon-btn" aria-label="Remove guarantor" @onclick="() => RemoveRowAsync(row)"><Icon Name="trash" Size="16" /></button>
+                    @if (CanEdit)
+                    {
+                        <button type="button" class="icon-btn" aria-label="Remove guarantor" @onclick="() => RemoveRowAsync(row)"><Icon Name="trash" Size="16" /></button>
+                    }
                 </div>
 
-                <GuarantorFields Row="row" />
+                <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                    <GuarantorFields Row="row" />
+                </fieldset>
 
                 @if (row.Id is null)
                 {
@@ -45,16 +51,19 @@
             </div>
         }
 
-        @if (_rows.Count < MaxRows)
+        @if (CanEdit && _rows.Count < MaxRows)
         {
             <button type="button" class="btn btn-secondary btn-sm" @onclick="AddRowAsync">
                 <Icon Name="plus" Size="15" />Add Guarantor
             </button>
         }
 
-        <div style="margin-top: var(--space-4);">
-            <button type="button" class="btn btn-primary" disabled="@_isSaving" @onclick="SaveAsync">@(_isSaving ? "Saving..." : "Save Guarantors")</button>
-        </div>
+        @if (CanEdit)
+        {
+            <div style="margin-top: var(--space-4);">
+                <button type="button" class="btn btn-primary" disabled="@_isSaving" @onclick="SaveAsync">@(_isSaving ? "Saving..." : "Save Guarantors")</button>
+            </div>
+        }
     }
 </FormSection>
 
@@ -70,6 +79,8 @@
     private string? _error;
     private List<GuarantorRowModel> _rows = [];
     private Guid? _pendingAnimateRowKey;
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
 
     protected override async Task OnInitializedAsync()
     {

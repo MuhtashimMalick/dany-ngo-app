@@ -40,7 +40,13 @@ public class LoanZakatTriggerTests : IAsyncLifetime
 
     private async Task<(FundApplication Application, Guid ZakatFundId, Guid GeneralFundId)> SeedApprovedApplicationAsync(decimal approvedAmount, bool zakatFund)
     {
-        var healthId = await _db.ApplicationCategories.Where(c => c.Code == "HEALTH").Select(c => c.Id).SingleAsync();
+        // OTHER, not HEALTH: this fixture needs a category valid against BOTH fund types (this
+        // method is called with zakatFund true and false across the tests below), and since the
+        // v1.5 FundEligibility amendment, HEALTH is ZakatOnly — OTHER is the sole dual-eligible
+        // (Either) category. These tests are about the loan-agreement/repayment fund-eligibility
+        // triggers, not the application-category Zakat rule, so which dual-eligible category is
+        // used here is otherwise arbitrary.
+        var categoryId = await _db.ApplicationCategories.Where(c => c.Code == "OTHER").Select(c => c.Id).SingleAsync();
         var zakatFundId = await _db.FundCategories.Where(f => f.Code == "ZAKAT").Select(f => f.Id).SingleAsync();
         var generalFundId = await _db.FundCategories.Where(f => f.Code == "GENERAL").Select(f => f.Id).SingleAsync();
 
@@ -51,7 +57,7 @@ public class LoanZakatTriggerTests : IAsyncLifetime
         {
             ApplicationNumber = $"LOANTRG-{Guid.NewGuid():N}"[..20],
             ApplicantId = applicant.Id,
-            ApplicationCategoryId = healthId,
+            ApplicationCategoryId = categoryId,
             FundCategoryId = zakatFund ? zakatFundId : generalFundId,
             RequestedAmount = approvedAmount,
             ApprovedAmount = approvedAmount,

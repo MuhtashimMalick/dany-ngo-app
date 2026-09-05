@@ -49,15 +49,19 @@ public class CategorySchemaConstraintsTests : IAsyncLifetime
     private async Task<FundApplication> SeedApplicationAsync(string cnic, string categoryCode, string applicationNumber)
     {
         var applicant = await SeedApplicantAsync(cnic);
-        var categoryId = await _db.ApplicationCategories.Where(c => c.Code == categoryCode).Select(c => c.Id).SingleAsync();
-        var generalFundId = await _db.FundCategories.Where(f => f.Code == "GENERAL").Select(f => f.Id).SingleAsync();
+        var category = await _db.ApplicationCategories.Where(c => c.Code == categoryCode).SingleAsync();
+        // These tests are about schema constraints unrelated to the Zakat rule, so any fund the
+        // category is actually allowed to draw from is fine — General unless the category is
+        // ZakatOnly (HEALTH/SHAADI/HOUSE_RENT under the v1.5 FundEligibility amendment).
+        var fundCode = category.FundEligibility == FundEligibility.ZakatOnly ? "ZAKAT" : "GENERAL";
+        var fundId = await _db.FundCategories.Where(f => f.Code == fundCode).Select(f => f.Id).SingleAsync();
 
         var application = new FundApplication
         {
             ApplicationNumber = applicationNumber,
             ApplicantId = applicant.Id,
-            ApplicationCategoryId = categoryId,
-            FundCategoryId = generalFundId,
+            ApplicationCategoryId = category.Id,
+            FundCategoryId = fundId,
             RequestedAmount = 1000m,
             ApplicationDate = DateOnly.FromDateTime(DateTime.UtcNow),
         };

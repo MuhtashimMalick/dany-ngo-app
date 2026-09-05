@@ -35,9 +35,7 @@
         <InputText id="emergencyName" @bind-Value="Model.EmergencyContactName" />
     </FormField>
     <FormatField Label="CNIC" For="emergencyCnic" Format="FieldFormat.Cnic" @bind-Value="Model.EmergencyContactCnic" />
-    <FormField Label="Phone" For="emergencyPhone">
-        <InputText id="emergencyPhone" @bind-Value="Model.EmergencyContactPhone" />
-    </FormField>
+    <FormatField Label="Phone" For="emergencyPhone" Format="FieldFormat.MobilePhone" @bind-Value="Model.EmergencyContactPhone" />
 </div>
 
 @code {

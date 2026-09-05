@@ -115,6 +115,11 @@ a {
 .gap-3 { gap: var(--space-3); }
 .gap-4 { gap: var(--space-4); }
 
+/* Strips the browser's default <fieldset> chrome (border/margin/padding) plus the implicit
+   min-content sizing that fieldsets impose on their children, so a permission-gated
+   `<fieldset disabled>` wrapper around a field group lays out exactly like the div it replaces. */
+.fieldset-reset { border: none; margin: 0; padding: 0; min-width: 0; }
+
 .payment-summary-card {
   display: flex;
   gap: var(--space-5);
@@ -1799,6 +1804,12 @@ table.data-table {
 
 .file-drop-selected-check {
   color: var(--status-approved-fg);
+  flex-shrink: 0;
+}
+
+.file-drop-selected-remove {
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
 }
 

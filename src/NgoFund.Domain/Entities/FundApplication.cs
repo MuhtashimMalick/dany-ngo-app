@@ -95,16 +95,25 @@ public class FundApplication : BaseEntity, IUpdateAuditable
     public Guid? UpdatedBy { get; set; }
 
     /// <summary>
-    /// The Zakat rule: a non-Zakat-eligible application category may only be funded from a
-    /// non-Zakat (General) fund. Zakat-eligible categories may draw from either fund. Call before
-    /// assigning/changing <see cref="FundCategoryId"/>. Mirrored by the
+    /// The Zakat rule: <see cref="FundEligibility.ZakatOnly"/> categories may only be funded from
+    /// a Zakat fund, <see cref="FundEligibility.GeneralOnly"/> categories only from a non-Zakat
+    /// (General) fund, and <see cref="FundEligibility.Either"/> categories from either. Call
+    /// before assigning/changing <see cref="FundCategoryId"/>. Mirrored by the
     /// <c>fn_enforce_zakat_eligibility</c> DB trigger as defence in depth.
     /// </summary>
     public static void EnsureFundIsCompatible(ApplicationCategory category, FundCategory fund)
     {
-        if (fund.IsZakat && !category.IsZakatEligible)
+        var incompatible = category.FundEligibility switch
         {
-            throw new ZakatFundMismatchException(category.Name, fund.Name);
+            FundEligibility.ZakatOnly => !fund.IsZakat,
+            FundEligibility.GeneralOnly => fund.IsZakat,
+            FundEligibility.Either => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(category), category.FundEligibility, "Unhandled FundEligibility value."),
+        };
+
+        if (incompatible)
+        {
+            throw new ZakatFundMismatchException(category.Name, category.FundEligibility, fund.Name);
         }
     }
 

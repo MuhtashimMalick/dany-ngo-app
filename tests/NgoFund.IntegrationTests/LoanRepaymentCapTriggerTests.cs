@@ -42,7 +42,10 @@ public class LoanRepaymentCapTriggerTests : IAsyncLifetime
     /// <summary>Seeds a General-fund application, Approved with the given amount, disbursed in full via one Completed payment, plus a matching (1-installment) loan agreement.</summary>
     private async Task<LoanAgreement> SeedDisbursedLoanAsync(decimal amount)
     {
-        var healthId = await _db.ApplicationCategories.Where(c => c.Code == "HEALTH").Select(c => c.Id).SingleAsync();
+        // OTHER, not HEALTH: this test targets the loan-repayment-cap trigger, unrelated to the
+        // application category's Zakat rule, and needs a category valid against General — HEALTH
+        // became ZakatOnly under the v1.5 FundEligibility amendment, so it no longer qualifies.
+        var categoryId = await _db.ApplicationCategories.Where(c => c.Code == "OTHER").Select(c => c.Id).SingleAsync();
         var generalFundId = await _db.FundCategories.Where(f => f.Code == "GENERAL").Select(f => f.Id).SingleAsync();
 
         var applicant = new Applicant { Cnic = "70001-7000001-1", FullName = "Repayment Cap Trigger Applicant", Gender = Gender.Male };
@@ -52,7 +55,7 @@ public class LoanRepaymentCapTriggerTests : IAsyncLifetime
         {
             ApplicationNumber = $"CAPTRG-{Guid.NewGuid():N}"[..20],
             ApplicantId = applicant.Id,
-            ApplicationCategoryId = healthId,
+            ApplicationCategoryId = categoryId,
             FundCategoryId = generalFundId,
             RequestedAmount = amount,
             ApprovedAmount = amount,

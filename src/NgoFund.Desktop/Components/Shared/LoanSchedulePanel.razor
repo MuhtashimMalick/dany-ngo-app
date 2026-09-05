@@ -319,9 +319,7 @@
                         <InputText id="receivedFromName" @bind-Value="_repaymentForm.ReceivedFromName" />
                     </FormField>
 
-                    <FormField Label="CNIC" For="receivedFromCnic">
-                        <InputText id="receivedFromCnic" @bind-Value="_repaymentForm.ReceivedFromCnic" />
-                    </FormField>
+                    <FormatField Label="CNIC" For="receivedFromCnic" Format="FieldFormat.Cnic" @bind-Value="_repaymentForm.ReceivedFromCnic" />
 
                     <FormField Label="Notes" For="repaymentNotes" CssClass="span-2">
                         <InputTextArea id="repaymentNotes" @bind-Value="_repaymentForm.Notes" />

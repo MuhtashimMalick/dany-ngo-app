@@ -30,6 +30,15 @@ internal static class ApplicationCompletenessTestHelpers
         return (categories.ToDictionary(c => c.Code, c => c.Id), funds.Single(f => f.Code == "GENERAL").Id);
     }
 
+    /// <summary>SHAADI and HOUSE_RENT are ZakatOnly under the v1.5 FundEligibility amendment (they
+    /// used to be dual-eligible) — completeness-gate tests for those two categories need this
+    /// instead of <see cref="LoadSeedIdsAsync"/>'s GeneralFundId. ROZGAR stays on General.</summary>
+    public static async Task<Guid> LoadZakatFundIdAsync(HttpClient client)
+    {
+        var funds = (await client.GetFromJsonAsync<List<FundCategoryDto>>("/api/fund-categories"))!;
+        return funds.Single(f => f.Code == "ZAKAT").Id;
+    }
+
     public static async Task<ApplicationDto> CreateBareApplicationAsync(HttpClient client, Guid applicantId, Guid categoryId, Guid fundId) =>
         await ReadOrFailAsync<ApplicationDto>(
             await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(

@@ -1,4 +1,5 @@
 using NgoFund.Domain.Common;
+using NgoFund.Domain.Enums;
 
 namespace NgoFund.Domain.Entities;
 
@@ -13,11 +14,13 @@ public class ApplicationCategory : BaseEntity, IUpdateAuditable, ISoftDeletable
     public string Name { get; set; } = null!;
 
     /// <summary>
-    /// If true, this category may be paid from either a Zakat or a General fund. If false, it
-    /// may only be paid from a non-Zakat (General) fund. Enforced by the domain layer and
-    /// mirrored by the <c>fn_enforce_zakat_eligibility</c> DB trigger.
+    /// Which fund type(s) this category may be paid from: <see cref="FundEligibility.ZakatOnly"/>
+    /// (Zakat fund only), <see cref="FundEligibility.GeneralOnly"/> (non-Zakat fund only), or
+    /// <see cref="FundEligibility.Either"/>. Enforced by the domain layer
+    /// (<see cref="FundApplication.EnsureFundIsCompatible"/>) and mirrored by the
+    /// <c>fn_enforce_zakat_eligibility</c> DB trigger.
     /// </summary>
-    public bool IsZakatEligible { get; set; }
+    public FundEligibility FundEligibility { get; set; }
 
     public decimal? DefaultMaxAmount { get; set; }
 

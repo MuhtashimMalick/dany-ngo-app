@@ -10,6 +10,7 @@
    Mirrors LoanSchedulePanel's self-contained load/save pattern (see that component's doc
    comment). *@
 @inject ApiClient ApiClient
+@inject AuthState AuthState
 @inject ToastService Toast
 
 <FormSection Title="Housing Assistance Details" Description="From the applicant's Housing Assistance form.">
@@ -25,9 +26,14 @@
     else
     {
         <EditForm Model="_form" OnValidSubmit="SaveAsync" id="housing-details-form">
-            <HousingDetailsFields Model="_form" />
+            <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                <HousingDetailsFields Model="_form" />
+            </fieldset>
 
-            <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Housing Details")</button>
+            @if (CanEdit)
+            {
+                <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Housing Details")</button>
+            }
         </EditForm>
     }
 </FormSection>
@@ -39,6 +45,8 @@
     private bool _isSaving;
     private string? _error;
     private HousingDetailsFormModel _form = new();
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
 
     protected override async Task OnInitializedAsync()
     {

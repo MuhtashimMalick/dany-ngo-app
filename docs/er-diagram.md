@@ -59,7 +59,7 @@ erDiagram
         uuid id PK
         string code UK
         string name
-        bool is_zakat_eligible
+        string fund_eligibility "ZakatOnly/GeneralOnly/Either"
     }
 
     DONORS {
@@ -132,7 +132,7 @@ erDiagram
         uuid id PK
         string loan_number UK
         uuid application_id FK "unique while status = Active"
-        uuid fund_category_id FK "frozen at creation, never Zakat"
+        uuid fund_category_id FK "frozen at creation, non-Zakat only (keyed on FundCategory.IsZakat, not application_categories.fund_eligibility)"
         numeric principal_amount "frozen from approved_amount"
         string status "Active/Cancelled/WrittenOff"
         int installment_count
