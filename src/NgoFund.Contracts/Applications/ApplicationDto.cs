@@ -52,4 +52,18 @@ public record ApplicationDto(
     /// genuine fund choice and pick General". Never true for a <c>GeneralOnly</c> category
     /// (e.g. ROZGAR), where General is the only legal choice, not an unusual one.
     /// </summary>
-    bool DualEligibleCategoryOnGeneralFund);
+    bool DualEligibleCategoryOnGeneralFund,
+    /// <summary>Item 3 (2026-09 feedback), the duplicate-active-application badge: how many
+    /// applications this SAME applicant has whose status is "active" (Pending/UnderReview/Approved/
+    /// PartiallyPaid/OnHold — i.e. not Rejected/Paid), INCLUDING this one when it is itself active —
+    /// so a newly created application that is the applicant's second active one already shows 2,
+    /// not 1.</summary>
+    int ActiveApplicationCount,
+    /// <summary>Mirror direction of item 4's guarantor-conflict feature: application numbers of
+    /// OTHER, currently-active applications on whose guarantor list THIS application's own
+    /// applicant's CNIC appears — computed read-side, never persisted. Empty when there is no such
+    /// conflict.</summary>
+    IReadOnlyList<string> ApplicantGuarantorConflictApplicationNumbers,
+    DateTimeOffset? ApplicantGuarantorConflictOverrideApprovedAt,
+    string? ApplicantGuarantorConflictOverrideApprovedByName,
+    string? ApplicantGuarantorConflictOverrideReason);

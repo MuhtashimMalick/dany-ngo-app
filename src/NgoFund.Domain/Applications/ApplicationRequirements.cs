@@ -46,7 +46,10 @@ public static class ApplicationRequirements
     [
         new("HOUSE_RENT.APPLICANT_CNIC", "Applicant's CNIC", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.CnicFront, DocumentType.CnicBack]),
         new("HOUSE_RENT.MEMBERSHIP_CARD", "Applicant's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.MembershipCard]),
-        new("HOUSE_RENT.UTILITY_BILLS", "3 Months' Utility Bills", true, 3, DocumentSlotOwnerScope.Application, [DocumentType.UtilityBill]),
+        // Item 6 (2026-09 feedback): utility bills are now fully optional — an applicant "may
+        // provide None". MinCount is 0, not left at the old 3, so matched.Count >= slot.MinCount is
+        // always true: the slot never reads as an incomplete/partial-upload state in the checklist.
+        new("HOUSE_RENT.UTILITY_BILLS", "3 Months' Utility Bills", false, 0, DocumentSlotOwnerScope.Application, [DocumentType.UtilityBill]),
         new("HOUSE_RENT.RENT_RECEIPTS", "Rent Receipts", false, 1, DocumentSlotOwnerScope.Application, [DocumentType.RentReceipt]),
     ];
 
@@ -62,7 +65,11 @@ public static class ApplicationRequirements
         // incomplete application could then reach Approved. See
         // ApplicationCompletenessEvaluatorTests for the regression guard.
         new("SHAADI.BRIDE_CNIC_OR_BFORM", "Bride's CNIC / B-Form", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.CnicFront, DocumentType.FormB]),
-        new("SHAADI.GROOM_CNIC", "Groom's CNIC", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.CnicFront]),
+        // Item 5 (2026-09 feedback, groom-only): the client explicitly kept every bride requirement
+        // as-is (NGO provides help to the bride's side of the family, so bride documents stay
+        // mandatory) and only eased the groom's side. Groom's CNIC is now optional; his name/
+        // father's name/Jamaat/marital status stay required (see MissingMarriageFields below).
+        new("SHAADI.GROOM_CNIC", "Groom's CNIC", false, 1, DocumentSlotOwnerScope.Application, [DocumentType.CnicFront]),
         new("SHAADI.BRIDE_MEMBERSHIP_CARD", "Bride's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.MembershipCard]),
     ];
 
@@ -76,7 +83,8 @@ public static class ApplicationRequirements
         new("ROZGAR.FORM_B", "Photocopy of B-Form", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.FormB]),
         new("ROZGAR.MEMBERSHIP_CARD", "Copy of Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.MembershipCard]),
         new("ROZGAR.PASSPORT_PHOTOS", "Two Recent Passport-Size Colour Photographs", true, 2, DocumentSlotOwnerScope.Application, [DocumentType.PassportPhoto]),
-        new("ROZGAR.UTILITY_BILLS", "Photocopies of Household Utility Bills", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.UtilityBill]),
+        // Item 6 (2026-09 feedback): optional, same reasoning as HOUSE_RENT.UTILITY_BILLS above.
+        new("ROZGAR.UTILITY_BILLS", "Photocopies of Household Utility Bills", false, 0, DocumentSlotOwnerScope.Application, [DocumentType.UtilityBill]),
         // Guarantor slots stay Guarantor-scoped on purpose — they are the GUARANTOR's own CNIC/
         // membership card, a different person from the applicant.
         new("ROZGAR.GUARANTOR_CNIC", "Guarantor's CNIC", true, 1, DocumentSlotOwnerScope.Guarantor, [DocumentType.CnicFront, DocumentType.CnicBack]),
@@ -144,8 +152,14 @@ public static class ApplicationRequirements
         [Shaadi] =
         [
             GuardianRelationshipToBride, BrideName, BrideFatherName, BrideCnic, BrideMaritalStatus, BrideJamaat,
-            BridePreviousHusbandName, GroomName, GroomFatherName, GroomJamaat, GroomMaritalStatus, GroomAddress,
-            GroomMobile, GroomPreviousWifeName, NikahDate,
+            BridePreviousHusbandName, GroomName, GroomFatherName, GroomJamaat, GroomMaritalStatus,
+            // Item 5 (2026-09 feedback): GroomAddress/GroomMobile stay in this list for label lookup
+            // only — MissingMarriageFields below no longer treats them as blockers, so they will
+            // never actually appear as a missing field. Kept here (not removed) because
+            // RequiredFieldsFor is documented as "every field this category CAN require," and this
+            // list has no production consumer to break by leaving them in (see the type's own
+            // remarks); removing them would just be churn.
+            GroomAddress, GroomMobile, GroomPreviousWifeName, NikahDate,
             DeclarationAcceptedAt, TermsAcceptedAt,
         ],
         [Rozgar] =

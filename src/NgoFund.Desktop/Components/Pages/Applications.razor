@@ -72,7 +72,23 @@
     <RowTemplate Context="application">
         <tr>
             <td>@application.ApplicationNumber</td>
-            <td>@application.ApplicantName</td>
+            <td>
+                <span class="flex items-center gap-2">
+                    @application.ApplicantName
+                    @if (application.ActiveApplicationCount > 1)
+                    {
+                        <span title="@($"This applicant has {application.ActiveApplicationCount} active applications")">
+                            <StatusBadge Status="Warning" Text="@($"{application.ActiveApplicationCount} active")" />
+                        </span>
+                    }
+                    @if (HasUnresolvedApplicantConflict(application))
+                    {
+                        <span title="@($"This applicant is also a guarantor on: {string.Join(", ", application.ApplicantGuarantorConflictApplicationNumbers)}")">
+                            <StatusBadge Status="Warning" Text="Guarantor elsewhere" />
+                        </span>
+                    }
+                </span>
+            </td>
             <td>@application.ApplicationCategoryName</td>
             <td>@application.FundCategoryName</td>
             <td class="num">@application.RequestedAmount.ToString("N2")</td>
@@ -80,8 +96,19 @@
             <td>@application.Priority</td>
             <td><StatusBadge Status="@application.Status" /></td>
             <td>@application.ApplicationDate.ToString("yyyy-MM-dd")</td>
-            <td class="table-actions">
-                <button class="icon-btn" aria-label="Manage application" @onclick="() => OpenManageModalAsync(application)"><Icon Name="eye" Size="16" /></button>
+            @* `.table-actions` (display:flex) lives on an inner <div>, not directly on the <td>.
+               Setting display:flex/grid straight on a table-associated element (td/tr/etc.) forces
+               the browser to wrap it in an anonymous table-cell box per the CSS Display Level 3
+               spec ("Displaying Table-related elements") to keep the row's table structure intact
+               — an edge case whose sizing has historically varied across Chromium builds/versions.
+               Since WebView2's bundled Chromium version can differ from whatever Chromium a
+               dev/test machine has, relying on that anonymous-box behavior for a real table cell is
+               fragile. A plain inner div keeps the <td> a normal, predictably-sized table cell and
+               scopes the flex layout to content only. *@
+            <td>
+                <div class="table-actions">
+                    <button class="icon-btn" aria-label="Manage application" @onclick="() => OpenManageModalAsync(application)"><Icon Name="eye" Size="16" /></button>
+                </div>
             </td>
         </tr>
     </RowTemplate>
@@ -157,16 +184,39 @@
                 @if (AuthState.HasPermission("applications.review"))
                 {
                     <FormSection Title="Change Status">
+                        @if (HasUnresolvedApplicantConflict(_managing))
+                        {
+                            <div class="alert alert-warning" id="@ApplicantConflictBannerId"
+                                 title="@($"This applicant is also a guarantor on: {string.Join(", ", _managing.ApplicantGuarantorConflictApplicationNumbers)}")">
+                                <Icon Name="alert-circle" Size="16" />
+                                <span>
+                                    This applicant is also a guarantor on @(_managing.ApplicantGuarantorConflictApplicationNumbers.Count == 1 ? "another active application" : "other active applications"):
+                                    <strong>@string.Join(", ", _managing.ApplicantGuarantorConflictApplicationNumbers)</strong>.
+                                    @if (CanOverrideApplicantConflict)
+                                    {
+                                        <button type="button" class="btn btn-secondary btn-sm" style="margin-left: var(--space-3);" @onclick="OpenApplicantConflictOverrideModal">Approve override</button>
+                                    }
+                                </span>
+                            </div>
+                        }
+                        else if (_managing.ApplicantGuarantorConflictOverrideApprovedAt is not null)
+                        {
+                            <p class="field-hint">
+                                Conflict override approved by @(_managing.ApplicantGuarantorConflictOverrideApprovedByName ?? "—") on @_managing.ApplicantGuarantorConflictOverrideApprovedAt.Value.ToLocalTime().ToString("yyyy-MM-dd")
+                                @(string.IsNullOrWhiteSpace(_managing.ApplicantGuarantorConflictOverrideReason) ? "" : $" — \"{_managing.ApplicantGuarantorConflictOverrideReason}\"")
+                            </p>
+                        }
+
                         @if (_managing.AllowedNextStatuses.Count == 0)
                         {
                             <p class="field-hint">No further manual status changes are available right now.</p>
                         }
                         else
                         {
-                            <div class="flex gap-3 items-end flex-wrap">
+                            <div class="flex gap-3 items-start flex-wrap">
                                 <div class="field w-200 mb-0">
                                     <label for="newStatus">New status</label>
-                                    <select id="newStatus" @bind="_newStatus">
+                                    <select id="newStatus" @bind="_newStatus" @bind:after="OnNewStatusChanged">
                                         @foreach (var status in _managing.AllowedNextStatuses)
                                         {
                                             <option value="@status">@status</option>
@@ -184,11 +234,45 @@
                                         <input id="rejectionReason" @bind="_rejectionReason" />
                                     </div>
                                 }
-                                <button class="btn btn-primary" @onclick="ChangeStatusAsync" disabled="@(_isChangingStatus || ApproveBlockedByCompleteness)">Apply</button>
+                                @if (_newStatus == "Approved")
+                                {
+                                    <div class="field flex-1 min-w-200 mb-0">
+                                        <label for="approvedAmount">Approved Amount (PKR)</label>
+                                        <input id="approvedAmount" type="number" step="0.01" min="0" @bind="_approvedAmount" />
+                                        @if (ApprovedAmountError is not null)
+                                        {
+                                            <span class="field-error">@ApprovedAmountError</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="field-hint">Requested: PKR @_managing.RequestedAmount.ToString("N2")</span>
+                                            @if (_approvedAmount > _managing.RequestedAmount)
+                                            {
+                                                <span class="field-hint">PKR @((_approvedAmount - _managing.RequestedAmount)?.ToString("N2")) above the requested amount</span>
+                                            }
+                                        }
+                                    </div>
+                                }
+                                <div class="field mb-0">
+                                    @* Invisible label matching the other fields' label height/gap so the button's
+                                       36px height (same as .field > input/select) lines up with the row's inputs
+                                       under items-start, regardless of which field grows taller from an error/hint
+                                       line below it. See app.css .field for the label+gap+input stack this mirrors. *@
+                                    <label aria-hidden="true" style="visibility: hidden;">Apply</label>
+                                    <button class="btn btn-primary" @onclick="ChangeStatusAsync" disabled="@(_isChangingStatus || ApproveBlockedByCompleteness || ApproveBlockedByAmount || ApproveBlockedByApplicantConflict || ApproveBlockedByGuarantorConflict)">Apply</button>
+                                </div>
                             </div>
                             @if (ApproveBlockedByCompleteness)
                             {
                                 <p class="field-error">This application is missing required information/documents — see Completeness above — and cannot be moved to Approved yet.</p>
+                            }
+                            @if (ApproveBlockedByApplicantConflict)
+                            {
+                                <p class="field-error">This applicant is also an active guarantor elsewhere — approve the override above before proceeding.</p>
+                            }
+                            @if (ApproveBlockedByGuarantorConflict)
+                            {
+                                <p class="field-error">One or more guarantors have an unresolved CNIC conflict — resolve it on the Guarantors tab before proceeding.</p>
                             }
                         }
                     </FormSection>
@@ -262,11 +346,14 @@
                 </FormSection>
             </TabPanel>
 
-            @if (_managing.ApplicationCategoryCode == "ROZGAR")
+            @if (ShowGuarantorsTab)
             {
                 <TabPanel Title="@($"Guarantors ({_guarantorCount}/{_managing.RequiresGuarantors})")">
                     <GuarantorsEditor ApplicationId="_managing.Id" RequiredCount="_managing.RequiresGuarantors"
-                                      OnCountChanged="c => _guarantorCount = c" @key="_managing.Id" />
+                                      Slots="_completeness?.Slots ?? []" OnViewDocument="doc => _viewingDocument = doc"
+                                      OnGuarantorsChanged="ReloadManageDataAsync"
+                                      OnCountChanged="c => _guarantorCount = c"
+                                      OnConflictStateChanged="hasConflict => _hasUnresolvedGuarantorConflict = hasConflict" @key="_managing.Id" />
                 </TabPanel>
             }
 
@@ -346,6 +433,7 @@
                 <FormSection Title="Documents">
                     <DocumentSlotList ApplicationId="_managing.Id" ApplicantId="_managing.ApplicantId" Slots="_completeness?.Slots ?? []"
                                        ExtraDocuments="_documents.Where(d => d.SlotKey is null).ToList()"
+                                       ShowGuarantorSlots="!ShowGuarantorsTab"
                                        OnChanged="ReloadManageDataAsync" OnViewDocument="doc => _viewingDocument = doc" />
                 </FormSection>
             </TabPanel>
@@ -353,6 +441,28 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-secondary" @onclick="CloseManageModal">Close</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_showApplicantConflictOverrideModal && _managing is not null)
+{
+    <Modal Title="@($"Approve Conflict Override — {_managing.ApplicantName}")" Size="sm" OnClose="CloseApplicantConflictOverrideModal">
+        <ChildContent>
+            <p>
+                This applicant also appears as a guarantor on <strong>@string.Join(", ", _managing.ApplicantGuarantorConflictApplicationNumbers)</strong>.
+                Approving lets this application proceed toward Approved despite the conflict.
+            </p>
+            <div class="field mb-0">
+                <label for="applicantConflictOverrideReason">Reason *</label>
+                <textarea id="applicantConflictOverrideReason" @bind="_applicantConflictOverrideReason"></textarea>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseApplicantConflictOverrideModal">Cancel</button>
+            <button type="button" class="btn btn-primary" disabled="@(_isSavingApplicantConflictOverride || string.IsNullOrWhiteSpace(_applicantConflictOverrideReason))" @onclick="ConfirmApplicantConflictOverrideAsync">
+                @(_isSavingApplicantConflictOverride ? "Approving..." : "Approve Override")
+            </button>
         </Footer>
     </Modal>
 }
@@ -385,6 +495,20 @@
     private bool _showCreateWizard;
 
     private ApplicationDto? _managing;
+
+    // Single source of truth for "does this application get a Guarantors tab" — reused to decide
+    // whether the Documents tab should suppress guarantor-scoped slots (ShowGuarantorSlots on
+    // DocumentSlotList below), so a future category can never end up with guarantor slots hidden
+    // from Documents with no Guarantors tab to show them in instead.
+    private bool ShowGuarantorsTab => _managing?.ApplicationCategoryCode == "ROZGAR";
+
+    private bool _showApplicantConflictOverrideModal;
+    private bool _isSavingApplicantConflictOverride;
+    private string _applicantConflictOverrideReason = "";
+    private bool _pendingApplicantConflictAnimation;
+
+    private string ApplicantConflictBannerId => $"applicant-conflict-banner-{_managing?.Id:N}";
+
     private string? _manageError;
     private IReadOnlyList<ApplicationStatusHistoryDto> _history = [];
     private IReadOnlyList<ApplicationRemarkDto> _remarks = [];
@@ -394,6 +518,7 @@
     private string _newStatus = "";
     private string _statusRemarks = "";
     private string _rejectionReason = "";
+    private decimal? _approvedAmount;
     private bool _isChangingStatus;
     private string _newRemark = "";
     private bool _newRemarkIsInternal;
@@ -414,6 +539,71 @@
     // letting staff hit a 422 with no context after clicking.
     private bool ApproveBlockedByCompleteness =>
         _newStatus == "Approved" && CategoryHasManifest && _completeness is { IsComplete: false };
+
+    // Item 1 (2026-09 feedback): the server no longer defaults ApprovedAmount to RequestedAmount —
+    // it requires an explicit value the first time an application is approved (re-approval from
+    // OnHold may omit it to keep the existing value, but staff editing the field here always sends
+    // one).
+    // v1.8 correction: the requested amount is deliberately NOT a ceiling on the approved amount —
+    // approval goes through a committee of elders who may approve less than, equal to, or more
+    // than what was requested. (The matching DB CHECK constraint, domain exception, and validator
+    // rule are being dropped server-side in the same round.) The only client-side gate left is that
+    // an explicit positive amount is required before Approve is allowed.
+    private string? ApprovedAmountError
+    {
+        get
+        {
+            if (_newStatus != "Approved" || _managing is null)
+            {
+                return null;
+            }
+            if (_approvedAmount is null || _approvedAmount <= 0)
+            {
+                return "Enter an approved amount greater than zero.";
+            }
+            return null;
+        }
+    }
+
+    private bool ApproveBlockedByAmount => _newStatus == "Approved" && ApprovedAmountError is not null;
+
+    // Mirror direction of item 4's guarantor-conflict override: this applicant showing up as a
+    // guarantor on another active application. Same "unresolved" derivation as the guarantor-side
+    // HasUnresolvedConflict in GuarantorsEditor.razor — a conflict list can stay non-empty even once
+    // resolved (the other application is still active), so resolution is judged purely by whether an
+    // override has been approved.
+    private static bool HasUnresolvedApplicantConflict(ApplicationDto application) =>
+        application.ApplicantGuarantorConflictApplicationNumbers.Count > 0 && application.ApplicantGuarantorConflictOverrideApprovedAt is null;
+
+    private bool CanOverrideApplicantConflict => AuthState.HasPermission("applications.overrideguarantor");
+
+    private bool ApproveBlockedByApplicantConflict =>
+        _newStatus == "Approved" && _managing is not null && HasUnresolvedApplicantConflict(_managing);
+
+    // Bonus consistency fix (2026-09 feedback item 4 back-fill): the existing guarantor-guarantor
+    // conflict previously only surfaced as a server 422 with no client-side warning in this modal.
+    // GuarantorsEditor owns the per-row conflict data internally, so it reports up whether ANY loaded
+    // row currently has an unresolved conflict via OnConflictStateChanged (fired on load, after save,
+    // and after an override is approved) — reset to false in OpenManageModalAsync so a stale value
+    // from a previously-managed application never leaks in, most importantly for a non-ROZGAR
+    // application where GuarantorsEditor isn't rendered at all to update it.
+    private bool _hasUnresolvedGuarantorConflict;
+
+    private bool ApproveBlockedByGuarantorConflict => _newStatus == "Approved" && _hasUnresolvedGuarantorConflict;
+
+    // Fires when staff switch the dropdown to Approved. D9 (2026-09 client decision): the field must
+    // start BLANK on a first-time approval — the requested amount is never a default, staff always
+    // type the approved amount themselves. It only prefills when the application already has an
+    // ApprovedAmount (the OnHold-re-approval case), which mirrors ChangeStatusAsync's own server-side
+    // behavior of keeping the existing ApprovedAmount when none is newly supplied. The "Requested:
+    // PKR X" hint (below) still shows the ask for reference while staff type.
+    private void OnNewStatusChanged()
+    {
+        if (_newStatus == "Approved" && _managing is not null)
+        {
+            _approvedAmount = _managing.ApprovedAmount;
+        }
+    }
 
     // Mirrors ApplicationDto.GuarantorCount, kept live by GuarantorsEditor's OnCountChanged so the
     // "Guarantors (X/N)" tab title updates the moment staff save a row, not just on next reopen.
@@ -493,6 +683,12 @@
             _pendingRowAnimation = false;
             await JS.InvokeVoidAsync("ngoFundMotion.animateTableRows", "#applications-rows tr");
         }
+
+        if (_pendingApplicantConflictAnimation)
+        {
+            _pendingApplicantConflictAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", $"#{ApplicantConflictBannerId}");
+        }
     }
 
     private int _loadToken;
@@ -545,11 +741,48 @@
         _newStatus = application.AllowedNextStatuses.FirstOrDefault() ?? "";
         _statusRemarks = "";
         _rejectionReason = "";
+        _approvedAmount = application.ApprovedAmount;
+        OnNewStatusChanged();
         _newRemark = "";
         _newRemarkIsInternal = false;
         _guarantorCount = application.GuarantorCount;
+        _hasUnresolvedGuarantorConflict = false;
+        _pendingApplicantConflictAnimation = HasUnresolvedApplicantConflict(application);
         _completeness = null;
         await ReloadManageDataAsync();
+    }
+
+    private void OpenApplicantConflictOverrideModal()
+    {
+        _applicantConflictOverrideReason = "";
+        _showApplicantConflictOverrideModal = true;
+    }
+
+    private void CloseApplicantConflictOverrideModal() => _showApplicantConflictOverrideModal = false;
+
+    private async Task ConfirmApplicantConflictOverrideAsync()
+    {
+        if (_managing is null || string.IsNullOrWhiteSpace(_applicantConflictOverrideReason))
+        {
+            return;
+        }
+
+        _isSavingApplicantConflictOverride = true;
+        try
+        {
+            _managing = await ApiClient.ApproveApplicantGuarantorConflictOverrideAsync(_managing.Id, _applicantConflictOverrideReason);
+            Toast.Success("Conflict override approved");
+            _showApplicantConflictOverrideModal = false;
+            await ReloadManageDataAsync();
+        }
+        catch (ApiException ex)
+        {
+            _manageError = ex.Message;
+        }
+        finally
+        {
+            _isSavingApplicantConflictOverride = false;
+        }
     }
 
     private async Task ReloadManageDataAsync()
@@ -612,11 +845,14 @@
         {
             await ApiClient.ChangeApplicationStatusAsync(_managing.Id, _newStatus,
                 string.IsNullOrWhiteSpace(_statusRemarks) ? null : _statusRemarks,
-                string.IsNullOrWhiteSpace(_rejectionReason) ? null : _rejectionReason);
+                string.IsNullOrWhiteSpace(_rejectionReason) ? null : _rejectionReason,
+                _newStatus == "Approved" ? _approvedAmount : null);
 
             _managing = await ApiClient.GetApplicationAsync(_managing.Id);
             _guarantorCount = _managing.GuarantorCount;
             _newStatus = _managing.AllowedNextStatuses.FirstOrDefault() ?? "";
+            _approvedAmount = _managing.ApprovedAmount;
+            OnNewStatusChanged();
             Toast.Success($"Status updated · {_managing.ApplicationNumber}");
             await ReloadManageDataAsync();
             await LoadPageAsync(_currentPage);

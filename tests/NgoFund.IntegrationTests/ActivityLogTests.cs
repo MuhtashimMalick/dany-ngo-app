@@ -53,7 +53,7 @@ public class ActivityLogTests(AuthApiFactory factory) : IClassFixture<AuthApiFac
         var application = await CreateApprovedApplicationAsync(client, "19002-1900002-2", categoryId, zakatFundId, 2000m);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 500m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 500m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         var payment = await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var voidResponse = await client.PostAsJsonAsync($"/api/payments/{payment.Id}/void", new VoidPaymentRequest("Test void"));
@@ -86,7 +86,7 @@ public class ActivityLogTests(AuthApiFactory factory) : IClassFixture<AuthApiFac
         var before = await GetFeedAsync(client);
 
         var approveResponse = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
-            new ChangeApplicationStatusRequest("Approved", null, null));
+            new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         var after = await GetFeedAsync(client);

@@ -13,10 +13,6 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(e => e.PaymentNumber).HasMaxLength(30).IsRequired();
         builder.Property(e => e.InstrumentNumber).HasMaxLength(100);
         builder.Property(e => e.BankName).HasMaxLength(150);
-        builder.Property(e => e.PaidToName).HasMaxLength(200);
-        builder.Property(e => e.PaidToCnic).HasMaxLength(15);
-        builder.Property(e => e.PaidToRelation).HasMaxLength(100);
-        builder.Property(e => e.Remarks).HasMaxLength(1000);
         builder.Property(e => e.VoidReason).HasMaxLength(500);
 
         builder.HasIndex(e => e.PaymentNumber).IsUnique();

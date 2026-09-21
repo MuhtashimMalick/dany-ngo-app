@@ -178,10 +178,6 @@ public class PaymentService(
             PaymentMethod = Enum.Parse<PaymentMethod>(request.PaymentMethod),
             InstrumentNumber = request.InstrumentNumber,
             BankName = request.BankName,
-            PaidToName = request.PaidToName,
-            PaidToCnic = request.PaidToCnic,
-            PaidToRelation = request.PaidToRelation,
-            Remarks = request.Remarks,
         };
         dbContext.Payments.Add(payment);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -272,6 +268,6 @@ public class PaymentService(
     private static PaymentDto Map(Payment p) => new(
         p.Id, p.PaymentNumber, p.ApplicationId, p.Application.ApplicationNumber, p.Application.Applicant.FullName,
         p.FundCategoryId, p.FundCategory.Name, p.Amount, p.PaymentDate, p.PaymentMethod.ToString(),
-        p.InstrumentNumber, p.BankName, p.PaidToName, p.PaidToCnic, p.PaidToRelation, p.Remarks,
+        p.InstrumentNumber, p.BankName,
         p.Status.ToString(), p.VoidedAt, p.VoidReason);
 }

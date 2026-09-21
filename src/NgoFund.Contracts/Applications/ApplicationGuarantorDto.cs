@@ -16,4 +16,11 @@ public record ApplicationGuarantorDto(
     string? PhoneHome,
     string? PhoneOffice,
     string? PhoneMobile,
-    DateTimeOffset? DeclarationAcceptedAt);
+    DateTimeOffset? DeclarationAcceptedAt,
+    /// <summary>Item 4 (2026-09 feedback): application numbers of OTHER, currently-active
+    /// applications whose guarantor list contains the same CNIC — computed read-side, never
+    /// persisted. Empty when this guarantor has no CNIC or no conflict.</summary>
+    IReadOnlyList<string> ConflictingApplicationNumbers,
+    DateTimeOffset? ConflictOverrideApprovedAt,
+    string? ConflictOverrideApprovedByName,
+    string? ConflictOverrideReason);

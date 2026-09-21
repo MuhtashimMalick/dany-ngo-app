@@ -150,32 +150,6 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
     }
 
     [Fact]
-    public async Task BusinessLoanDetails_LargeCapitalMismatch_ReturnsWarningNotError()
-    {
-        var client = await CreateAuthenticatedClientAsync();
-        var applicant = await CreateApplicantAsync(client, "40004-4000004-4");
-        var categories = await LoadCategoriesAsync(client);
-        var rozgarId = categories.Single(c => c.Code == "ROZGAR").Id;
-        var generalFundId = await LoadGeneralFundIdAsync(client);
-        var application = await CreateApplicationAsync(client, applicant.Id, rozgarId, generalFundId, amount: 50000m);
-
-        // All other required fields filled in so this test isolates the mismatch-warning behavior
-        // from the completeness gate (layer 2, ApplicationDetailsService) added alongside it.
-        var request = new UpsertBusinessLoanApplicationDetailsRequest(
-            PaperFormNumber: null, BusinessPhone: null, Education: null, Skill: "Retail", Experience: "3 years",
-            OtherIncomeSources: null, TotalMonthlyExpenses: 15000m,
-            ProposedBusinessDescription: "Small grocery shop", ProposedBusinessLocation: "Main Bazaar",
-            CapitalRequired: 300000m, CapitalAlreadyAvailable: 30000m, // gap = 270000, requested = 50000 -> mismatch
-            HasPriorBusinessExperience: false, PriorBusinessDetails: null,
-            EmergencyContactName: "Emergency Contact", EmergencyContactCnic: null, EmergencyContactPhone: "0300-0000000");
-
-        var response = await client.PutAsJsonAsync($"/api/applications/{application.Id}/details/business-loan", request);
-        var upserted = await ReadOrFailAsync<BusinessLoanApplicationDetailsDto>(response, HttpStatusCode.OK);
-
-        Assert.NotNull(upserted.AmountMismatchWarning);
-    }
-
-    [Fact]
     public async Task HousingDetails_PostedAgainstWrongCategory_IsRejected()
     {
         var client = await CreateAuthenticatedClientAsync();
@@ -213,33 +187,42 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
 
         // Zero guarantors -> Approved must be rejected.
         var rejectedAtZero = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
-            new ChangeApplicationStatusRequest("Approved", null, null));
+            new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, rejectedAtZero.StatusCode);
 
         // One guarantor (with their required documents) -> still rejected: still fewer than the required two.
+        // CNICs are namespaced to this test (40006-...) — item 4 (2026-09 feedback) means a
+        // guarantor CNIC reused across OTHER test methods in this same class-shared database would
+        // now be flagged as a genuine cross-application conflict and block Approved for the wrong reason.
         var guarantorsAtOne = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, null, null, null, null),
+                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "40006-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
         await RozgarCompletenessTestHelpers.UploadRequiredGuarantorDocumentsAsync(client, guarantorsAtOne.Single().Id);
         var rejectedAtOne = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
-            new ChangeApplicationStatusRequest("Approved", null, null));
+            new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, rejectedAtOne.StatusCode);
 
         // Two guarantors, both with their required documents -> Approved succeeds.
         var guarantorsAtTwo = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(guarantorsAtOne.Single().Id, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, null, null, null, null),
-                new GuarantorEntry(null, 2, "MEM-G002", "Guarantor Two", null, null, null, "22222-2222222-2", null, null, null, null, null, null, null),
+                new GuarantorEntry(guarantorsAtOne.Single().Id, 1, "MEM-G001", "Guarantor One", null, null, null, "40006-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null),
+                new GuarantorEntry(null, 2, "MEM-G002", "Guarantor Two", null, null, null, "40006-2222222-2",
+                    ResidentialAddress: "124 Test Street", BusinessAddress: "457 Business Road", BusinessNature: null,
+                    PhoneHome: "021-2222221", PhoneOffice: "021-2222222", PhoneMobile: "0300-2222222", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
         await RozgarCompletenessTestHelpers.UploadRequiredGuarantorDocumentsAsync(client, guarantorsAtTwo.Single(g => g.SequenceNumber == 2).Id);
 
         var approvedAtTwo = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
-            new ChangeApplicationStatusRequest("Approved", null, null));
+            new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
         Assert.Equal(HttpStatusCode.NoContent, approvedAtTwo.StatusCode);
 
         var afterApproval = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
@@ -260,7 +243,9 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var guarantors = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, null, null, null, null),
+                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "40007-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
         var guarantorId = guarantors.Single().Id;
@@ -296,7 +281,9 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var created = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, "0300-1111111", null, null, null),
+                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "40008-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "0300-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111112", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
         var guarantorId = created.Single().Id;
@@ -314,7 +301,9 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var edited = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(guarantorId, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, "0300-9999999", null, null, null),
+                new GuarantorEntry(guarantorId, 1, "MEM-G001", "Guarantor One", null, null, null, "40008-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "0300-9999999", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111112", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
 
@@ -339,8 +328,12 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var created = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, null, null, null, null),
-                new GuarantorEntry(null, 2, "MEM-G002", "Guarantor Two", null, null, null, "22222-2222222-2", null, null, null, null, null, null, null),
+                new GuarantorEntry(null, 1, "MEM-G001", "Guarantor One", null, null, null, "40009-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null),
+                new GuarantorEntry(null, 2, "MEM-G002", "Guarantor Two", null, null, null, "40009-2222222-2",
+                    ResidentialAddress: "124 Test Street", BusinessAddress: "457 Business Road", BusinessNature: null,
+                    PhoneHome: "021-2222221", PhoneOffice: "021-2222222", PhoneMobile: "0300-2222222", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
         var keptId = created.Single(g => g.SequenceNumber == 1).Id;
@@ -350,7 +343,9 @@ public class CategoryApplicationDetailsTests(AuthApiFactory factory) : IClassFix
         var afterRemoval = await ReadOrFailAsync<List<ApplicationGuarantorDto>>(
             await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors", new ReplaceApplicationGuarantorsRequest(
             [
-                new GuarantorEntry(keptId, 1, "MEM-G001", "Guarantor One", null, null, null, "11111-1111111-1", null, null, null, null, null, null, null),
+                new GuarantorEntry(keptId, 1, "MEM-G001", "Guarantor One", null, null, null, "40009-1111111-1",
+                    ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                    PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null),
             ])),
             HttpStatusCode.OK);
 

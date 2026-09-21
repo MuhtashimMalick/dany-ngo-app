@@ -180,27 +180,6 @@
                 </FormSection>
             }
 
-            <FormSection Title="Recipient">
-                <div class="form-grid">
-                    <FormField Label="Paid To (Name)" For="paidToName">
-                        <InputText id="paidToName" @bind-Value="_form.PaidToName" />
-                    </FormField>
-
-                    <FormatField Label="Paid To (CNIC)" For="paidToCnic" Format="FieldFormat.Cnic" @bind-Value="_form.PaidToCnic" />
-
-                    <FormField Label="Relation to Applicant" For="paidToRelation" CssClass="span-2">
-                        <InputText id="paidToRelation" @bind-Value="_form.PaidToRelation" />
-                    </FormField>
-                </div>
-            </FormSection>
-
-            <FormSection Title="Remarks">
-                <div class="form-grid">
-                    <FormField Label="Remarks" For="remarks" CssClass="span-2">
-                        <InputTextArea id="remarks" @bind-Value="_form.Remarks" />
-                    </FormField>
-                </div>
-            </FormSection>
         </EditForm>
         </ChildContent>
         <Footer>
@@ -247,7 +226,7 @@
                 <tbody>
                     <tr><td>Receipt No.</td><td>@_receiptPayment.PaymentNumber</td></tr>
                     <tr><td>Application No.</td><td>@_receiptPayment.ApplicationNumber</td></tr>
-                    <tr><td>Paid To</td><td>@(_receiptPayment.PaidToName ?? _receiptPayment.ApplicantName)</td></tr>
+                    <tr><td>Paid To</td><td>@_receiptPayment.ApplicantName</td></tr>
                     <tr><td>Fund</td><td>@_receiptPayment.FundCategoryName</td></tr>
                     <tr><td>Date</td><td>@_receiptPayment.PaymentDate.ToString("yyyy-MM-dd")</td></tr>
                     <tr><td>Method</td><td>@_receiptPayment.PaymentMethod</td></tr>
@@ -468,8 +447,7 @@
         {
             var created = await ApiClient.CreatePaymentAsync(new CreatePaymentRequest(
                 _selectedApplication.Id, _form.Amount, _form.PaymentDate, _form.PaymentMethod,
-                _form.InstrumentNumber, _form.BankName, _form.PaidToName, _form.PaidToCnic,
-                _form.PaidToRelation, _form.Remarks));
+                _form.InstrumentNumber, _form.BankName));
 
             Toast.Success($"Payment recorded · {created.PaymentNumber}");
             _showCreateForm = false;
@@ -540,9 +518,5 @@
         public string PaymentMethod { get; set; } = "Cash";
         public string? InstrumentNumber { get; set; }
         public string? BankName { get; set; }
-        public string? PaidToName { get; set; }
-        public string? PaidToCnic { get; set; }
-        public string? PaidToRelation { get; set; }
-        public string? Remarks { get; set; }
     }
 }

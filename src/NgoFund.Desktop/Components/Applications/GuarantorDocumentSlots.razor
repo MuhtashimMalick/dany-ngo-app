@@ -1,0 +1,28 @@
+@* One guarantor's document-slot rows — split out of DocumentSlotList so the same
+   OwnerScope=="Guarantor" slot rendering can be reused from two places: DocumentSlotList's own
+   guarantor grouping (used by the wizard's Documents page, where guarantor rows are always saved
+   before this page is reached) and GuarantorsEditor's per-guarantor card in the manage modal
+   (2026-09 feedback: guarantor documents belong on the Guarantors tab, not the Documents tab).
+   Renders nothing for GuarantorId == null (a never-saved row has no slots to show yet — the caller
+   is expected to gate on Row.Id itself and skip rendering this component entirely in that case). *@
+
+@if (GuarantorId is { } guarantorId)
+{
+    @foreach (var slot in Slots.Where(s => s.OwnerScope == "Guarantor" && s.GuarantorId == guarantorId))
+    {
+        <DocumentSlotRow ApplicationId="ApplicationId" Slot="slot" ApplicantId="null" OnChanged="OnChanged" OnViewDocument="OnViewDocument" @key="SlotKey(slot)" />
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+    [Parameter] public Guid? GuarantorId { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<DocumentSlotStatusDto> Slots { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+
+    // Kept identical to DocumentSlotList.SlotKey so a slot's Blazor @key is stable regardless of
+    // which of the two call sites currently renders it.
+    private static string SlotKey(DocumentSlotStatusDto slot) =>
+        slot.GuarantorId is null ? slot.SlotKey : $"{slot.SlotKey}-{slot.GuarantorId}";
+}

@@ -14,7 +14,7 @@ namespace NgoFund.Infrastructure.Services;
 /// means "insert if this is the first save, otherwise update the existing row" rather than the
 /// usual create-vs-update split the rest of the codebase uses for its own top-level entities.
 /// </summary>
-public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDetailsService
+public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserService currentUser) : IApplicationDetailsService
 {
     private const string HousingCategoryCode = "HOUSE_RENT";
     private const string MarriageCategoryCode = "SHAADI";
@@ -104,9 +104,9 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
 
     public async Task<BusinessLoanApplicationDetailsDto?> GetBusinessLoanDetailsAsync(Guid applicationId, CancellationToken cancellationToken)
     {
-        var application = await EnsureCategoryAsync(applicationId, BusinessLoanCategoryCode, cancellationToken);
+        await EnsureCategoryAsync(applicationId, BusinessLoanCategoryCode, cancellationToken);
         var entity = await dbContext.BusinessLoanApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == applicationId, cancellationToken);
-        return entity is null ? null : Map(entity, application.RequestedAmount);
+        return entity is null ? null : Map(entity);
     }
 
     public async Task<BusinessLoanApplicationDetailsDto> UpsertBusinessLoanDetailsAsync(Guid applicationId, UpsertBusinessLoanApplicationDetailsRequest request, CancellationToken cancellationToken)
@@ -140,7 +140,7 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
         ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingBusinessLoanFields(entity));
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Map(entity, application.RequestedAmount);
+        return Map(entity);
     }
 
     public async Task<IReadOnlyList<ApplicationGuarantorDto>> GetGuarantorsAsync(Guid applicationId, CancellationToken cancellationToken)
@@ -156,7 +156,7 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
             .OrderBy(g => g.SequenceNumber)
             .ToListAsync(cancellationToken);
 
-        return entities.Select(Map).ToList();
+        return await MapWithConflictsAsync(applicationId, entities, cancellationToken);
     }
 
     /// <summary>
@@ -214,6 +214,16 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
                 dbContext.ApplicationGuarantors.Add(entity);
             }
 
+            // Item 4 (2026-09 feedback): a conflict override is approved for a specific person's
+            // CNIC. If staff edit the CNIC on an existing row to a different value, that override
+            // must not silently carry over to whoever the new CNIC belongs to.
+            if (entity.Cnic != g.Cnic)
+            {
+                entity.ConflictOverrideApprovedAt = null;
+                entity.ConflictOverrideApprovedBy = null;
+                entity.ConflictOverrideReason = null;
+            }
+
             entity.SequenceNumber = g.SequenceNumber;
             entity.MembershipNumber = g.MembershipNumber;
             entity.FullName = g.FullName;
@@ -235,7 +245,47 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return result.OrderBy(e => e.SequenceNumber).Select(Map).ToList();
+        return await MapWithConflictsAsync(applicationId, result.OrderBy(e => e.SequenceNumber).ToList(), cancellationToken);
+    }
+
+    public async Task<ApplicationGuarantorDto> ApproveGuarantorConflictOverrideAsync(
+        Guid applicationId, Guid guarantorId, ApproveGuarantorConflictOverrideRequest request, CancellationToken cancellationToken)
+    {
+        var guarantor = await dbContext.ApplicationGuarantors
+            .SingleOrDefaultAsync(g => g.Id == guarantorId && g.ApplicationId == applicationId, cancellationToken)
+            ?? throw new EntityNotFoundException("ApplicationGuarantor", guarantorId);
+
+        guarantor.ConflictOverrideApprovedAt = DateTimeOffset.UtcNow;
+        guarantor.ConflictOverrideApprovedBy = currentUser.UserId;
+        guarantor.ConflictOverrideReason = request.Reason;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var mapped = await MapWithConflictsAsync(applicationId, [guarantor], cancellationToken);
+        return mapped.Single();
+    }
+
+    /// <summary>Batches the conflict lookup and the override-approver name lookup across the whole
+    /// list instead of one query per guarantor — same pattern as
+    /// <c>FundApplicationService.GetApplicationsAsync</c>'s paymentTotals/guarantorCounts dictionaries.</summary>
+    private async Task<IReadOnlyList<ApplicationGuarantorDto>> MapWithConflictsAsync(
+        Guid applicationId, IReadOnlyList<ApplicationGuarantor> guarantors, CancellationToken cancellationToken)
+    {
+        var conflicts = await GuarantorConflictLookup.FindConflictsAsync(dbContext, applicationId, guarantors, cancellationToken);
+
+        var approverIds = guarantors
+            .Where(g => g.ConflictOverrideApprovedBy is not null)
+            .Select(g => g.ConflictOverrideApprovedBy!.Value)
+            .Distinct()
+            .ToList();
+        var approverNames = approverIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await dbContext.Users.Where(u => approverIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
+
+        return guarantors.Select(g => Map(
+            g,
+            conflicts.GetValueOrDefault(g.Id, []),
+            g.ConflictOverrideApprovedBy is not null ? approverNames.GetValueOrDefault(g.ConflictOverrideApprovedBy.Value) : null)).ToList();
     }
 
     /// <summary>Enforcement layer 2 of the completeness gate (see <c>docs/schema.md</c>): each
@@ -279,15 +329,16 @@ public class ApplicationDetailsService(AppDbContext dbContext) : IApplicationDet
         d.GroomName, d.GroomFatherName, d.GroomGrandfatherName, d.GroomJamaat, d.GroomMaritalStatus?.ToString(),
         d.GroomPreviousWifeName, d.GroomAddress, d.GroomMobile, d.GroomBusinessAddress, d.NikahDate, d.RukhsatiDate);
 
-    private static BusinessLoanApplicationDetailsDto Map(BusinessLoanApplicationDetails d, decimal requestedAmount) => new(
+    private static BusinessLoanApplicationDetailsDto Map(BusinessLoanApplicationDetails d) => new(
         d.ApplicationId, d.PaperFormNumber, d.BusinessPhone, d.Education, d.Skill, d.Experience, d.OtherIncomeSources,
         d.TotalMonthlyExpenses, d.ProposedBusinessDescription, d.ProposedBusinessLocation, d.CapitalRequired,
         d.CapitalAlreadyAvailable, d.HasPriorBusinessExperience, d.PriorBusinessDetails, d.EmergencyContactName,
-        d.EmergencyContactCnic, d.EmergencyContactPhone,
-        BusinessLoanCapitalCalculator.ComputeAmountMismatchWarning(requestedAmount, d.CapitalRequired, d.CapitalAlreadyAvailable));
+        d.EmergencyContactCnic, d.EmergencyContactPhone);
 
-    private static ApplicationGuarantorDto Map(ApplicationGuarantor g) => new(
+    private static ApplicationGuarantorDto Map(
+        ApplicationGuarantor g, IReadOnlyList<string> conflictingApplicationNumbers, string? conflictOverrideApprovedByName) => new(
         g.Id, g.ApplicationId, g.SequenceNumber, g.MembershipNumber, g.FullName, g.FatherName, g.GrandfatherName,
         g.Surname, g.Cnic, g.ResidentialAddress, g.BusinessAddress, g.BusinessNature, g.PhoneHome, g.PhoneOffice,
-        g.PhoneMobile, g.DeclarationAcceptedAt);
+        g.PhoneMobile, g.DeclarationAcceptedAt,
+        conflictingApplicationNumbers, g.ConflictOverrideApprovedAt, conflictOverrideApprovedByName, g.ConflictOverrideReason);
 }

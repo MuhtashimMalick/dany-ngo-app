@@ -7,17 +7,21 @@
 
    Per-row field markup lives in GuarantorFields.razor, shared with the create-flow wizard's
    single-row-per-page "Guarantor 1"/"Guarantor 2" pages (see that component's doc comment).
-   Document upload no longer lives on this editor at all: guarantor documents are uploaded and
-   viewed exclusively through the Documents tab/page's guarantor-grouped DocumentSlotList, which
-   needs a saved guarantor Id to exist first — hence the "Save Guarantors" hint below for
-   never-saved rows. *@
+   Document upload (2026-09 feedback: moved off the Documents tab, per the client) lives directly
+   on each saved row's card via GuarantorDocumentSlots — the same slot-row component the Documents
+   tab used to render guarantor slots with, just relocated here. A never-saved row (Id is null)
+   still has no server id for a document to attach to, so it shows the "Save Guarantors" hint
+   instead until a save completes. Rendered outside the row's `<fieldset disabled="@(!CanEdit)">`
+   deliberately: upload is gated by the documents.upload permission alone everywhere else in the
+   app, and nesting it inside that fieldset would silently disable it for a user who holds
+   documents.upload but not applications.edit. *@
 @inject ApiClient ApiClient
 @inject AuthState AuthState
 @inject ToastService Toast
 @inject IJSRuntime JS
 
 <FormSection Title="@($"Guarantors ({_rows.Count} of {RequiredCount})")"
-             Description="Required before this application can be moved to Approved. Upload each guarantor's documents from the Documents tab once saved here.">
+             Description="Required before this application can be moved to Approved. Save a row to upload that guarantor's documents (e.g. CNIC) right here on their card.">
     @if (_error is not null)
     {
         <div class="alert alert-error">@_error</div>
@@ -31,7 +35,7 @@
     {
         @foreach (var row in _rows)
         {
-            <div class="card guarantor-row" id="@($"guarantor-row-{row.ClientKey:N}")" @key="row.ClientKey">
+            <div class="card guarantor-row @(HasUnresolvedConflict(row) ? "guarantor-row-conflict" : "")" id="@($"guarantor-row-{row.ClientKey:N}")" @key="row.ClientKey">
                 <div class="guarantor-row-header">
                     <span class="guarantor-row-title">Guarantor @row.SequenceNumber</span>
                     @if (CanEdit)
@@ -40,13 +44,44 @@
                     }
                 </div>
 
+                @if (HasUnresolvedConflict(row))
+                {
+                    <div class="alert alert-warning" id="@($"guarantor-row-{row.ClientKey:N}-conflict")"
+                         title="@($"This guarantor's CNIC also appears on: {string.Join(", ", row.ConflictingApplicationNumbers)}")">
+                        <Icon Name="alert-circle" Size="16" />
+                        <span>
+                            This guarantor's CNIC also appears on @(row.ConflictingApplicationNumbers.Count == 1 ? "another active application" : "other active applications"):
+                            <strong>@string.Join(", ", row.ConflictingApplicationNumbers)</strong>.
+                            @if (CanOverrideConflict)
+                            {
+                                <button type="button" class="btn btn-secondary btn-sm" style="margin-left: var(--space-3);" @onclick="() => OpenOverrideModal(row)">Approve override</button>
+                            }
+                        </span>
+                    </div>
+                }
+                else if (row.ConflictOverrideApprovedAt is not null)
+                {
+                    <p class="field-hint">
+                        Conflict override approved by @(row.ConflictOverrideApprovedByName ?? "—") on @row.ConflictOverrideApprovedAt.Value.ToLocalTime().ToString("yyyy-MM-dd")
+                        @(string.IsNullOrWhiteSpace(row.ConflictOverrideReason) ? "" : $" — \"{row.ConflictOverrideReason}\"")
+                    </p>
+                }
+
                 <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
                     <GuarantorFields Row="row" />
                 </fieldset>
 
-                @if (row.Id is null)
+                @* Deliberately outside the fieldset above: document upload is gated by the
+                   documents.upload permission alone (see DocumentSlotRow), not applications.edit,
+                   exactly as everywhere else documents are uploaded in this app. *@
+                @if (row.Id is { } guarantorId)
                 {
-                    <p class="field-hint">Save guarantors to enable document upload for this row on the Documents tab.</p>
+                    <GuarantorDocumentSlots ApplicationId="ApplicationId" GuarantorId="guarantorId" Slots="Slots"
+                                             OnChanged="OnGuarantorsChanged" OnViewDocument="OnViewDocument" />
+                }
+                else
+                {
+                    <p class="field-hint">Save guarantors to enable document upload for this row.</p>
                 }
             </div>
         }
@@ -67,20 +102,75 @@
     }
 </FormSection>
 
+@if (_showOverrideModal && _overridingRow is not null)
+{
+    <Modal Title="@($"Approve Conflict Override — Guarantor {_overridingRow.SequenceNumber}")" Size="sm" OnClose="CloseOverrideModal">
+        <ChildContent>
+            <p>
+                This guarantor's CNIC also appears on <strong>@string.Join(", ", _overridingRow.ConflictingApplicationNumbers)</strong>.
+                Approving lets this application proceed toward Approved despite the conflict.
+            </p>
+            <div class="field mb-0">
+                <label for="overrideReason">Reason *</label>
+                <textarea id="overrideReason" @bind="_overrideReason"></textarea>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseOverrideModal">Cancel</button>
+            <button type="button" class="btn btn-primary" disabled="@(_isSavingOverride || string.IsNullOrWhiteSpace(_overrideReason))" @onclick="ConfirmOverrideAsync">
+                @(_isSavingOverride ? "Approving..." : "Approve Override")
+            </button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     private const int MaxRows = 2;
 
     [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
     [Parameter] public int RequiredCount { get; set; } = 2;
     [Parameter] public EventCallback<int> OnCountChanged { get; set; }
+    /// <summary>The application's document-slot manifest, passed through to each saved row's
+    /// GuarantorDocumentSlots — same Slots list the Documents tab's DocumentSlotList receives, so
+    /// this editor stays a pure consumer rather than re-fetching completeness itself.</summary>
+    [Parameter] public IReadOnlyList<DocumentSlotStatusDto> Slots { get; set; } = [];
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+    /// <summary>Raised after a guarantor row is saved or a saved row is removed — distinct from
+    /// OnCountChanged (which only ever means "row count changed"). The parent uses this to re-fetch
+    /// /completeness: a freshly-saved guarantor has no slots in the manifest yet, so without a
+    /// refetch its card would show no upload control at all.</summary>
+    [Parameter] public EventCallback OnGuarantorsChanged { get; set; }
+    /// <summary>Bonus consistency fix (2026-09 feedback item 4 back-fill): reports whether ANY loaded
+    /// row currently has an unresolved conflict, fired on load and whenever save/override changes
+    /// that state — lets Applications.razor's manage-modal Apply button gate on the same guarantor-
+    /// guarantor conflict the server already 422s on, instead of only surfacing it after the click.</summary>
+    [Parameter] public EventCallback<bool> OnConflictStateChanged { get; set; }
 
     private bool _isLoading = true;
     private bool _isSaving;
     private string? _error;
     private List<GuarantorRowModel> _rows = [];
     private Guid? _pendingAnimateRowKey;
+    private bool _pendingConflictAnimation;
+
+    private bool _showOverrideModal;
+    private bool _isSavingOverride;
+    private string _overrideReason = "";
+    private GuarantorRowModel? _overridingRow;
 
     private bool CanEdit => AuthState.HasPermission("applications.edit");
+
+    // Item 4 (2026-09 feedback): gates the "Approve override" action distinct from CanEdit — a
+    // reviewer with applications.edit but not applications.overrideguarantor can still see and edit
+    // the row, just not wave the conflict through.
+    private bool CanOverrideConflict => AuthState.HasPermission("applications.overrideguarantor");
+
+    // A conflict still blocks the Approved transition until either this override is approved or the
+    // conflicting guarantor is removed/replaced — see GuarantorConflictUnresolvedException. Once
+    // ConflictOverrideApprovedAt is set, the row shows the resolved note instead of this warning even
+    // if ConflictingApplicationNumbers is still non-empty (the other application is still active).
+    private static bool HasUnresolvedConflict(GuarantorRowModel row) =>
+        row.ConflictingApplicationNumbers.Count > 0 && row.ConflictOverrideApprovedAt is null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -88,7 +178,9 @@
         {
             var existing = await ApiClient.GetGuarantorsAsync(ApplicationId);
             _rows = existing.OrderBy(g => g.SequenceNumber).Select(GuarantorRowModel.FromDto).ToList();
+            _pendingConflictAnimation = _rows.Any(HasUnresolvedConflict);
             await OnCountChanged.InvokeAsync(_rows.Count);
+            await OnConflictStateChanged.InvokeAsync(_rows.Any(HasUnresolvedConflict));
         }
         catch (ApiException ex)
         {
@@ -106,6 +198,55 @@
         {
             _pendingAnimateRowKey = null;
             await JS.InvokeVoidAsync("ngoFundMotion.animateGuarantorRowIn", $"#guarantor-row-{key:N}");
+        }
+
+        if (_pendingConflictAnimation)
+        {
+            _pendingConflictAnimation = false;
+            foreach (var row in _rows.Where(HasUnresolvedConflict))
+            {
+                await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", $"#guarantor-row-{row.ClientKey:N}-conflict");
+            }
+        }
+    }
+
+    private void OpenOverrideModal(GuarantorRowModel row)
+    {
+        _overridingRow = row;
+        _overrideReason = "";
+        _showOverrideModal = true;
+    }
+
+    private void CloseOverrideModal() => _showOverrideModal = false;
+
+    private async Task ConfirmOverrideAsync()
+    {
+        if (_overridingRow?.Id is not { } guarantorId || string.IsNullOrWhiteSpace(_overrideReason))
+        {
+            return;
+        }
+
+        _isSavingOverride = true;
+        try
+        {
+            var updated = await ApiClient.ApproveGuarantorConflictOverrideAsync(ApplicationId, guarantorId, _overrideReason);
+            var index = _rows.FindIndex(r => r.Id == updated.Id);
+            if (index >= 0)
+            {
+                _rows[index] = GuarantorRowModel.FromDto(updated);
+            }
+
+            Toast.Success("Conflict override approved");
+            _showOverrideModal = false;
+            await OnConflictStateChanged.InvokeAsync(_rows.Any(HasUnresolvedConflict));
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSavingOverride = false;
         }
     }
 
@@ -151,9 +292,16 @@
             // update-in-place on the server now keeps an existing row's Id stable across an edit,
             // so there's no more Id-churn to compensate for.
             _rows = saved.OrderBy(g => g.SequenceNumber).Select(GuarantorRowModel.FromDto).ToList();
+            _pendingConflictAnimation = _rows.Any(HasUnresolvedConflict);
 
             Toast.Success("Guarantors saved");
             await OnCountChanged.InvokeAsync(_rows.Count);
+            await OnConflictStateChanged.InvokeAsync(_rows.Any(HasUnresolvedConflict));
+
+            // A freshly-saved (or freshly-removed) row changes which guarantor-scoped slots exist
+            // in the parent's /completeness manifest — refetch it so a newly-added row's document
+            // upload control shows up immediately instead of only after the tab is reopened.
+            await OnGuarantorsChanged.InvokeAsync();
         }
         catch (ApiException ex)
         {

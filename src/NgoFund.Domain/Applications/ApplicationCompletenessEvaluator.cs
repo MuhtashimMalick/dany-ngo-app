@@ -69,8 +69,11 @@ public static class ApplicationCompletenessEvaluator
         if (string.IsNullOrWhiteSpace(details?.GroomFatherName)) missing.Add(ApplicationRequirements.GroomFatherName);
         if (string.IsNullOrWhiteSpace(details?.GroomJamaat)) missing.Add(ApplicationRequirements.GroomJamaat);
         if (details?.GroomMaritalStatus is null) missing.Add(ApplicationRequirements.GroomMaritalStatus);
-        if (string.IsNullOrWhiteSpace(details?.GroomAddress)) missing.Add(ApplicationRequirements.GroomAddress);
-        if (string.IsNullOrWhiteSpace(details?.GroomMobile)) missing.Add(ApplicationRequirements.GroomMobile);
+        // Item 5 (2026-09 feedback, groom-only): GroomAddress/GroomMobile are no longer blockers —
+        // the client eased only the groom's side (see ApplicationRequirements.GroomCnic's doc
+        // comment). The basic groom fields above (name/father's name/Jamaat/marital status) stay
+        // required; RequiredField definitions themselves are left in place since they're still valid
+        // labels for display when the fields happen to be filled in.
         if (details?.NikahDate is null) missing.Add(ApplicationRequirements.NikahDate);
 
         if (details?.BrideMaritalStatus is MaritalStatus.Divorced or MaritalStatus.Widowed

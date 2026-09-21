@@ -27,14 +27,14 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
         var application = await CreateApprovedApplicationAsync(client, "44444-4444444-4", categoryId, zakatFundId, 10000m);
 
         var firstPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, "Recipient", null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(firstPaymentResponse, HttpStatusCode.Created);
 
         var afterFirst = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
         Assert.Equal("PartiallyPaid", afterFirst.Status);
 
         var secondPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 6000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, "Recipient", null, null, null));
+            application.Id, 6000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(secondPaymentResponse, HttpStatusCode.Created);
 
         var afterSecond = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
@@ -51,7 +51,7 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
         var application = await CreateApprovedApplicationAsync(client, "55555-5555555-5", categoryId, zakatFundId, 5000m);
 
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 5000.01m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 5000.01m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -67,7 +67,7 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
         var application = await CreateApprovedApplicationAsync(client, "66666-6666666-6", categoryId, zakatFundId, 999_999_999m);
 
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 999_999_999m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 999_999_999m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -90,7 +90,7 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
 
         // application is still Pending, never approved
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 1000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 1000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -113,7 +113,7 @@ public class PaymentWorkflowTests(AuthApiFactory factory) : IClassFixture<AuthAp
         var beforePayment = await GetFundBalanceDtoAsync(client, "ZAKAT");
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 8000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 8000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         var payment = await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var afterPayment = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);

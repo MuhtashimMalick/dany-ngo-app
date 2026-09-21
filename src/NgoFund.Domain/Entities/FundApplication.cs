@@ -94,6 +94,25 @@ public class FundApplication : BaseEntity, IUpdateAuditable
     public DateTimeOffset? UpdatedAt { get; set; }
     public Guid? UpdatedBy { get; set; }
 
+    // --- Applicant-is-guarantor-elsewhere conflict override (mirror of item 4, 2026-09 feedback) ---
+    //
+    // Same shape as ApplicationGuarantor's CNIC-conflict override columns, but for the OPPOSITE
+    // direction: this application's OWN applicant's CNIC appearing as a guarantor on a different
+    // active application. The conflicting identity (Applicant.Cnic) lives on a different aggregate,
+    // editable via ApplicantService, so unlike the guarantor-row override this can't be invalidated
+    // at the point of every possible writer — instead ApplicantGuarantorConflictOverrideCnic stamps
+    // what the applicant's CNIC WAS when the override was approved, and the override only counts
+    // while it still matches the applicant's CURRENT CNIC (see HasValidApplicantGuarantorConflictOverride).
+    public DateTimeOffset? ApplicantGuarantorConflictOverrideApprovedAt { get; set; }
+    public Guid? ApplicantGuarantorConflictOverrideApprovedBy { get; set; }
+    public string? ApplicantGuarantorConflictOverrideReason { get; set; }
+    public string? ApplicantGuarantorConflictOverrideCnic { get; set; }
+
+    /// <summary>True only while an override was approved AND the applicant's CNIC hasn't changed
+    /// since — self-healing if the applicant's CNIC is later edited via ApplicantService.</summary>
+    public bool HasValidApplicantGuarantorConflictOverride(string applicantCnic) =>
+        ApplicantGuarantorConflictOverrideApprovedAt is not null && ApplicantGuarantorConflictOverrideCnic == applicantCnic;
+
     /// <summary>
     /// The Zakat rule: <see cref="FundEligibility.ZakatOnly"/> categories may only be funded from
     /// a Zakat fund, <see cref="FundEligibility.GeneralOnly"/> categories only from a non-Zakat
@@ -164,6 +183,44 @@ public class FundApplication : BaseEntity, IUpdateAuditable
                 applicationNumber,
                 result.MissingFields.Select(f => f.Label).ToList(),
                 result.Slots.Where(s => s.Slot.IsRequired && !s.IsSatisfied).Select(s => s.DisplayLabel).ToList());
+        }
+    }
+
+    /// <summary>
+    /// The guarantor-conflict gate (item 4, 2026-09 feedback): blocks Approved while any guarantor
+    /// on this application has an unresolved CNIC conflict against another currently-active
+    /// application (see <see cref="ApplicationStatusRules.ActiveStatuses"/>) — i.e. no approved
+    /// conflict override is on file for that guarantor row. <paramref name="unresolvedGuarantorIds"/>
+    /// is computed by the caller (a batched query joining <c>application_guarantors</c> to
+    /// <c>applications</c> on CNIC), since Domain has no DB access. Called from the same
+    /// Approved-transition site as <see cref="EnsureGuarantorsSatisfied"/>/
+    /// <see cref="EnsureApplicationIsComplete"/>.
+    /// </summary>
+    public static void EnsureGuarantorConflictsResolved(string applicationNumber, IReadOnlyCollection<Guid> unresolvedGuarantorIds)
+    {
+        if (unresolvedGuarantorIds.Count > 0)
+        {
+            throw new GuarantorConflictUnresolvedException(applicationNumber, unresolvedGuarantorIds.Count);
+        }
+    }
+
+    /// <summary>
+    /// The mirror-direction conflict gate: blocks Approved when this application's OWN applicant's
+    /// CNIC also appears as a guarantor on another currently-active application (see
+    /// <see cref="ApplicationStatusRules.ActiveStatuses"/>) — it doesn't make sense for someone who
+    /// has vouched for another applicant's loan to also be requesting assistance themselves.
+    /// <paramref name="conflictingApplicationNumbers"/> is computed by the caller (a batched query
+    /// joining <c>application_guarantors</c> to <c>applications</c> on CNIC), since Domain has no DB
+    /// access. <paramref name="overrideApproved"/> comes from
+    /// <see cref="HasValidApplicantGuarantorConflictOverride"/>, called with the applicant's CURRENT
+    /// CNIC, so an override approved for a since-edited CNIC never silently counts.
+    /// </summary>
+    public static void EnsureApplicantNotActiveGuarantorElsewhere(
+        string applicationNumber, IReadOnlyCollection<string> conflictingApplicationNumbers, bool overrideApproved)
+    {
+        if (conflictingApplicationNumbers.Count > 0 && !overrideApproved)
+        {
+            throw new ApplicantIsActiveGuarantorElsewhereException(applicationNumber, conflictingApplicationNumbers);
         }
     }
 

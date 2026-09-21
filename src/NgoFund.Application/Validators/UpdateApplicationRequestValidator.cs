@@ -11,10 +11,12 @@ public class UpdateApplicationRequestValidator : AbstractValidator<UpdateApplica
         RuleFor(x => x.ApplicationCategoryId).NotEmpty();
         RuleFor(x => x.FundCategoryId).NotEmpty();
         RuleFor(x => x.RequestedAmount).GreaterThan(0);
-        RuleFor(x => x.ApprovedAmount).LessThanOrEqualTo(x => x.RequestedAmount).When(x => x.ApprovedAmount is not null)
-            .WithMessage("Approved amount cannot exceed the requested amount.");
+        // v1.8 correction: the requested amount is NOT a ceiling — the elders' committee may approve
+        // less than, equal to, or more than what was requested. Only positivity is validated here;
+        // the "never below completed payments"/"never cleared" guards live in FundApplicationService.
+        RuleFor(x => x.ApprovedAmount).GreaterThan(0).When(x => x.ApprovedAmount is not null);
         RuleFor(x => x.Priority).NotEmpty().Must(v => Enum.TryParse<ApplicationPriority>(v, out _))
             .WithMessage($"Priority must be one of: {string.Join(", ", Enum.GetNames<ApplicationPriority>())}.");
-        RuleFor(x => x.Purpose).MaximumLength(1000);
+        RuleFor(x => x.Purpose).NotEmpty().MaximumLength(1000);
     }
 }

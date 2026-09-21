@@ -13,8 +13,6 @@ public record UpdateApplicationRequest(
     string? DeclaredResidentialAddress = null,
     string? DeclaredBusinessAddress = null,
     string? DeclaredHouseStatus = null,
-    string? ExternalFormReference = null,
-    DateTimeOffset? SubmittedAt = null,
     DateTimeOffset? DeclarationAcceptedAt = null,
     DateTimeOffset? TermsAcceptedAt = null,
     string? TermsVersion = null);

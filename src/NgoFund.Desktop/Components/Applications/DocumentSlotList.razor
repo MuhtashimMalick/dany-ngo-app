@@ -2,13 +2,18 @@
    "pick a document type from a dropdown, then upload" flow. One row (DocumentSlotRow) per slot
    the API's /completeness manifest returns: a label, a Required/Optional badge, a progress hint
    when MinCount > 1, and a FileDrop pre-tagged with that slot's DefaultDocumentType + SlotKey —
-   no dropdown, per the client's explicit ask. Guarantor-scoped slots (Slots already contains one
-   entry per existing guarantor row from the API, nothing to cross-multiply client-side — see
-   DocumentSlotStatusDto's doc comment) are grouped under a subheading per guarantor. A small
-   collapsed freeform area below the checklist preserves the old no-slot upload path for documents
-   that don't fit any named slot. Used both inside ApplicationWizard's Documents page and the
-   manage modal's Documents tab — one component, two call sites, so the checklist can never drift
-   between create and manage. *@
+   no dropdown, per the client's explicit ask. A small collapsed freeform area below the checklist
+   preserves the old no-slot upload path for documents that don't fit any named slot. Used both
+   inside ApplicationWizard's Documents page and the manage modal's Documents tab — one component,
+   two call sites, so the checklist can never drift between create and manage.
+   Guarantor-scoped slots (Slots already contains one entry per existing guarantor row from the
+   API, nothing to cross-multiply client-side — see DocumentSlotStatusDto's doc comment): this
+   component still groups and renders them here (via GuarantorDocumentSlots, one instance per
+   guarantor, under a "Guarantor N — Name" subheading) by default, for call sites like the wizard's
+   Documents page where there is no separate Guarantors tab to show them on instead. The manage
+   modal's Documents tab (2026-09 feedback: guarantor documents belong on the Guarantors tab, not
+   here) passes ShowGuarantorSlots="false" and renders the same GuarantorDocumentSlots component
+   itself, per guarantor card, on GuarantorsEditor. *@
 @inject ApiClient ApiClient
 @inject ToastService Toast
 @inject AuthState AuthState
@@ -22,10 +27,7 @@
     @foreach (var group in GuarantorGroups)
     {
         <div class="doc-slot-group-heading">Guarantor @group.SequenceNumber@(string.IsNullOrWhiteSpace(group.Name) ? "" : $" — {group.Name}")</div>
-        @foreach (var slot in group.Slots)
-        {
-            <DocumentSlotRow ApplicationId="ApplicationId" Slot="slot" ApplicantId="ApplicantId" OnChanged="OnChanged" OnViewDocument="OnViewDocument" @key="SlotKey(slot)" />
-        }
+        <GuarantorDocumentSlots ApplicationId="ApplicationId" GuarantorId="group.GuarantorId" Slots="Slots" OnChanged="OnChanged" OnViewDocument="OnViewDocument" @key="group.GuarantorId" />
     }
 
     @if (ApplicationSlots.Count == 0 && GuarantorGroups.Count == 0)
@@ -92,6 +94,12 @@
     [Parameter] public IReadOnlyList<DocumentDto> ExtraDocuments { get; set; } = [];
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+    /// <summary>False for call sites that render guarantor-scoped slots elsewhere (the manage
+    /// modal's Documents tab, since guarantor documents now live on the Guarantors tab — see this
+    /// component's header doc comment). Defaults to true so every other call site (the wizard's
+    /// Documents page, which has no separate Guarantors tab) keeps grouping and showing them here
+    /// exactly as before.</summary>
+    [Parameter] public bool ShowGuarantorSlots { get; set; } = true;
 
     private string _extraDocumentType = ExtraDocumentTypes[0].Value;
     private string? _error;
@@ -103,15 +111,17 @@
     private List<DocumentSlotStatusDto> ApplicationSlots =>
         Slots.Where(s => s.OwnerScope is "Application" or "Applicant").ToList();
 
-    private List<(int SequenceNumber, string? Name, List<DocumentSlotStatusDto> Slots)> GuarantorGroups =>
-        Slots.Where(s => s.OwnerScope == "Guarantor")
-            .GroupBy(s => s.GuarantorId)
-            .Select(g => (
-                SequenceNumber: g.First().GuarantorSequenceNumber ?? 0,
-                Name: g.First().GuarantorName,
-                Slots: g.ToList()))
-            .OrderBy(g => g.SequenceNumber)
-            .ToList();
+    private List<(Guid? GuarantorId, int SequenceNumber, string? Name)> GuarantorGroups =>
+        !ShowGuarantorSlots
+            ? []
+            : Slots.Where(s => s.OwnerScope == "Guarantor")
+                .GroupBy(s => s.GuarantorId)
+                .Select(g => (
+                    GuarantorId: g.Key,
+                    SequenceNumber: g.First().GuarantorSequenceNumber ?? 0,
+                    Name: g.First().GuarantorName))
+                .OrderBy(g => g.SequenceNumber)
+                .ToList();
 
     private static string SlotKey(DocumentSlotStatusDto slot) =>
         slot.GuarantorId is null ? slot.SlotKey : $"{slot.SlotKey}-{slot.GuarantorId}";

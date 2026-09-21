@@ -90,12 +90,12 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
 
         // UnderReview -> Approved
         var approveResponse = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
-            new ChangeApplicationStatusRequest("Approved", "Approved in full", null));
+            new ChangeApplicationStatusRequest("Approved", "Approved in full", null, 15000m));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         var afterApproval = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
         Assert.Equal("Approved", afterApproval.Status);
-        Assert.Equal(15000m, afterApproval.ApprovedAmount); // defaults to requested amount when not explicitly set
+        Assert.Equal(15000m, afterApproval.ApprovedAmount); // item 1 (2026-09 feedback): explicitly supplied, never silently defaulted
 
         // Approved -> Pending is not a valid transition
         var invalidResponse = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
@@ -187,34 +187,33 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
     }
 
     [Fact]
-    public async Task UpdateApplication_WithExternalFormReferenceUsedByAnotherApplication_Returns422NotRaw500()
+    public async Task CreateApplication_WithInvalidIntakeChannel_ReturnsValidationErrorNotRaw500()
     {
         var client = await CreateAuthenticatedClientAsync();
-        var applicant = await CreateApplicantAsync(client, "44444-4444444-6");
+        var applicant = await CreateApplicantAsync(client, "55555-5555555-1");
         var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
 
-        var firstResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+        var response = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
             applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test",
-            ExternalFormReference: "FORM-DUP-002"));
-        await ReadOrFailAsync<ApplicationDto>(firstResponse, HttpStatusCode.Created);
+            IntakeChannel: "Fax"));
 
-        var secondApplicant = await CreateApplicantAsync(client, "44444-4444444-7");
-        var secondResponse = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
-            secondApplicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
-        var second = await ReadOrFailAsync<ApplicationDto>(secondResponse, HttpStatusCode.Created);
+        // FluentValidation failures on this endpoint surface as 400 (ValidationExceptionHandler),
+        // not a raw 500 from the unguarded Enum.Parse this rule now prevents from being reached.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 
-        // Updating the second application to reuse the first one's reference must be rejected too.
-        var updateResponse = await client.PutAsJsonAsync($"/api/applications/{second.Id}", new UpdateApplicationRequest(
-            healthId, zakatFundId, 5000m, null, "Normal", "Test", ExternalFormReference: "FORM-DUP-002"));
+    [Fact]
+    public async Task CreateApplication_WithOverlongExternalFormReference_ReturnsValidationErrorNotRaw500()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var applicant = await CreateApplicantAsync(client, "55555-5555555-2");
+        var (_, healthId, zakatFundId, _) = await LoadSeededIdsAsync(client);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, updateResponse.StatusCode);
-        var problem = JsonSerializer.Deserialize<JsonElement>(await updateResponse.Content.ReadAsStringAsync());
-        Assert.Contains("FORM-DUP-002", problem.GetProperty("detail").GetString());
+        var response = await client.PostAsJsonAsync("/api/applications", new CreateApplicationRequest(
+            applicant.Id, healthId, zakatFundId, 5000m, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test",
+            ExternalFormReference: new string('X', 101)));
 
-        // Re-saving the second application with its own unchanged (null) reference must still work.
-        var noOpUpdate = await client.PutAsJsonAsync($"/api/applications/{second.Id}", new UpdateApplicationRequest(
-            healthId, zakatFundId, 5000m, null, "Normal", "Test"));
-        Assert.Equal(HttpStatusCode.OK, noOpUpdate.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -234,7 +233,8 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
         var guarantorResponse = await client.PutAsJsonAsync($"/api/applications/{application.Id}/guarantors",
             new ReplaceApplicationGuarantorsRequest([new GuarantorEntry(
                 null, 1, "J-1234", "Guarantor One", null, null, null, "55555-5555555-5",
-                null, null, null, null, null, null, null)]));
+                ResidentialAddress: "123 Test Street", BusinessAddress: "456 Business Road", BusinessNature: null,
+                PhoneHome: "021-1111111", PhoneOffice: "021-1111112", PhoneMobile: "0300-1111111", DeclarationAcceptedAt: null)]));
         Assert.Equal(HttpStatusCode.OK, guarantorResponse.StatusCode);
 
         var blockedUpdate = await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(

@@ -22,4 +22,10 @@ public interface IApplicationDetailsService
 
     Task<IReadOnlyList<ApplicationGuarantorDto>> GetGuarantorsAsync(Guid applicationId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ApplicationGuarantorDto>> ReplaceGuarantorsAsync(Guid applicationId, ReplaceApplicationGuarantorsRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Item 4 (2026-09 feedback): approves proceeding despite a guarantor's CNIC conflicting
+    /// with another active application — sets the guarantor row's three
+    /// <c>conflict_override_*</c> columns to the current user/time/reason.</summary>
+    Task<ApplicationGuarantorDto> ApproveGuarantorConflictOverrideAsync(
+        Guid applicationId, Guid guarantorId, ApproveGuarantorConflictOverrideRequest request, CancellationToken cancellationToken);
 }

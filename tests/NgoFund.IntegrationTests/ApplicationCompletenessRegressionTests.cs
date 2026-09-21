@@ -32,7 +32,7 @@ public class ApplicationCompletenessRegressionTests(AuthApiFactory factory) : IC
         var application = await CreateBareApplicationAsync(client, applicant.Id, categories[categoryCode], zakatFundId);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
-        var response = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null));
+        var response = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -48,14 +48,16 @@ public class ApplicationCompletenessRegressionTests(AuthApiFactory factory) : IC
 
         var before = await ReadOrFailAsync<ApplicationCompletenessDto>(
             await client.GetAsync($"/api/applications/{application.Id}/completeness"), HttpStatusCode.OK);
-        Assert.False(before.IsComplete);
+        Assert.False(before.IsComplete); // housing-details fields (ApplicantAge etc.) still missing
         Assert.Equal(4, before.Slots.Count); // HOUSE_RENT manifest: 4 slots
         // v1.4 (B2): APPLICANT_CNIC/MEMBERSHIP_CARD are Applicant-scoped and already satisfied by
         // the CNIC/membership-card documents CreateApplicantAsync uploaded to the applicant's own
-        // profile — the only unsatisfied slot at this point is UTILITY_BILLS.
+        // profile. UTILITY_BILLS is optional (item 6, 2026-09 feedback: MinCount 0), so every slot
+        // already reads as satisfied at this point — overall completeness still correctly fails on
+        // the missing housing-details fields checked below via IsComplete.
         Assert.True(before.Slots.Single(s => s.SlotKey == "HOUSE_RENT.APPLICANT_CNIC").IsSatisfied);
         Assert.True(before.Slots.Single(s => s.SlotKey == "HOUSE_RENT.MEMBERSHIP_CARD").IsSatisfied);
-        Assert.False(before.Slots.Single(s => s.SlotKey == "HOUSE_RENT.UTILITY_BILLS").IsSatisfied);
+        Assert.True(before.Slots.Single(s => s.SlotKey == "HOUSE_RENT.UTILITY_BILLS").IsSatisfied);
 
         await UploadAsync(client, application.Id, "UtilityBill", "HOUSE_RENT.UTILITY_BILLS");
         await UploadAsync(client, application.Id, "UtilityBill", "HOUSE_RENT.UTILITY_BILLS");

@@ -25,7 +25,7 @@ public class LoanAgreementWorkflowTests(AuthApiFactory factory) : IClassFixture<
         var application = await CreateApprovedApplicationAsync(client, "20001-2000001-1", categoryId, generalFundId, 5000m);
 
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -44,7 +44,7 @@ public class LoanAgreementWorkflowTests(AuthApiFactory factory) : IClassFixture<
         Assert.Equal(5000m, agreement.PrincipalAmount);
 
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         await ReadOrFailAsync<PaymentDto>(response, HttpStatusCode.Created);
     }
@@ -60,7 +60,7 @@ public class LoanAgreementWorkflowTests(AuthApiFactory factory) : IClassFixture<
 
         // No loan agreement authored, yet a Zakat-fund payment is never gated.
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var scheduleResponse = await client.GetAsync($"/api/loans/by-application/{application.Id}");
@@ -119,9 +119,9 @@ public class LoanAgreementWorkflowTests(AuthApiFactory factory) : IClassFixture<
         var (categoryId, _, generalFundId) = await LoadSeededIdsAsync(client);
         await FundAsync(client, generalFundId, 50000m);
 
-        // Requested 8000, approved defaults to the requested amount (8000) — the update below asks
-        // for a different-but-still-<=-requested approved amount (7000) so the loan-lock guard is
-        // what rejects it, not the unrelated approved-amount-exceeds-requested check.
+        // CreateApprovedApplicationAsync explicitly approves at the requested amount (8000). The
+        // update below asks for a different approved amount (7000); the loan-lock guard is what
+        // rejects it, since an active loan agreement freezes the approved amount.
         var application = await CreateApprovedApplicationAsync(client, "20001-2000006-6", categoryId, generalFundId, 8000m);
         await LoanTestHelpers.CreateLoanAgreementAsync(client, application.Id, installmentCount: 6);
 

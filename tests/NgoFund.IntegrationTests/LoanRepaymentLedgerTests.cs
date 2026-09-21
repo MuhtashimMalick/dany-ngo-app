@@ -27,7 +27,7 @@ public class LoanRepaymentLedgerTests(AuthApiFactory factory) : IClassFixture<Au
         var agreement = await LoanTestHelpers.CreateLoanAgreementAsync(client, application.Id, installmentCount: 4);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -63,7 +63,7 @@ public class LoanRepaymentLedgerTests(AuthApiFactory factory) : IClassFixture<Au
         var agreement = await LoanTestHelpers.CreateLoanAgreementAsync(client, application.Id, installmentCount: 4);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var repayment = await LoanTestHelpers.RecordRepaymentAsync(client, agreement.Id, 1000m);

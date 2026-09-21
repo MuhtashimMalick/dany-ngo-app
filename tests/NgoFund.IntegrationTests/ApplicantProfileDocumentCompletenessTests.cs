@@ -144,8 +144,10 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
     }
 
     /// <summary>
-    /// An applicant-satisfied slot only satisfies ITSELF — it must never let an unrelated required
-    /// slot (HOUSE_RENT.UTILITY_BILLS, still Application-scoped) pass for free.
+    /// An applicant-satisfied slot only satisfies ITSELF — it must never let an unrelated slot pass
+    /// for free. HOUSE_RENT.UTILITY_BILLS is optional (item 6, 2026-09 feedback: MinCount 0) so it
+    /// always reads as satisfied regardless; overall completeness still correctly reports incomplete
+    /// because the housing-details fields (ApplicantAge etc.) were never filled in.
     /// </summary>
     [Fact]
     public async Task ApplicantSatisfiedSlots_DoNotSatisfyUnrelatedApplicationScopedSlots()
@@ -161,7 +163,7 @@ public class ApplicantProfileDocumentCompletenessTests(AuthApiFactory factory) :
 
         Assert.True(completeness.Slots.Single(s => s.SlotKey == "HOUSE_RENT.APPLICANT_CNIC").IsSatisfied);
         Assert.True(completeness.Slots.Single(s => s.SlotKey == "HOUSE_RENT.MEMBERSHIP_CARD").IsSatisfied);
-        Assert.False(completeness.Slots.Single(s => s.SlotKey == "HOUSE_RENT.UTILITY_BILLS").IsSatisfied);
+        Assert.True(completeness.Slots.Single(s => s.SlotKey == "HOUSE_RENT.UTILITY_BILLS").IsSatisfied);
         Assert.False(completeness.IsComplete);
     }
 }

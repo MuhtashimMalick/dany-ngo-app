@@ -53,11 +53,11 @@ public class ApplicantLedgerTests(AuthApiFactory factory) : IClassFixture<AuthAp
         var agreement = await LoanTestHelpers.CreateLoanAgreementAsync(client, application.Id, installmentCount: 2);
 
         var keptPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(keptPaymentResponse, HttpStatusCode.Created);
 
         var voidedPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 2000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 2000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         var voidedPayment = await ReadOrFailAsync<PaymentDto>(voidedPaymentResponse, HttpStatusCode.Created);
         var voidPaymentResponse = await client.PostAsJsonAsync($"/api/payments/{voidedPayment.Id}/void", new VoidPaymentRequest("Entered by mistake"));
         Assert.Equal(HttpStatusCode.NoContent, voidPaymentResponse.StatusCode);

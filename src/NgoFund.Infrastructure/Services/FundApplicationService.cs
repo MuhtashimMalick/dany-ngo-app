@@ -92,10 +92,29 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
             .Select(g => new { ApplicationId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.ApplicationId, x => x.Count, cancellationToken);
 
+        // Item 3 (2026-09 feedback), the duplicate-active-application badge: one grouped query for
+        // the whole page's distinct applicants, not one per row. Counts across ALL of the
+        // applicant's applications (not just this page), so it's correct even when only one of an
+        // applicant's several applications happens to land on the current page.
+        var applicantIds = entities.Select(a => a.ApplicantId).Distinct().ToList();
+        var activeStatuses = ApplicationStatusRules.ActiveStatuses;
+        var activeApplicationCounts = await dbContext.Applications
+            .Where(a => applicantIds.Contains(a.ApplicantId) && activeStatuses.Contains(a.Status))
+            .GroupBy(a => a.ApplicantId)
+            .Select(g => new { ApplicantId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ApplicantId, x => x.Count, cancellationToken);
+
+        // Mirror direction of item 4: one batched lookup for the whole page instead of one per row.
+        var (applicantGuarantorConflicts, applicantGuarantorConflictApprovers) = await LoadApplicantGuarantorConflictsAsync(entities, cancellationToken);
+
         return new PagedResult<ApplicationDto>(
             entities.Select(a => Map(
                 a, paymentTotals.GetValueOrDefault(a.Id), activeLoanAgreementIds.GetValueOrDefault(a.Id),
-                guarantorCounts.GetValueOrDefault(a.Id))).ToList(),
+                guarantorCounts.GetValueOrDefault(a.Id), activeApplicationCounts.GetValueOrDefault(a.ApplicantId),
+                applicantGuarantorConflicts.GetValueOrDefault(a.Id, []),
+                a.ApplicantGuarantorConflictOverrideApprovedBy is not null
+                    ? applicantGuarantorConflictApprovers.GetValueOrDefault(a.ApplicantGuarantorConflictOverrideApprovedBy.Value)
+                    : null)).ToList(),
             totalCount, page, pageSize);
     }
 
@@ -112,7 +131,56 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         var totalCompletedPaid = await GetTotalCompletedPaidAsync(id, cancellationToken);
         var activeLoanAgreementId = await GetActiveLoanAgreementIdAsync(id, cancellationToken);
         var guarantorCount = await dbContext.ApplicationGuarantors.CountAsync(g => g.ApplicationId == id, cancellationToken);
-        return Map(entity, totalCompletedPaid, activeLoanAgreementId, guarantorCount);
+        var activeApplicationCount = await GetActiveApplicationCountAsync(entity.ApplicantId, cancellationToken);
+        var (conflictNumbers, conflictApproverName) = await LoadApplicantGuarantorConflictAsync(entity, cancellationToken);
+        return Map(entity, totalCompletedPaid, activeLoanAgreementId, guarantorCount, activeApplicationCount, conflictNumbers, conflictApproverName);
+    }
+
+    /// <summary>Shared by <see cref="GetApplicationsAsync"/>, <see cref="GetByIdAsync"/>,
+    /// <see cref="CreateAsync"/> and <see cref="UpdateAsync"/> — see <c>ApplicationDto.ActiveApplicationCount</c>.</summary>
+    private async Task<int> GetActiveApplicationCountAsync(Guid applicantId, CancellationToken cancellationToken)
+    {
+        var activeStatuses = ApplicationStatusRules.ActiveStatuses;
+        return await dbContext.Applications.CountAsync(a => a.ApplicantId == applicantId && activeStatuses.Contains(a.Status), cancellationToken);
+    }
+
+    /// <summary>Mirror direction of item 4: batches <see cref="ApplicantGuarantorConflictLookup"/> and
+    /// the override-approver name lookup across a whole page of already-loaded applications (each
+    /// with <c>.Applicant.Cnic</c> loaded) — same pattern as
+    /// <see cref="ApplicationDetailsService.MapWithConflictsAsync"/>, with the same
+    /// <c>approverIds.Count == 0</c> early-out so a page with zero overrides costs nothing extra.
+    /// Shared by <see cref="GetApplicationsAsync"/> (via <see cref="LoadApplicantGuarantorConflictAsync"/>
+    /// too, for the single-entity call sites).</summary>
+    private async Task<(Dictionary<Guid, List<string>> Conflicts, Dictionary<Guid, string> ApproverNames)> LoadApplicantGuarantorConflictsAsync(
+        IReadOnlyList<FundApplication> entities, CancellationToken cancellationToken)
+    {
+        var conflicts = await ApplicantGuarantorConflictLookup.FindConflictsAsync(
+            dbContext, entities.Select(a => (a.Id, a.Applicant.Cnic)).ToList(), cancellationToken);
+
+        var approverIds = entities
+            .Where(a => a.ApplicantGuarantorConflictOverrideApprovedBy is not null)
+            .Select(a => a.ApplicantGuarantorConflictOverrideApprovedBy!.Value)
+            .Distinct()
+            .ToList();
+        var approverNames = approverIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await dbContext.Users.Where(u => approverIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
+
+        return (conflicts, approverNames);
+    }
+
+    /// <summary>Single-entity convenience over <see cref="LoadApplicantGuarantorConflictsAsync"/> for
+    /// <see cref="GetByIdAsync"/>, <see cref="CreateAsync"/>, and <see cref="UpdateAsync"/> — still one
+    /// query each, just against a one-element batch.</summary>
+    private async Task<(IReadOnlyList<string> ConflictNumbers, string? ApproverName)> LoadApplicantGuarantorConflictAsync(
+        FundApplication entity, CancellationToken cancellationToken)
+    {
+        var (conflicts, approverNames) = await LoadApplicantGuarantorConflictsAsync([entity], cancellationToken);
+        var numbers = conflicts.GetValueOrDefault(entity.Id, []);
+        var approverName = entity.ApplicantGuarantorConflictOverrideApprovedBy is not null
+            ? approverNames.GetValueOrDefault(entity.ApplicantGuarantorConflictOverrideApprovedBy.Value)
+            : null;
+        return (numbers, approverName);
     }
 
     /// <summary>Shared by <see cref="GetByIdAsync"/>, <see cref="UpdateAsync"/> and <see cref="ChangeStatusAsync"/> so the sum-of-completed-payments query isn't duplicated three times.</summary>
@@ -237,7 +305,14 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         entity.Applicant = applicant;
         entity.ApplicationCategory = category;
         entity.FundCategory = fund;
-        return Map(entity, 0m, null, 0); // freshly created: no payments, loan agreement, or guarantors can exist yet
+        // Item 3 (2026-09 feedback): unlike payments/loan agreement/guarantors, the active-count
+        // must be a real query, not a literal 0 — this application (Pending, itself active) can
+        // already be the applicant's second (or later) active application.
+        var activeApplicationCount = await GetActiveApplicationCountAsync(applicant.Id, cancellationToken);
+        // Mirror direction of item 4: also a real query, not a literal empty list — the applicant
+        // could already be an active guarantor elsewhere the instant this application is created.
+        var (conflictNumbers, conflictApproverName) = await LoadApplicantGuarantorConflictAsync(entity, cancellationToken);
+        return Map(entity, 0m, null, 0, activeApplicationCount, conflictNumbers, conflictApproverName);
     }
 
     public async Task<ApplicationDto> UpdateAsync(Guid id, UpdateApplicationRequest request, CancellationToken cancellationToken)
@@ -309,6 +384,15 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
             throw new ApprovedAmountBelowCompletedPaymentsException(request.ApprovedAmount, completedPaid);
         }
 
+        // Item 1 (2026-09 feedback) corollary: even before any payment exists yet, an application
+        // that has already moved into the payment lifecycle (Approved/PartiallyPaid/Paid) must never
+        // have its approved amount nulled out here — that would silently undo the Approved-transition
+        // gate's requirement that an approved amount be set (ChangeStatusAsync).
+        if (request.ApprovedAmount is null && entity.Status is ApplicationStatus.Approved or ApplicationStatus.PartiallyPaid or ApplicationStatus.Paid)
+        {
+            throw new ApprovedAmountCannotBeClearedException();
+        }
+
         entity.ApprovedAmount = request.ApprovedAmount;
         entity.Priority = Enum.Parse<ApplicationPriority>(request.Priority);
         entity.Purpose = request.Purpose;
@@ -319,9 +403,6 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         entity.DeclaredBusinessAddress = request.DeclaredBusinessAddress;
         entity.DeclaredHouseStatus = request.DeclaredHouseStatus is null ? null : Enum.Parse<HouseStatus>(request.DeclaredHouseStatus);
 
-        await EnsureExternalFormReferenceUniqueAsync(request.ExternalFormReference, existingApplicationId: entity.Id, cancellationToken);
-        entity.ExternalFormReference = request.ExternalFormReference;
-        entity.SubmittedAt = request.SubmittedAt;
         entity.DeclarationAcceptedAt = request.DeclarationAcceptedAt;
         entity.TermsAcceptedAt = request.TermsAcceptedAt;
         entity.TermsVersion = request.TermsVersion;
@@ -329,34 +410,75 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var guarantorCount = await dbContext.ApplicationGuarantors.CountAsync(g => g.ApplicationId == entity.Id, cancellationToken);
-        return Map(entity, completedPaid, activeLoanAgreement?.Id, guarantorCount);
+        var activeApplicationCount = await GetActiveApplicationCountAsync(entity.ApplicantId, cancellationToken);
+        var (conflictNumbers, conflictApproverName) = await LoadApplicantGuarantorConflictAsync(entity, cancellationToken);
+        return Map(entity, completedPaid, activeLoanAgreement?.Id, guarantorCount, activeApplicationCount, conflictNumbers, conflictApproverName);
     }
 
     public async Task ChangeStatusAsync(Guid id, ChangeApplicationStatusRequest request, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Applications
             .Include(a => a.ApplicationCategory)
+            .Include(a => a.Applicant)
             .SingleOrDefaultAsync(a => a.Id == id, cancellationToken)
             ?? throw new EntityNotFoundException("Application", id);
 
         var newStatus = Enum.Parse<ApplicationStatus>(request.NewStatus);
         var fromStatus = entity.Status;
+        var totalCompletedPaid = await GetTotalCompletedPaidAsync(entity.Id, cancellationToken);
 
         // The guarantor gate (E2): a category with RequiresGuarantors > 0 (2 for ROZGAR) needs at
         // least that many ApplicationGuarantor rows on file before Approved. Checked before
         // TransitionTo so a category that fails this never even reaches the state-machine check.
         if (newStatus == ApplicationStatus.Approved)
         {
-            var guarantorCount = await dbContext.ApplicationGuarantors.CountAsync(g => g.ApplicationId == entity.Id, cancellationToken);
-            FundApplication.EnsureGuarantorsSatisfied(entity.ApplicationNumber, entity.ApplicationCategory, guarantorCount);
+            var guarantors = await dbContext.ApplicationGuarantors.Where(g => g.ApplicationId == entity.Id).ToListAsync(cancellationToken);
+            FundApplication.EnsureGuarantorsSatisfied(entity.ApplicationNumber, entity.ApplicationCategory, guarantors.Count);
 
             // The completeness gate: the fix for the client's bug report (applications reaching
             // Approved with zero category-specific details and zero required documents).
             var completeness = await LoadCompletenessAsync(entity, cancellationToken);
             FundApplication.EnsureApplicationIsComplete(entity.ApplicationNumber, completeness);
+
+            // Item 4 (2026-09 feedback): a guarantor whose CNIC also appears on another currently
+            // active application blocks Approved unless staff have approved a conflict override.
+            var conflicts = await GuarantorConflictLookup.FindConflictsAsync(dbContext, entity.Id, guarantors, cancellationToken);
+            var unresolvedGuarantorIds = guarantors
+                .Where(g => conflicts.ContainsKey(g.Id) && g.ConflictOverrideApprovedAt is null)
+                .Select(g => g.Id)
+                .ToList();
+            FundApplication.EnsureGuarantorConflictsResolved(entity.ApplicationNumber, unresolvedGuarantorIds);
+
+            // Mirror direction of item 4: this application's own applicant being an active guarantor
+            // elsewhere blocks Approved unless staff have approved an applicant-guarantor conflict
+            // override for THIS application.
+            var applicantConflicts = await ApplicantGuarantorConflictLookup.FindConflictsAsync(
+                dbContext, [(entity.Id, entity.Applicant.Cnic)], cancellationToken);
+            FundApplication.EnsureApplicantNotActiveGuarantorElsewhere(
+                entity.ApplicationNumber,
+                applicantConflicts.GetValueOrDefault(entity.Id, []),
+                entity.HasValidApplicantGuarantorConflictOverride(entity.Applicant.Cnic));
+
+            // Item 1 (2026-09 feedback): the approved amount is now an explicit reviewer decision,
+            // never a silent default to RequestedAmount. Omitting it is only legal when re-approving
+            // (OnHold -> Approved) an application that already has one on file, in which case the
+            // existing value is kept as-is. It may exceed RequestedAmount (v1.8 correction — a
+            // committee of elders may decide the requested amount was too low).
+            if (request.ApprovedAmount is not null)
+            {
+                if (request.ApprovedAmount.Value < totalCompletedPaid)
+                {
+                    throw new ApprovedAmountBelowCompletedPaymentsException(request.ApprovedAmount, totalCompletedPaid);
+                }
+
+                entity.ApprovedAmount = request.ApprovedAmount;
+            }
+            else if (entity.ApprovedAmount is null)
+            {
+                throw new ApprovedAmountNotSetException();
+            }
         }
 
-        var totalCompletedPaid = await GetTotalCompletedPaidAsync(entity.Id, cancellationToken);
         entity.TransitionTo(newStatus, totalCompletedPaid);
 
         var now = DateTimeOffset.UtcNow;
@@ -369,7 +491,6 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
             case ApplicationStatus.Approved:
                 entity.ApprovedAt = now;
                 entity.ApprovedBy = currentUser.UserId;
-                entity.ApprovedAmount ??= entity.RequestedAmount;
                 break;
             case ApplicationStatus.Rejected:
                 entity.RejectionReason = request.RejectionReason;
@@ -402,6 +523,35 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Mirror direction of item 4's guarantor-row override endpoint
+    /// (<c>ApplicationDetailsService.ApproveGuarantorConflictOverrideAsync</c>), but application-level:
+    /// stamps the applicant's CURRENT CNIC alongside the approval so the override self-heals if the
+    /// CNIC is later edited via ApplicantService — see <c>FundApplication.HasValidApplicantGuarantorConflictOverride</c>.</summary>
+    public async Task<ApplicationDto> ApproveApplicantGuarantorConflictOverrideAsync(
+        Guid id, ApproveApplicantGuarantorConflictOverrideRequest request, CancellationToken cancellationToken)
+    {
+        var entity = await dbContext.Applications
+            .Include(a => a.Applicant)
+            .Include(a => a.ApplicationCategory)
+            .Include(a => a.FundCategory)
+            .SingleOrDefaultAsync(a => a.Id == id, cancellationToken)
+            ?? throw new EntityNotFoundException("Application", id);
+
+        entity.ApplicantGuarantorConflictOverrideApprovedAt = DateTimeOffset.UtcNow;
+        entity.ApplicantGuarantorConflictOverrideApprovedBy = currentUser.UserId;
+        entity.ApplicantGuarantorConflictOverrideReason = request.Reason;
+        entity.ApplicantGuarantorConflictOverrideCnic = entity.Applicant.Cnic;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var totalCompletedPaid = await GetTotalCompletedPaidAsync(entity.Id, cancellationToken);
+        var activeLoanAgreementId = await GetActiveLoanAgreementIdAsync(entity.Id, cancellationToken);
+        var guarantorCount = await dbContext.ApplicationGuarantors.CountAsync(g => g.ApplicationId == entity.Id, cancellationToken);
+        var activeApplicationCount = await GetActiveApplicationCountAsync(entity.ApplicantId, cancellationToken);
+        var (conflictNumbers, conflictApproverName) = await LoadApplicantGuarantorConflictAsync(entity, cancellationToken);
+        return Map(entity, totalCompletedPaid, activeLoanAgreementId, guarantorCount, activeApplicationCount, conflictNumbers, conflictApproverName);
     }
 
     public async Task<IReadOnlyList<ApplicationStatusHistoryDto>> GetStatusHistoryAsync(Guid id, CancellationToken cancellationToken)
@@ -516,7 +666,22 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
 
     private static DocumentDto MapDocument(Document d) => new(d.Id, d.FileName, d.ContentType, d.SizeBytes, d.DocumentType.ToString(), d.Description, d.UploadedAt, d.SlotKey);
 
-    private static ApplicationDto Map(FundApplication a, decimal totalCompletedPaid, Guid? activeLoanAgreementId, int guarantorCount) => new(
+    private static ApplicationDto Map(
+        FundApplication a, decimal totalCompletedPaid, Guid? activeLoanAgreementId, int guarantorCount, int activeApplicationCount,
+        IReadOnlyList<string> applicantGuarantorConflictNumbers, string? applicantGuarantorConflictOverrideApprovedByName)
+    {
+        // The read side and the write-side gate (FundApplication.EnsureApplicantNotActiveGuarantorElsewhere)
+        // must never disagree about whether an override still counts, hence routing through the same
+        // instance method here rather than re-deriving the condition inline.
+        var hasValidOverride = a.HasValidApplicantGuarantorConflictOverride(a.Applicant.Cnic);
+        return MapCore(a, totalCompletedPaid, activeLoanAgreementId, guarantorCount, activeApplicationCount,
+            applicantGuarantorConflictNumbers, hasValidOverride, applicantGuarantorConflictOverrideApprovedByName);
+    }
+
+    private static ApplicationDto MapCore(
+        FundApplication a, decimal totalCompletedPaid, Guid? activeLoanAgreementId, int guarantorCount, int activeApplicationCount,
+        IReadOnlyList<string> applicantGuarantorConflictNumbers, bool hasValidApplicantGuarantorConflictOverride,
+        string? applicantGuarantorConflictOverrideApprovedByName) => new(
         a.Id, a.ApplicationNumber, a.ApplicantId, a.Applicant.FullName, a.Applicant.Cnic,
         a.ApplicationCategoryId, a.ApplicationCategory.Name, a.ApplicationCategory.Code, a.FundCategoryId, a.FundCategory.Name,
         a.RequestedAmount, a.ApprovedAmount, a.Status.ToString(), a.Priority.ToString(), a.ApplicationDate,
@@ -546,5 +711,10 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         // onto General and correctly never flags this. Distinct from RequiresLoanPlan, which is
         // about whether payments need a loan agreement first, not about whether this fund choice
         // is the unusual one.
-        DualEligibleCategoryOnGeneralFund: a.ApplicationCategory.FundEligibility == FundEligibility.Either && !a.FundCategory.IsZakat);
+        DualEligibleCategoryOnGeneralFund: a.ApplicationCategory.FundEligibility == FundEligibility.Either && !a.FundCategory.IsZakat,
+        ActiveApplicationCount: activeApplicationCount,
+        ApplicantGuarantorConflictApplicationNumbers: applicantGuarantorConflictNumbers,
+        ApplicantGuarantorConflictOverrideApprovedAt: hasValidApplicantGuarantorConflictOverride ? a.ApplicantGuarantorConflictOverrideApprovedAt : null,
+        ApplicantGuarantorConflictOverrideApprovedByName: hasValidApplicantGuarantorConflictOverride ? applicantGuarantorConflictOverrideApprovedByName : null,
+        ApplicantGuarantorConflictOverrideReason: hasValidApplicantGuarantorConflictOverride ? a.ApplicantGuarantorConflictOverrideReason : null);
 }

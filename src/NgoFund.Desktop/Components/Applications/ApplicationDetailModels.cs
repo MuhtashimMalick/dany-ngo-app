@@ -44,9 +44,14 @@ public class MarriageDetailsFormModel
 
     [Required(ErrorMessage = "Groom name is required.")]
     public string GroomName { get; set; } = "";
+    // Item 5 (2026-09 feedback): only phone/address/CNIC/document are relaxed for the groom — name,
+    // father's name, jamaat, and marital status stay required per the client's explicit answer.
+    [Required(ErrorMessage = "Groom father name is required.")]
     public string? GroomFatherName { get; set; }
     public string? GroomGrandfatherName { get; set; }
+    [Required(ErrorMessage = "Groom jamaat is required.")]
     public string? GroomJamaat { get; set; }
+    [Required(ErrorMessage = "Groom marital status is required.")]
     public string? GroomMaritalStatus { get; set; }
     public string? GroomPreviousWifeName { get; set; }
     public string? GroomAddress { get; set; }
@@ -104,6 +109,13 @@ public class GuarantorRowModel
     public string? PhoneMobile { get; set; }
     public DateTimeOffset? DeclarationAcceptedAt { get; set; }
 
+    // Item 4 (2026-09 feedback) — read-side only, never sent back on save (ReplaceGuarantorsAsync's
+    // GuarantorEntry has no matching fields for these); see ApplicationGuarantorDto's doc comment.
+    public IReadOnlyList<string> ConflictingApplicationNumbers { get; set; } = [];
+    public DateTimeOffset? ConflictOverrideApprovedAt { get; set; }
+    public string? ConflictOverrideApprovedByName { get; set; }
+    public string? ConflictOverrideReason { get; set; }
+
     public bool DeclarationAcceptedBool
     {
         get => DeclarationAcceptedAt is not null;
@@ -130,5 +142,9 @@ public class GuarantorRowModel
         PhoneOffice = g.PhoneOffice,
         PhoneMobile = g.PhoneMobile,
         DeclarationAcceptedAt = g.DeclarationAcceptedAt,
+        ConflictingApplicationNumbers = g.ConflictingApplicationNumbers,
+        ConflictOverrideApprovedAt = g.ConflictOverrideApprovedAt,
+        ConflictOverrideApprovedByName = g.ConflictOverrideApprovedByName,
+        ConflictOverrideReason = g.ConflictOverrideReason,
     };
 }

@@ -34,6 +34,19 @@ public class ApplicationGuarantor : BaseEntity, IUpdateAuditable, ISoftDeletable
 
     public DateTimeOffset? DeclarationAcceptedAt { get; set; }
 
+    // --- CNIC-conflict override (item 4, 2026-09 feedback) ---
+    //
+    // A guarantor's CNIC conflicting with another currently-active application is detected
+    // read-side (see GuarantorConflictLookup), never stored — these three columns record only
+    // whether staff have explicitly approved proceeding despite that conflict. "Approved" is
+    // derived from ConflictOverrideApprovedAt being non-null; there is no separate status/enum
+    // column. Whenever Cnic is edited to a different value, all three must be cleared (see
+    // ApplicationDetailsService.ReplaceGuarantorsAsync) — an override approved for one person must
+    // never silently carry over to a different person typed into the same row.
+    public DateTimeOffset? ConflictOverrideApprovedAt { get; set; }
+    public Guid? ConflictOverrideApprovedBy { get; set; }
+    public string? ConflictOverrideReason { get; set; }
+
     public DateTimeOffset? UpdatedAt { get; set; }
     public Guid? UpdatedBy { get; set; }
     public bool IsDeleted { get; set; }

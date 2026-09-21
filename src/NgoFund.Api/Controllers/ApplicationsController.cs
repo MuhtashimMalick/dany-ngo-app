@@ -21,7 +21,9 @@ public class ApplicationsController(
     IValidator<UpsertHousingApplicationDetailsRequest> housingValidator,
     IValidator<UpsertMarriageApplicationDetailsRequest> marriageValidator,
     IValidator<UpsertBusinessLoanApplicationDetailsRequest> businessLoanValidator,
-    IValidator<ReplaceApplicationGuarantorsRequest> guarantorsValidator) : ControllerBase
+    IValidator<ReplaceApplicationGuarantorsRequest> guarantorsValidator,
+    IValidator<ApproveGuarantorConflictOverrideRequest> conflictOverrideValidator,
+    IValidator<ApproveApplicantGuarantorConflictOverrideRequest> applicantConflictOverrideValidator) : ControllerBase
 {
     [HttpGet]
     [HasPermission("applications.view")]
@@ -144,5 +146,23 @@ public class ApplicationsController(
     {
         await guarantorsValidator.ValidateAndThrowAsync(request, cancellationToken);
         return Ok(await detailsService.ReplaceGuarantorsAsync(id, request, cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/guarantors/{guarantorId:guid}/conflict-override")]
+    [HasPermission("applications.overrideguarantor")]
+    public async Task<ActionResult<ApplicationGuarantorDto>> ApproveGuarantorConflictOverride(
+        Guid id, Guid guarantorId, ApproveGuarantorConflictOverrideRequest request, CancellationToken cancellationToken)
+    {
+        await conflictOverrideValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.ApproveGuarantorConflictOverrideAsync(id, guarantorId, request, cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/applicant-guarantor-conflict-override")]
+    [HasPermission("applications.overrideguarantor")]
+    public async Task<ActionResult<ApplicationDto>> ApproveApplicantGuarantorConflictOverride(
+        Guid id, ApproveApplicantGuarantorConflictOverrideRequest request, CancellationToken cancellationToken)
+    {
+        await applicantConflictOverrideValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await applicationService.ApproveApplicantGuarantorConflictOverrideAsync(id, request, cancellationToken));
     }
 }

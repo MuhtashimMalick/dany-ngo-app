@@ -24,12 +24,12 @@ public class PaymentSearchTests(AuthApiFactory factory) : IClassFixture<AuthApiF
 
         var cashApplication = await CreateApprovedApplicationAsync(client, "13001-1300001-1", categoryId, zakatFundId, 3000m);
         var cashPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            cashApplication.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            cashApplication.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         var cashPayment = await ReadOrFailAsync<PaymentDto>(cashPaymentResponse, HttpStatusCode.Created);
 
         var bankApplication = await CreateApprovedApplicationAsync(client, "13001-1300002-2", categoryId, zakatFundId, 3000m);
         var bankPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            bankApplication.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "BankTransfer", null, "Test Bank", null, null, null, null));
+            bankApplication.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "BankTransfer", null, "Test Bank"));
         var bankPayment = await ReadOrFailAsync<PaymentDto>(bankPaymentResponse, HttpStatusCode.Created);
 
         var voidResponse = await client.PostAsJsonAsync($"/api/payments/{bankPayment.Id}/void", new VoidPaymentRequest("Entered by mistake"));
@@ -65,13 +65,13 @@ public class PaymentSearchTests(AuthApiFactory factory) : IClassFixture<AuthApiF
 
         var zakatApplication = await CreateApprovedApplicationAsync(client, "13001-1300003-3", categoryId, zakatFundId, 1500m);
         var zakatPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            zakatApplication.Id, 1500m, oldDate, "Cash", null, null, null, null, null, null));
+            zakatApplication.Id, 1500m, oldDate, "Cash", null, null));
         var zakatPayment = await ReadOrFailAsync<PaymentDto>(zakatPaymentResponse, HttpStatusCode.Created);
 
         var generalApplication = await CreateApprovedApplicationAsync(client, "13001-1300004-4", categoryId, generalFundId, 1500m);
         await LoanTestHelpers.CreateLoanAgreementAsync(client, generalApplication.Id, installmentCount: 1); // General-fund payments require a loan plan (M7)
         var generalPaymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            generalApplication.Id, 1500m, recentDate, "Cash", null, null, null, null, null, null));
+            generalApplication.Id, 1500m, recentDate, "Cash", null, null));
         var generalPayment = await ReadOrFailAsync<PaymentDto>(generalPaymentResponse, HttpStatusCode.Created);
 
         var url = $"/api/payments?fundCategoryId={zakatFundId}&dateFrom={oldDate.AddDays(-1):yyyy-MM-dd}&dateTo={oldDate.AddDays(1):yyyy-MM-dd}";

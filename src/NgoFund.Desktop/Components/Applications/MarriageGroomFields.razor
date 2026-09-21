@@ -6,16 +6,16 @@
     <FormField Label="Groom Name *" For="groomName" ValidationFor="() => Model.GroomName">
         <InputText id="groomName" @bind-Value="Model.GroomName" />
     </FormField>
-    <FormField Label="Groom Father Name" For="groomFather">
+    <FormField Label="Groom Father Name *" For="groomFather" ValidationFor="() => Model.GroomFatherName">
         <InputText id="groomFather" @bind-Value="Model.GroomFatherName" />
     </FormField>
     <FormField Label="Groom Grandfather Name" For="groomGrandfather">
         <InputText id="groomGrandfather" @bind-Value="Model.GroomGrandfatherName" />
     </FormField>
-    <FormField Label="Groom Jamaat" For="groomJamaat">
+    <FormField Label="Groom Jamaat *" For="groomJamaat" ValidationFor="() => Model.GroomJamaat">
         <InputText id="groomJamaat" @bind-Value="Model.GroomJamaat" />
     </FormField>
-    <FormField Label="Groom Marital Status" For="groomMaritalStatus">
+    <FormField Label="Groom Marital Status *" For="groomMaritalStatus" ValidationFor="() => Model.GroomMaritalStatus">
         <InputSelect id="groomMaritalStatus" @bind-Value="Model.GroomMaritalStatus">
             <option value="">Select</option>
             <option value="Single">First Marriage</option>

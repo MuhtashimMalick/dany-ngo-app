@@ -21,9 +21,15 @@ public class ReplaceApplicationGuarantorsRequestValidator : AbstractValidator<Re
             g.RuleFor(e => e.Cnic).NotEmpty().MaximumLength(15).Matches(PakistaniFormats.CnicPattern)
                 .WithMessage(PakistaniFormats.CnicMessage);
             g.RuleFor(e => e.MembershipNumber).NotEmpty().MaximumLength(PakistaniFormats.JamaatMembershipMaxLength);
-            g.RuleFor(e => e.PhoneMobile).MaximumLength(12).Matches(PakistaniFormats.MobilePhonePattern)
-                .WithMessage(PakistaniFormats.MobilePhoneMessage)
-                .When(e => !string.IsNullOrEmpty(e.PhoneMobile));
+
+            // v1.6 (feedback round 3, item 7): a guarantor must be reachable — name/CNIC alone
+            // isn't enough to actually chase them down if the applicant defaults.
+            g.RuleFor(e => e.PhoneMobile).NotEmpty().MaximumLength(12).Matches(PakistaniFormats.MobilePhonePattern)
+                .WithMessage(PakistaniFormats.MobilePhoneMessage);
+            g.RuleFor(e => e.PhoneHome).NotEmpty().MaximumLength(30);
+            g.RuleFor(e => e.PhoneOffice).NotEmpty().MaximumLength(30);
+            g.RuleFor(e => e.ResidentialAddress).NotEmpty();
+            g.RuleFor(e => e.BusinessAddress).NotEmpty();
         });
 
         RuleFor(x => x.Guarantors)

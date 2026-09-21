@@ -616,6 +616,11 @@ input[type="radio"] {
 .badge-paid, .badge-settled, .badge-cleared { background: var(--status-paid-bg); color: var(--status-paid-fg); }
 .badge-partiallypaid, .badge-outstanding     { background: var(--status-partially-paid-bg); color: var(--status-partially-paid-fg); }
 .badge-onhold, .badge-voided, .badge-writtenoff { background: var(--status-on-hold-bg); color: var(--status-on-hold-fg); }
+/* Not tied to an ApplicationStatus/PaymentStatus/DonationStatus value — a generic "needs attention"
+   variant, e.g. the duplicate-active-application badge (Applications.razor) and the guarantor
+   CNIC-conflict flag (GuarantorsEditor.razor). Reuses the same amber pair as .alert-warning rather
+   than a new hue, per 's one-design-token rule. */
+.badge-warning { background: var(--status-pending-bg); color: var(--status-pending-fg); }
 
 /* Voided ledger entries (ApplicantLedger.razor) stay visible per the "never hide a voided row"
    rule — struck through and dimmed so a reader never mistakes one for money that actually moved —
@@ -3164,6 +3169,14 @@ table.data-table {
 .guarantor-row-title {
   font-weight: 700;
   font-size: var(--text-sm);
+}
+
+/* Item 4 (2026-09 feedback): a guarantor row whose CNIC also appears on another active
+   application, with no conflict override approved yet — border-only (not a filled background)
+   so the row's own .alert-warning banner (added inside it) still reads as the one strong warning
+   surface, per the design review's "don't stack two loud warning treatments" guidance. */
+.guarantor-row-conflict {
+  border-color: var(--status-pending-solid);
 }
 
 /* ---------- Application create wizard (ApplicationWizard.razor) ----------

@@ -2,24 +2,15 @@
    HousingDetailsSection (see its doc comment). Used by the manage modal's Details tab as a single
    block; the create-flow wizard splits the same two field groups (BusinessBackgroundFields/
    BusinessProposalFields) across its own "Applicant Background" and "Proposed Business" pages
-   instead of reusing this wrapper — see HousingDetailsSection's doc comment for why.
-   AmountMismatchWarning is response-only and non-fatal — rendered as a dismissable-by-navigation
-   alert-warning banner (not alert-error) that animates in only when it newly appears after a save,
-   per gsap-core: motion should mark the moment something changed, not replay on every render. *@
+   instead of reusing this wrapper — see HousingDetailsSection's doc comment for why. *@
 @inject ApiClient ApiClient
 @inject AuthState AuthState
 @inject ToastService Toast
-@inject IJSRuntime JS
 
 <FormSection Title="Business Loan Details" Description="From the applicant's Business Loan (Rozgar) form.">
     @if (_error is not null)
     {
         <div class="alert alert-error">@_error</div>
-    }
-
-    @if (_warning is not null)
-    {
-        <div class="alert alert-warning" id="business-loan-warning">@_warning</div>
     }
 
     @if (_isLoading)
@@ -51,9 +42,7 @@
 
     private bool _isLoading = true;
     private bool _isSaving;
-    private bool _pendingWarningAnimation;
     private string? _error;
-    private string? _warning;
     private BusinessLoanDetailsFormModel _form = new();
 
     private bool CanEdit => AuthState.HasPermission("applications.edit");
@@ -84,7 +73,6 @@
                     EmergencyContactCnic = existing.EmergencyContactCnic,
                     EmergencyContactPhone = existing.EmergencyContactPhone,
                 };
-                _warning = existing.AmountMismatchWarning;
             }
         }
         catch (ApiException ex)
@@ -111,8 +99,6 @@
                 _form.EmergencyContactCnic, _form.EmergencyContactPhone));
 
             Toast.Success("Business loan details saved");
-            _warning = result.AmountMismatchWarning;
-            _pendingWarningAnimation = _warning is not null;
         }
         catch (ApiException ex)
         {
@@ -121,15 +107,6 @@
         finally
         {
             _isSaving = false;
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_pendingWarningAnimation)
-        {
-            _pendingWarningAnimation = false;
-            await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", "#business-loan-warning");
         }
     }
 }

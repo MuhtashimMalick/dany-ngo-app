@@ -224,7 +224,10 @@ public class ApplicationCompletenessEvaluatorTests
 
         var slots = ApplicationCompletenessEvaluator.EvaluateSlots(appId, applicantId, "HOUSE_RENT", docs, []);
 
-        Assert.All(slots, s => Assert.False(s.IsSatisfied));
+        // Scoped to slots that actually require at least one document — HOUSE_RENT.UTILITY_BILLS
+        // is optional with MinCount 0 (item 6, 2026-09 feedback) so it always reads as satisfied
+        // regardless of what's on file, which is unrelated to what this test is proving.
+        Assert.All(slots.Where(s => s.Slot.MinCount > 0), s => Assert.False(s.IsSatisfied));
     }
 
     [Fact]
@@ -244,8 +247,25 @@ public class ApplicationCompletenessEvaluatorTests
         Assert.False(rentReceipts.Slot.IsRequired);
     }
 
+    // Item 6 (2026-09 feedback): HOUSE_RENT.UTILITY_BILLS is now fully optional with MinCount 0 —
+    // "an applicant may provide None" and must never show as a partial/incomplete upload state.
+
     [Fact]
-    public void EvaluateSlots_MinCountThree_PartiallySatisfied_StillReportsUnsatisfied()
+    public void EvaluateSlots_UtilityBillsMinCountZero_NoDocumentsAtAll_StillReportsSatisfied()
+    {
+        var appId = Guid.NewGuid();
+        var applicantId = Guid.NewGuid();
+
+        var slots = ApplicationCompletenessEvaluator.EvaluateSlots(appId, applicantId, "HOUSE_RENT", [], []);
+        var utilityBills = slots.Single(s => s.Slot.SlotKey == "HOUSE_RENT.UTILITY_BILLS");
+
+        Assert.True(utilityBills.IsSatisfied);
+        Assert.False(utilityBills.Slot.IsRequired);
+        Assert.Empty(utilityBills.Documents);
+    }
+
+    [Fact]
+    public void EvaluateSlots_UtilityBillsMinCountZero_PartialUploadsStillReportSatisfied()
     {
         var appId = Guid.NewGuid();
         var applicantId = Guid.NewGuid();
@@ -258,20 +278,8 @@ public class ApplicationCompletenessEvaluatorTests
         var slots = ApplicationCompletenessEvaluator.EvaluateSlots(appId, applicantId, "HOUSE_RENT", docs, []);
         var utilityBills = slots.Single(s => s.Slot.SlotKey == "HOUSE_RENT.UTILITY_BILLS");
 
-        Assert.False(utilityBills.IsSatisfied);
+        Assert.True(utilityBills.IsSatisfied);
         Assert.Equal(2, utilityBills.Documents.Count);
-    }
-
-    [Fact]
-    public void EvaluateSlots_MinCountThree_FullySatisfied_ReportsSatisfied()
-    {
-        var appId = Guid.NewGuid();
-        var applicantId = Guid.NewGuid();
-        var docs = Enumerable.Range(0, 3).Select(_ => Doc(appId, null, DocumentType.UtilityBill, "HOUSE_RENT.UTILITY_BILLS")).ToArray();
-
-        var slots = ApplicationCompletenessEvaluator.EvaluateSlots(appId, applicantId, "HOUSE_RENT", docs, []);
-
-        Assert.True(slots.Single(s => s.Slot.SlotKey == "HOUSE_RENT.UTILITY_BILLS").IsSatisfied);
     }
 
     [Fact]

@@ -86,7 +86,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
-        await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null));
+        await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, requestedAmount));
 
         return await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
     }
@@ -126,7 +126,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await CreateApprovedApplicationAsync(client, "10101-1010101-3", categoryId, zakatFundId, 10000m);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var afterPayment = await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);
@@ -146,7 +146,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await CreateApprovedApplicationAsync(client, "10101-1010101-4", categoryId, zakatFundId, 15000m);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var toOnHold = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
@@ -177,7 +177,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await CreateApprovedApplicationAsync(client, "10101-1010101-5", categoryId, zakatFundId, 15000m);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         var payment = await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var historyAfterPayment = (await client.GetFromJsonAsync<List<ApplicationStatusHistoryDto>>($"/api/applications/{application.Id}/history"))!;
@@ -207,7 +207,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         }
 
         var response = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 100m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 100m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -221,7 +221,7 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await CreateApprovedApplicationAsync(client, "10101-1010101-7", categoryId, zakatFundId, 15000m);
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var updateResponse = await client.PutAsJsonAsync($"/api/applications/{application.Id}", new UpdateApplicationRequest(

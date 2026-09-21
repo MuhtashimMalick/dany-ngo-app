@@ -33,6 +33,7 @@ internal static class PermissionSeed
         ("applications", "view", "View Applications"), ("applications", "create", "Create Applications"),
         ("applications", "edit", "Edit Applications"), ("applications", "review", "Review Applications"),
         ("applications", "approve", "Approve/Reject Applications"),
+        ("applications", "overrideguarantor", "Override Guarantor Conflicts"),
 
         ("payments", "view", "View Payments"), ("payments", "create", "Record Payments"),
         ("payments", "void", "Void Payments"),

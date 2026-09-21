@@ -12,7 +12,6 @@ public class FundApplicationConfiguration : IEntityTypeConfiguration<FundApplica
         builder.ToTable("applications", t =>
         {
             t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount > 0");
-            t.HasCheckConstraint("ck_applications_approved_amount_le_requested", "approved_amount IS NULL OR approved_amount <= requested_amount");
         });
 
         builder.Property(e => e.ApplicationNumber).HasMaxLength(30).IsRequired();
@@ -23,6 +22,12 @@ public class FundApplicationConfiguration : IEntityTypeConfiguration<FundApplica
         builder.Property(e => e.DeclaredBusinessAddress).HasColumnType("text");
         builder.Property(e => e.ExternalFormReference).HasMaxLength(100);
         builder.Property(e => e.TermsVersion).HasMaxLength(20);
+
+        // Mirror direction of item 4's guarantor-row override (ApplicationGuarantorConfiguration):
+        // ApplicantGuarantorConflictOverrideApprovedAt/By need no explicit config — snake_case
+        // convention already names them correctly.
+        builder.Property(e => e.ApplicantGuarantorConflictOverrideReason).HasMaxLength(500);
+        builder.Property(e => e.ApplicantGuarantorConflictOverrideCnic).HasMaxLength(15);
 
         // Unlike this codebase's other enum columns (whose NOT NULL default comes purely from the
         // C# property initializer, fine for CREATE TABLE where no rows pre-exist), this one is

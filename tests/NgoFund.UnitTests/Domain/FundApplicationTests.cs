@@ -94,6 +94,71 @@ public class FundApplicationTests
         FundApplication.EnsureGuarantorsSatisfied("APP-0001", CategoryRequiringGuarantors(2), guarantorCount: 3);
     }
 
+    // --- Guarantor-conflict gate (item 4, 2026-09 feedback) ---
+
+    [Fact]
+    public void EnsureGuarantorConflictsResolved_NoUnresolvedConflicts_NeverThrows()
+    {
+        FundApplication.EnsureGuarantorConflictsResolved("APP-0001", []);
+    }
+
+    [Fact]
+    public void EnsureGuarantorConflictsResolved_UnresolvedConflictExists_Throws()
+    {
+        var ex = Assert.Throws<GuarantorConflictUnresolvedException>(() =>
+            FundApplication.EnsureGuarantorConflictsResolved("APP-0001", [Guid.NewGuid()]));
+
+        Assert.Contains("APP-0001", ex.Message);
+    }
+
+    // --- Mirror-direction gate: applicant is an active guarantor elsewhere ---
+
+    [Fact]
+    public void EnsureApplicantNotActiveGuarantorElsewhere_NoConflicts_NeverThrows()
+    {
+        FundApplication.EnsureApplicantNotActiveGuarantorElsewhere("APP-0001", [], overrideApproved: false);
+    }
+
+    [Fact]
+    public void EnsureApplicantNotActiveGuarantorElsewhere_ConflictWithoutOverride_Throws()
+    {
+        var ex = Assert.Throws<ApplicantIsActiveGuarantorElsewhereException>(() =>
+            FundApplication.EnsureApplicantNotActiveGuarantorElsewhere("APP-0001", ["APP-0002"], overrideApproved: false));
+
+        Assert.Contains("APP-0001", ex.Message);
+        Assert.Contains("APP-0002", ex.Message);
+    }
+
+    [Fact]
+    public void EnsureApplicantNotActiveGuarantorElsewhere_ConflictWithApprovedOverride_NeverThrows()
+    {
+        FundApplication.EnsureApplicantNotActiveGuarantorElsewhere("APP-0001", ["APP-0002"], overrideApproved: true);
+    }
+
+    [Fact]
+    public void HasValidApplicantGuarantorConflictOverride_CnicUnchangedSinceApproval_ReturnsTrue()
+    {
+        var application = new FundApplication
+        {
+            ApplicantGuarantorConflictOverrideApprovedAt = DateTimeOffset.UtcNow,
+            ApplicantGuarantorConflictOverrideCnic = "42101-1111111-1",
+        };
+
+        Assert.True(application.HasValidApplicantGuarantorConflictOverride("42101-1111111-1"));
+    }
+
+    [Fact]
+    public void HasValidApplicantGuarantorConflictOverride_CnicChangedSinceApproval_ReturnsFalse()
+    {
+        var application = new FundApplication
+        {
+            ApplicantGuarantorConflictOverrideApprovedAt = DateTimeOffset.UtcNow,
+            ApplicantGuarantorConflictOverrideCnic = "42101-1111111-1",
+        };
+
+        Assert.False(application.HasValidApplicantGuarantorConflictOverride("42101-2222222-2"));
+    }
+
     // --- The completeness gate: EnsureApplicationIsComplete throws when the pre-computed
     // ApplicationCompletenessResult.IsComplete is false, mirroring EnsureGuarantorsSatisfied's shape. ---
 
@@ -248,6 +313,23 @@ public class FundApplicationTests
 
     public static TheoryData<ApplicationStatus> AllStatuses() =>
         new(Enum.GetValues<ApplicationStatus>());
+
+    // --- ApplicationStatusRules.ActiveStatuses must match AllowedTransitions' terminal states
+    // exactly (the set of statuses with zero outgoing transitions, regardless of payment total) —
+    // the duplicate-application badge and the guarantor-conflict gate both read from that one set. ---
+
+    [Fact]
+    public void ActiveStatuses_MatchesNonTerminalStatusesFromAllowedTransitions()
+    {
+        var terminal = Enum.GetValues<ApplicationStatus>()
+            .Where(s => FundApplication.GetAllowedNextStatuses(s, totalCompletedPaid: 0m).Count == 0
+                && FundApplication.GetAllowedNextStatuses(s, totalCompletedPaid: 5000m).Count == 0)
+            .ToHashSet();
+
+        var expectedActive = Enum.GetValues<ApplicationStatus>().Except(terminal).ToHashSet();
+
+        Assert.Equal(expectedActive, ApplicationStatusRules.ActiveStatuses.ToHashSet());
+    }
 
     // --- Regression (N2): once money has moved, Rejected/Pending/UnderReview must be unreachable,
     // including via OnHold (the laundering path: PartiallyPaid -> OnHold -> Rejected). ---

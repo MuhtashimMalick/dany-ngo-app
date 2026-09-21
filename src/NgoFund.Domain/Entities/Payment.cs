@@ -28,14 +28,6 @@ public class Payment : BaseEntity, IUpdateAuditable
 
     public string? BankName { get; set; }
 
-    public string? PaidToName { get; set; }
-
-    public string? PaidToCnic { get; set; }
-
-    public string? PaidToRelation { get; set; }
-
-    public string? Remarks { get; set; }
-
     public PaymentStatus Status { get; set; } = PaymentStatus.Completed;
 
     public DateTimeOffset? VoidedAt { get; set; }

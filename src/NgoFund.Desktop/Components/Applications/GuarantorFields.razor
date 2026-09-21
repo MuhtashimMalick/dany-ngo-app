@@ -1,9 +1,10 @@
 @* One guarantor row's field grid + declaration checkbox — split out of GuarantorsEditor so the
    same markup backs both its repeating-rows "edit everything" mode (manage modal) and the
    wizard's single-row-per-page "Guarantor 1" / "Guarantor 2" pages. Deliberately carries no
-   document upload control: per the completeness milestone, guarantor documents are uploaded only
-   through the Documents wizard page's guarantor-grouped DocumentSlotList (and the manage modal's
-   Documents tab, same component) — never here. *@
+   document upload control itself: in the wizard, guarantor documents are still uploaded on the
+   Documents page's guarantor-grouped DocumentSlotList (guarantor rows are saved before that page
+   is reached). In the manage modal, GuarantorsEditor renders document upload directly on the
+   row's card (via GuarantorDocumentSlots) alongside — not inside — this component. *@
 <div class="form-grid">
     <FormField Label="Full Name *" For="@($"g{Row.ClientKey:N}-name")">
         <input id="@($"g{Row.ClientKey:N}-name")" @bind="Row.FullName" />
@@ -22,22 +23,22 @@
     </FormField>
     <FormatField Label="CNIC *" For="@($"g{Row.ClientKey:N}-cnic")" Format="FieldFormat.Cnic"
                  @bind-Value="Row.Cnic" />
-    <FormField Label="Residential Address" For="@($"g{Row.ClientKey:N}-raddr")" CssClass="span-2">
+    <FormField Label="Residential Address *" For="@($"g{Row.ClientKey:N}-raddr")" CssClass="span-2">
         <textarea id="@($"g{Row.ClientKey:N}-raddr")" @bind="Row.ResidentialAddress"></textarea>
     </FormField>
-    <FormField Label="Business Address" For="@($"g{Row.ClientKey:N}-baddr")" CssClass="span-2">
+    <FormField Label="Business Address *" For="@($"g{Row.ClientKey:N}-baddr")" CssClass="span-2">
         <textarea id="@($"g{Row.ClientKey:N}-baddr")" @bind="Row.BusinessAddress"></textarea>
     </FormField>
     <FormField Label="Business Nature" For="@($"g{Row.ClientKey:N}-bnature")">
         <input id="@($"g{Row.ClientKey:N}-bnature")" @bind="Row.BusinessNature" />
     </FormField>
-    <FormField Label="Phone (Home)" For="@($"g{Row.ClientKey:N}-phome")">
+    <FormField Label="Phone (Home) *" For="@($"g{Row.ClientKey:N}-phome")">
         <input id="@($"g{Row.ClientKey:N}-phome")" @bind="Row.PhoneHome" />
     </FormField>
-    <FormField Label="Phone (Office)" For="@($"g{Row.ClientKey:N}-poffice")">
+    <FormField Label="Phone (Office) *" For="@($"g{Row.ClientKey:N}-poffice")">
         <input id="@($"g{Row.ClientKey:N}-poffice")" @bind="Row.PhoneOffice" />
     </FormField>
-    <FormatField Label="Phone (Mobile)" For="@($"g{Row.ClientKey:N}-pmobile")" Format="FieldFormat.MobilePhone"
+    <FormatField Label="Phone (Mobile) *" For="@($"g{Row.ClientKey:N}-pmobile")" Format="FieldFormat.MobilePhone"
                  @bind-Value="Row.PhoneMobile" />
 </div>
 

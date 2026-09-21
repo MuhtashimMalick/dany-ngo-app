@@ -54,11 +54,11 @@ public class FundTransactionLedgerTests(AuthApiFactory factory) : IClassFixture<
 
         var application1 = await CreateApprovedApplicationAsync(client, "70110-1111111-1", healthCategoryId, zakatFundId, 3000m);
         var payment1 = await ReadOrFailAsync<PaymentDto>(await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application1.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null)), HttpStatusCode.Created);
+            application1.Id, 3000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null)), HttpStatusCode.Created);
 
         var application2 = await CreateApprovedApplicationAsync(client, "70110-1111111-2", healthCategoryId, zakatFundId, 2000m);
         var payment2 = await ReadOrFailAsync<PaymentDto>(await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application2.Id, 2000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, null, null, null, null)), HttpStatusCode.Created);
+            application2.Id, 2000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null)), HttpStatusCode.Created);
 
         // Reversal rows: one voided donation, one voided payment — must appear as their own rows,
         // never filtered out, since that's what keeps the running balance reconcilable.

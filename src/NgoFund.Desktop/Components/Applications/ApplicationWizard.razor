@@ -10,12 +10,12 @@
    create shape the old 2-step flow already had, just with more steps after the reveal.
 
    Save points (deliberately NOT saving on every page — see the milestone brief):
-     - POST /api/applications when leaving the Applicant & Request page.
-     - PUT /api/applications/{id} when leaving Household & Address/Intake, and again on Finish
-       (Declaration & Terms) — needed because UpdateApplicationRequest is a full-replace DTO and
-       IntakeChannel can only be set at creation (UpdateApplicationRequest has no IntakeChannel
-       property), so Intake fields live on page 1 even though a couple of the per-category page
-       titles below read "Household & Intake" for naming-consistency with the no-details flow.
+     - POST /api/applications when leaving the Applicant & Request page. IntakeChannel is always
+       "InApp" here (see CreateApplicationAsync) — the intake dropdown was removed once paper
+       forms were discontinued and Google-Form-originated applications started arriving via a
+       direct API integration instead of being re-keyed through this wizard.
+     - PUT /api/applications/{id} when leaving Household & Address, and again on Finish
+       (Declaration & Terms) — needed because UpdateApplicationRequest is a full-replace DTO.
      - PUT .../details/{category} once, when leaving the LAST category-detail page (Marriage and
        Business Loan each split across two pages — save fires leaving the second, not the first).
      - PUT .../guarantors once, when leaving the LAST guarantor page.
@@ -129,30 +129,9 @@
                             <FormField Label="Application Date" For="wizardDate">
                                 <InputDate id="wizardDate" @bind-Value="_requestForm.ApplicationDate" />
                             </FormField>
-                            <FormField Label="Purpose" For="wizardPurpose" CssClass="span-2">
+                            <FormField Label="Purpose *" For="wizardPurpose" CssClass="span-2">
                                 <InputTextArea id="wizardPurpose" @bind-Value="_requestForm.Purpose" />
                             </FormField>
-                        </div>
-                    </FormSection>
-
-                    <FormSection Title="Intake" Description="How this application reached the office.">
-                        <div class="form-grid">
-                            <FormField Label="Intake Channel" For="wizardIntake">
-                                <InputSelect id="wizardIntake" @bind-Value="_requestForm.IntakeChannel">
-                                    <option value="InApp">In App</option>
-                                    <option value="GoogleForm">Google Form</option>
-                                    <option value="Paper">Paper</option>
-                                </InputSelect>
-                            </FormField>
-                            @if (_requestForm.IntakeChannel != "InApp")
-                            {
-                                <FormField Label="External Form Reference" For="wizardExternalRef">
-                                    <InputText id="wizardExternalRef" @bind-Value="_requestForm.ExternalFormReference" />
-                                </FormField>
-                                <FormField Label="Originally Submitted" For="wizardSubmittedAt" Hint="When the applicant submitted the original form — distinct from today's data-entry date.">
-                                    <InputDate id="wizardSubmittedAt" @bind-Value="_requestForm.SubmittedAt" />
-                                </FormField>
-                            }
                         </div>
                     </FormSection>
                 </EditForm>
@@ -434,9 +413,15 @@
     {
         WizardPageKind.ApplicantRequest => _selectedApplicant is not null
             && _requestForm.ApplicationCategoryId is not null && _requestForm.FundCategoryId is not null
-            && _requestForm.RequestedAmount > 0,
+            && _requestForm.RequestedAmount > 0 && !string.IsNullOrWhiteSpace(_requestForm.Purpose),
         WizardPageKind.MarriageBride => !string.IsNullOrWhiteSpace(_marriageForm.BrideName),
-        WizardPageKind.MarriageGroom => !string.IsNullOrWhiteSpace(_marriageForm.GroomName),
+        // Item 5 (2026-09 feedback): only phone/address/CNIC/document are relaxed for the groom —
+        // name, father's name, jamaat, and marital status stay required per the client's explicit
+        // answer ("the ease is only for groom's information" contact/CNIC fields).
+        WizardPageKind.MarriageGroom => !string.IsNullOrWhiteSpace(_marriageForm.GroomName)
+            && !string.IsNullOrWhiteSpace(_marriageForm.GroomFatherName)
+            && !string.IsNullOrWhiteSpace(_marriageForm.GroomJamaat)
+            && !string.IsNullOrWhiteSpace(_marriageForm.GroomMaritalStatus),
         WizardPageKind.BusinessProposal => !string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription),
         WizardPageKind.Guarantor => _guarantorRows.Count > CurrentGuarantorIndex && IsGuarantorRowValid(_guarantorRows[CurrentGuarantorIndex]),
         WizardPageKind.Declaration => DocumentsAndDetailsComplete && DeclarationFieldsValid,
@@ -474,12 +459,18 @@
         SelectedCategory?.TermsText is null
         || (_declarationForm.DeclarationAcceptedBool && _declarationForm.TermsAcceptedBool);
 
-    /// <summary>Mirrors ReplaceApplicationGuarantorsRequestValidator's per-guarantor required set
-    /// (Name + Cnic + MembershipNumber) so Next is disabled client-side before a name-only
-    /// guarantor ever reaches the server-side rejection (F2).</summary>
+    /// <summary>Mirrors ReplaceApplicationGuarantorsRequestValidator's per-guarantor required set,
+    /// which now enforces all eight of these fields (Name, Cnic, MembershipNumber, both addresses,
+    /// all three phone numbers) — the item 7 (2026-09 feedback) "all five" contact fields were added
+    /// to the server-side validator after this gate was first written, so this is a client-side
+    /// mirror of a real server-side requirement, not a client-only gate: Next is disabled here so
+    /// staff get immediate feedback instead of a round trip to the server-side rejection (F2).</summary>
     private static bool IsGuarantorRowValid(GuarantorRowModel row) =>
         !string.IsNullOrWhiteSpace(row.FullName) && !string.IsNullOrWhiteSpace(row.Cnic)
-        && !string.IsNullOrWhiteSpace(row.MembershipNumber);
+        && !string.IsNullOrWhiteSpace(row.MembershipNumber)
+        && !string.IsNullOrWhiteSpace(row.ResidentialAddress) && !string.IsNullOrWhiteSpace(row.BusinessAddress)
+        && !string.IsNullOrWhiteSpace(row.PhoneHome) && !string.IsNullOrWhiteSpace(row.PhoneOffice)
+        && !string.IsNullOrWhiteSpace(row.PhoneMobile);
 
     /// <summary>Google-Forms-style "you missed something" message for the current page, shown via
     /// <see cref="_pageError"/> when Next/Finish is clicked while <see cref="CurrentPageValid"/> is
@@ -493,9 +484,14 @@
             (_selectedApplicant is null, "Applicant"),
             (_requestForm.ApplicationCategoryId is null, "Category"),
             (_requestForm.FundCategoryId is null, "Fund"),
-            (_requestForm.RequestedAmount <= 0, "Requested Amount")),
+            (_requestForm.RequestedAmount <= 0, "Requested Amount"),
+            (string.IsNullOrWhiteSpace(_requestForm.Purpose), "Purpose")),
         WizardPageKind.MarriageBride => string.IsNullOrWhiteSpace(_marriageForm.BrideName) ? "Bride's Name is required." : null,
-        WizardPageKind.MarriageGroom => string.IsNullOrWhiteSpace(_marriageForm.GroomName) ? "Groom's Name is required." : null,
+        WizardPageKind.MarriageGroom => JoinMissingFields(
+            (string.IsNullOrWhiteSpace(_marriageForm.GroomName), "Groom's Name"),
+            (string.IsNullOrWhiteSpace(_marriageForm.GroomFatherName), "Groom's Father Name"),
+            (string.IsNullOrWhiteSpace(_marriageForm.GroomJamaat), "Groom's Jamaat"),
+            (string.IsNullOrWhiteSpace(_marriageForm.GroomMaritalStatus), "Groom's Marital Status")),
         WizardPageKind.BusinessProposal => string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription) ? "Proposed Business Description is required." : null,
         WizardPageKind.Guarantor => GuarantorMissingMessage(),
         WizardPageKind.Declaration => DeclarationMissingMessage(),
@@ -513,7 +509,12 @@
         return JoinMissingFields(
             (string.IsNullOrWhiteSpace(row.FullName), "Full Name"),
             (string.IsNullOrWhiteSpace(row.Cnic), "CNIC"),
-            (string.IsNullOrWhiteSpace(row.MembershipNumber), "Membership Number"));
+            (string.IsNullOrWhiteSpace(row.MembershipNumber), "Membership Number"),
+            (string.IsNullOrWhiteSpace(row.ResidentialAddress), "Residential Address"),
+            (string.IsNullOrWhiteSpace(row.BusinessAddress), "Business Address"),
+            (string.IsNullOrWhiteSpace(row.PhoneHome), "Phone (Home)"),
+            (string.IsNullOrWhiteSpace(row.PhoneOffice), "Phone (Office)"),
+            (string.IsNullOrWhiteSpace(row.PhoneMobile), "Phone (Mobile)"));
     }
 
     private string? DeclarationMissingMessage()
@@ -700,9 +701,9 @@
         try
         {
             // Category is create-time-only (locked in the markup above once _application is not
-            // null, same as IntakeChannel) — changing it post-creation would orphan any
-            // already-saved category-detail rows, guarantor rows, and document slot keys tagged
-            // against the original category (ApplicationDetailsService.EnsureCategoryAsync throws
+            // null) — changing it post-creation would orphan any already-saved category-detail
+            // rows, guarantor rows, and document slot keys tagged against the original category
+            // (ApplicationDetailsService.EnsureCategoryAsync throws
             // ApplicationCategoryMismatchException for a mismatched category, making those rows
             // permanently unreachable through this wizard). So there's no page-rebuild branch here
             // — just save-and-advance, like every later page's Next.
@@ -730,12 +731,16 @@
         _pageError = null;
         try
         {
+            // The desktop wizard only ever creates In-App applications now (paper forms are
+            // discontinued; Google-Form-originated applications are created by an external
+            // integration posting to POST /api/applications directly). IntakeChannel is passed
+            // explicitly here rather than relying on the contract's default value, so this call
+            // site stays self-documenting and immune to the default ever changing later.
             var created = await ApiClient.CreateApplicationAsync(new CreateApplicationRequest(
                 _selectedApplicant.Id, _requestForm.ApplicationCategoryId.Value, _requestForm.FundCategoryId.Value,
                 _requestForm.RequestedAmount, _requestForm.Priority, _requestForm.ApplicationDate, _requestForm.Purpose,
                 null, null, null, null, null, null,
-                _requestForm.IntakeChannel, _requestForm.ExternalFormReference, _requestForm.SubmittedAt,
-                null, null, SelectedCategory?.TermsVersion));
+                IntakeChannel: "InApp", TermsVersion: SelectedCategory?.TermsVersion));
 
             _application = created;
             Toast.Success($"Application created · {created.ApplicationNumber}");
@@ -793,8 +798,8 @@
         _requestForm.RequestedAmount, _application!.ApprovedAmount, _requestForm.Priority, _requestForm.Purpose,
         _householdForm.DeclaredMonthlyIncome, _householdForm.DeclaredHouseholdSize, _householdForm.DeclaredEarningMembers,
         _householdForm.DeclaredResidentialAddress, _householdForm.DeclaredBusinessAddress, _householdForm.DeclaredHouseStatus,
-        _requestForm.ExternalFormReference, _requestForm.SubmittedAt,
-        _declarationForm.DeclarationAcceptedAt, _declarationForm.TermsAcceptedAt, SelectedCategory?.TermsVersion);
+        DeclarationAcceptedAt: _declarationForm.DeclarationAcceptedAt, TermsAcceptedAt: _declarationForm.TermsAcceptedAt,
+        TermsVersion: SelectedCategory?.TermsVersion);
 
     private async Task SaveHouseholdAndAdvanceAsync()
     {
@@ -1029,10 +1034,8 @@
         public decimal RequestedAmount { get; set; }
         public string Priority { get; set; } = "Normal";
         public DateOnly ApplicationDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        [Required(ErrorMessage = "Purpose is required.")]
         public string? Purpose { get; set; }
-        public string IntakeChannel { get; set; } = "InApp";
-        public string? ExternalFormReference { get; set; }
-        public DateTimeOffset? SubmittedAt { get; set; }
     }
 
     private class HouseholdFormModel

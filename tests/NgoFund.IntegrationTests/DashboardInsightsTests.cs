@@ -102,10 +102,10 @@ public class DashboardInsightsWorkflowTests(AuthApiFactory factory) : IClassFixt
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
-        await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null));
+        await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
-            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null, "Recipient", null, null, null));
+            application.Id, 4000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));
         await ReadOrFailAsync<PaymentDto>(paymentResponse, HttpStatusCode.Created);
 
         var insightsResponse = await client.GetAsync("/api/reports/dashboard/insights");

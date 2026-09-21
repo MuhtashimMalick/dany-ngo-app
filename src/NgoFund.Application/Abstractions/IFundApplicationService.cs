@@ -40,4 +40,11 @@ public interface IFundApplicationService
     /// step and the manage-view checklist, using the exact same evaluator the Approved-transition
     /// gate in <see cref="ChangeStatusAsync"/> runs, so the two can never disagree.</summary>
     Task<ApplicationCompletenessDto> GetCompletenessAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Mirror direction of item 4's guarantor-row override: approves proceeding despite this
+    /// application's own applicant being a guarantor on another currently active application. Stamps
+    /// the applicant's CURRENT CNIC onto the override so it self-heals if the CNIC is later edited —
+    /// see <c>FundApplication.HasValidApplicantGuarantorConflictOverride</c>.</summary>
+    Task<ApplicationDto> ApproveApplicantGuarantorConflictOverrideAsync(
+        Guid id, ApproveApplicantGuarantorConflictOverrideRequest request, CancellationToken cancellationToken);
 }

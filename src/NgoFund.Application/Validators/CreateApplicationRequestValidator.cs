@@ -15,6 +15,9 @@ public class CreateApplicationRequestValidator : AbstractValidator<CreateApplica
         RuleFor(x => x.Priority).NotEmpty().Must(v => Enum.TryParse<ApplicationPriority>(v, out _))
             .WithMessage($"Priority must be one of: {string.Join(", ", Enum.GetNames<ApplicationPriority>())}.");
         RuleFor(x => x.ApplicationDate).NotEqual(default(DateOnly));
-        RuleFor(x => x.Purpose).MaximumLength(1000);
+        RuleFor(x => x.Purpose).NotEmpty().MaximumLength(1000);
+        RuleFor(x => x.IntakeChannel).NotEmpty().Must(v => Enum.TryParse<ApplicationIntakeChannel>(v, out _))
+            .WithMessage($"IntakeChannel must be one of: {string.Join(", ", Enum.GetNames<ApplicationIntakeChannel>())}.");
+        RuleFor(x => x.ExternalFormReference).MaximumLength(100);
     }
 }

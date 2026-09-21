@@ -27,6 +27,10 @@ public class ApplicationGuarantorConfiguration : IEntityTypeConfiguration<Applic
         builder.Property(e => e.PhoneOffice).HasMaxLength(30);
         builder.Property(e => e.PhoneMobile).HasMaxLength(12);
 
+        // ConflictOverrideApprovedAt/ConflictOverrideApprovedBy need no explicit config — the
+        // snake_case convention already names them conflict_override_approved_at/_by.
+        builder.Property(e => e.ConflictOverrideReason).HasMaxLength(500);
+
         // Partial, not a plain unique index: ApplicationGuarantor is ISoftDeletable, and
         // ReplaceGuarantorsAsync soft-deletes guarantors dropped from the incoming list (via the
         // AuditSaveChangesInterceptor's Remove -> soft-delete conversion) — a hard unique index

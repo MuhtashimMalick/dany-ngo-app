@@ -683,6 +683,19 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(15)")
                         .HasColumnName("cnic");
 
+                    b.Property<DateTimeOffset?>("ConflictOverrideApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("conflict_override_approved_at");
+
+                    b.Property<Guid?>("ConflictOverrideApprovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conflict_override_approved_by");
+
+                    b.Property<string>("ConflictOverrideReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("conflict_override_reason");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1424,6 +1437,24 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("ApplicantGuarantorConflictOverrideApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applicant_guarantor_conflict_override_approved_at");
+
+                    b.Property<Guid?>("ApplicantGuarantorConflictOverrideApprovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("applicant_guarantor_conflict_override_approved_by");
+
+                    b.Property<string>("ApplicantGuarantorConflictOverrideCnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("applicant_guarantor_conflict_override_cnic");
+
+                    b.Property<string>("ApplicantGuarantorConflictOverrideReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("applicant_guarantor_conflict_override_reason");
+
                     b.Property<Guid>("ApplicantId")
                         .HasColumnType("uuid")
                         .HasColumnName("applicant_id");
@@ -1596,8 +1627,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
                     b.ToTable("applications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_applications_approved_amount_le_requested", "approved_amount IS NULL OR approved_amount <= requested_amount");
-
                             t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount > 0");
                         });
                 });
@@ -2304,21 +2333,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("instrument_number");
 
-                    b.Property<string>("PaidToCnic")
-                        .HasMaxLength(15)
-                        .HasColumnType("character varying(15)")
-                        .HasColumnName("paid_to_cnic");
-
-                    b.Property<string>("PaidToName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("paid_to_name");
-
-                    b.Property<string>("PaidToRelation")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("paid_to_relation");
-
                     b.Property<DateOnly>("PaymentDate")
                         .HasColumnType("date")
                         .HasColumnName("payment_date");
@@ -2334,11 +2348,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("payment_number");
-
-                    b.Property<string>("Remarks")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("remarks");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2650,6 +2659,14 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                             Code = "applications.approve",
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DisplayName = "Approve/Reject Applications",
+                            Module = "applications"
+                        },
+                        new
+                        {
+                            Id = new Guid("ef8f3f78-687a-2f21-c3d1-8facd81d7a1a"),
+                            Code = "applications.overrideguarantor",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Override Guarantor Conflicts",
                             Module = "applications"
                         },
                         new
@@ -3196,6 +3213,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         {
                             RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
                             PermissionId = new Guid("30e1b3a4-9661-1641-f772-0702f3abfb76")
+                        },
+                        new
+                        {
+                            RoleId = new Guid("e9da1089-6ad9-7f34-3937-7976d95ae7a0"),
+                            PermissionId = new Guid("ef8f3f78-687a-2f21-c3d1-8facd81d7a1a")
                         },
                         new
                         {

@@ -395,10 +395,14 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         return await ReadOrThrowAsync<ApplicationCompletenessDto>(response, cancellationToken);
     }
 
-    public async Task ChangeApplicationStatusAsync(Guid id, string newStatus, string? remarks, string? rejectionReason, CancellationToken cancellationToken = default)
+    /// <summary><paramref name="approvedAmount"/> (item 1, 2026-09 feedback) is only meaningful when
+    /// <paramref name="newStatus"/> is "Approved" — see <c>ChangeApplicationStatusRequest</c>'s doc
+    /// comment for when it may be omitted.</summary>
+    public async Task ChangeApplicationStatusAsync(
+        Guid id, string newStatus, string? remarks, string? rejectionReason, decimal? approvedAmount = null, CancellationToken cancellationToken = default)
     {
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Post, $"api/applications/{id}/status", cancellationToken);
-        request.Content = JsonContent.Create(new ChangeApplicationStatusRequest(newStatus, remarks, rejectionReason));
+        request.Content = JsonContent.Create(new ChangeApplicationStatusRequest(newStatus, remarks, rejectionReason, approvedAmount));
         var response = await httpClient.SendAsync(request, cancellationToken);
         await ThrowIfErrorAsync(response);
     }
@@ -494,6 +498,28 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         request.Content = JsonContent.Create(replaceRequest);
         var response = await httpClient.SendAsync(request, cancellationToken);
         return await ReadOrThrowAsync<List<ApplicationGuarantorDto>>(response, cancellationToken);
+    }
+
+    /// <summary>Item 4 (2026-09 feedback): staff explicitly approving that this guarantor's CNIC
+    /// conflict with another active application is acceptable — gated server-side by the
+    /// "applications.overrideguarantor" permission.</summary>
+    public async Task<ApplicationGuarantorDto> ApproveGuarantorConflictOverrideAsync(Guid applicationId, Guid guarantorId, string reason, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Post, $"api/applications/{applicationId}/guarantors/{guarantorId}/conflict-override", cancellationToken);
+        request.Content = JsonContent.Create(new ApproveGuarantorConflictOverrideRequest(reason));
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<ApplicationGuarantorDto>(response, cancellationToken);
+    }
+
+    /// <summary>Mirror direction of item 4's guarantor-conflict override: staff explicitly approving
+    /// that this application's applicant also appearing as a guarantor on another active application
+    /// is acceptable — gated server-side by the same "applications.overrideguarantor" permission.</summary>
+    public async Task<ApplicationDto> ApproveApplicantGuarantorConflictOverrideAsync(Guid applicationId, string reason, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Post, $"api/applications/{applicationId}/applicant-guarantor-conflict-override", cancellationToken);
+        request.Content = JsonContent.Create(new ApproveApplicantGuarantorConflictOverrideRequest(reason));
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<ApplicationDto>(response, cancellationToken);
     }
 
     public async Task<DocumentDto> UploadDocumentAsync(

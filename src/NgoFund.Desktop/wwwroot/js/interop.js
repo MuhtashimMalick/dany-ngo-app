@@ -247,9 +247,9 @@ window.ngoFundMotion = (() => {
       });
     },
 
-    // BusinessLoanDetailsSection.razor: the non-blocking AmountMismatchWarning banner appearing
-    // after a save completes — a small settle-in so its arrival reads as a direct consequence of
-    // the save, not content that silently changed underneath the user.
+    // GuarantorsEditor.razor: the non-blocking guarantor-conflict banner appearing on a row after
+    // a save completes — a small settle-in so its arrival reads as a direct consequence of the
+    // save, not content that silently changed underneath the user.
     animateWarningBanner(selector) {
       withReducedMotionGuard((reduceMotion) => {
         gsap.fromTo(

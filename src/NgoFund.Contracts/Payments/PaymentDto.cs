@@ -13,10 +13,6 @@ public record PaymentDto(
     string PaymentMethod,
     string? InstrumentNumber,
     string? BankName,
-    string? PaidToName,
-    string? PaidToCnic,
-    string? PaidToRelation,
-    string? Remarks,
     string Status,
     DateTimeOffset? VoidedAt,
     string? VoidReason);

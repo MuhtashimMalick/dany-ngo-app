@@ -15,6 +15,14 @@ public class ChangeApplicationStatusRequestValidator : AbstractValidator<ChangeA
             .When(x => x.NewStatus == nameof(ApplicationStatus.Rejected))
             .WithMessage("A rejection reason is required when rejecting an application.");
 
+        // Item 1 (2026-09 feedback): when supplied on an Approved transition, it must be positive.
+        // Not required outright (no .When(... && ApprovedAmount is not null) guard would be needed
+        // for a NotEmpty rule) — omitting it is legal when re-approving from OnHold, in which case
+        // FundApplicationService.ChangeStatusAsync keeps the application's existing approved amount.
+        RuleFor(x => x.ApprovedAmount).GreaterThan(0)
+            .When(x => x.NewStatus == nameof(ApplicationStatus.Approved) && x.ApprovedAmount is not null)
+            .WithMessage("Approved amount must be greater than zero.");
+
         RuleFor(x => x.Remarks).MaximumLength(1000);
     }
 }

@@ -6,8 +6,4 @@ public record CreatePaymentRequest(
     DateOnly PaymentDate,
     string PaymentMethod,
     string? InstrumentNumber,
-    string? BankName,
-    string? PaidToName,
-    string? PaidToCnic,
-    string? PaidToRelation,
-    string? Remarks);
+    string? BankName);
