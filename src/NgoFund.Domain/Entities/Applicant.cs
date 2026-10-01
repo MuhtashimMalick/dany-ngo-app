@@ -29,7 +29,9 @@ public class Applicant : BaseEntity, IUpdateAuditable, ISoftDeletable
 
     public string Cnic { get; set; } = null!;
 
-    public Gender Gender { get; set; }
+    /// <summary>Nullable because no Google Form asks for gender — an intake-created applicant has
+    /// it null until staff fill it in. Staff Create/Update requests keep requiring it.</summary>
+    public Gender? Gender { get; set; }
 
     public DateOnly? DateOfBirth { get; set; }
 

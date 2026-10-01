@@ -13,7 +13,11 @@ public record ApplicationDto(
     string ApplicationCategoryCode,
     Guid FundCategoryId,
     string FundCategoryName,
-    decimal RequestedAmount,
+    /// <summary>Nullable because Google Form intake only asks for an amount on the ROZGAR form —
+    /// every other category's form has no amount field. The staff Create/Update validators still
+    /// require it &gt; 0 for in-app data entry; <c>ApplicationCompletenessEvaluator.MissingBaseFields</c>
+    /// blocks Approved until it's filled in.</summary>
+    decimal? RequestedAmount,
     decimal? ApprovedAmount,
     string Status,
     string Priority,

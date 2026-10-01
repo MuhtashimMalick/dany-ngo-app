@@ -26,6 +26,7 @@ internal static class ActivityNarrator
         Donor donor => NarrateDonor(donor, efAction),
         Donation donation => NarrateDonation(entry, donation, efAction),
         Applicant applicant => NarrateApplicant(entry, applicant, efAction),
+        Document document => NarrateDocument(entry, document, efAction),
         FundApplication application => NarrateFundApplication(entry, application, efAction),
         Payment payment => NarratePayment(entry, payment, efAction),
         LoanAgreement loan => NarrateLoanAgreement(entry, loan, efAction),
@@ -95,6 +96,37 @@ internal static class ActivityNarrator
         }
 
         return null;
+    }
+
+    /// <summary>Only the four applicant-profile document types that
+    /// <c>ApplicantService.ReplaceProfileDocumentAsync</c> can replace in place — everything else
+    /// (creates, deletes, description-only edits, application/guarantor-owned documents, and
+    /// non-profile types like SupportingDocument) stays in the "audited, not narrated" tier.</summary>
+    private static readonly Dictionary<DocumentType, string> ProfileDocumentDisplayNames = new()
+    {
+        [DocumentType.ApplicantPhoto] = "Profile photo",
+        [DocumentType.CnicFront] = "CNIC (Front)",
+        [DocumentType.CnicBack] = "CNIC (Back)",
+        [DocumentType.MembershipCard] = "Jamaat Membership Card",
+    };
+
+    private static ActivityNarration? NarrateDocument(EntityEntry entry, Document document, string efAction)
+    {
+        if (efAction != "Update"
+            || document.ApplicantId is null
+            || !ProfileDocumentDisplayNames.TryGetValue(document.DocumentType, out var displayName)
+            || !entry.Property(nameof(Document.StorageKey)).ActuallyChanged())
+        {
+            return null;
+        }
+
+        var applicant = entry.Reference(nameof(Document.Applicant)).TargetEntry?.Entity as Applicant;
+
+        var summary = applicant is not null
+            ? $"{displayName} for applicant \"{applicant.FullName}\" was replaced"
+            : $"An applicant's {displayName} was replaced";
+
+        return new("Applicant", applicant?.MembershipNumber, ActivityVerb.Updated, summary);
     }
 
     private static ActivityNarration? NarrateFundApplication(EntityEntry entry, FundApplication application, string efAction)

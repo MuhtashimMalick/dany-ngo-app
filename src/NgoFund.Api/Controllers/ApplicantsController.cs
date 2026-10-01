@@ -1,10 +1,12 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NgoFund.Api.Authorization;
 using NgoFund.Application.Abstractions;
 using NgoFund.Contracts.Applicants;
 using NgoFund.Contracts.Common;
+using NgoFund.Contracts.Documents;
 using NgoFund.Contracts.Ledgers;
 
 namespace NgoFund.Api.Controllers;
@@ -64,6 +66,21 @@ public class ApplicantsController(
     {
         await applicantService.SetProfilePhotoAsync(id, documentId, cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>"Set" semantics: replaces whatever document this applicant has on file for
+    /// <paramref name="documentType"/> (CnicFront/CnicBack/MembershipCard only — not
+    /// ApplicantPhoto, which has its own separate <c>PUT /{id}/photo</c> flow), in place.
+    /// See <see cref="IApplicantService.ReplaceProfileDocumentAsync"/>.</summary>
+    [HttpPut("{id:guid}/documents/{documentType}")]
+    [HasPermission("applicants.edit")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<DocumentDto>> ReplaceProfileDocument(Guid id, string documentType, IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        var result = await applicantService.ReplaceProfileDocumentAsync(id, documentType, stream, file.FileName, file.ContentType, ct);
+        return Ok(result);
     }
 
     /// <summary>This applicant's complete financial history across every fund. Not paged — one person's history is bounded. Gated on both money-viewing permissions, not a new one.</summary>

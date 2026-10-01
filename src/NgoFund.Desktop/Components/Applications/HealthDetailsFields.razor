@@ -1,0 +1,14 @@
+@* Field-only markup for HealthDetailsFormModel — backs the wizard's single "Health Details" page
+   and the manage modal's HealthDetailsSection. HEALTH's manifest is a single required field
+   (Applicant's Age) — see NgoFund.Domain.Applications.ApplicationRequirements.HealthApplicantAge —
+   the "describe the health issue" text lives on the base application's shared Purpose field
+   instead (see ApplicationWizard.razor's PurposeFieldLabel). *@
+<div class="form-grid">
+    <FormField Label="Applicant Age *" For="healthApplicantAge" ValidationFor="() => Model.ApplicantAge">
+        <InputNumber id="healthApplicantAge" @bind-Value="Model.ApplicantAge" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public HealthDetailsFormModel Model { get; set; } = null!;
+}

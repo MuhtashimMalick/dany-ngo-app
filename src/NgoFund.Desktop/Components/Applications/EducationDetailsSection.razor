@@ -1,0 +1,115 @@
+@* Education Assistance (EDUCATION) category-detail form — self-contained, same load/save pattern
+   as HousingDetailsSection (see its doc comment). Used by the manage modal's Details tab as a
+   single block; the create-flow wizard splits the same two field groups (EducationStudentFields/
+   EducationParentFields) across its own "Student Information" and "Parents' Information" pages
+   instead of reusing this wrapper. *@
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+
+<FormSection Title="Education Assistance Details" Description="From the applicant's Education Assistance form.">
+    @if (_error is not null)
+    {
+        <div class="alert alert-error">@_error</div>
+    }
+
+    @if (_isLoading)
+    {
+        <Skeleton Rows="4" Columns="2" />
+    }
+    else
+    {
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="education-details-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                <EducationStudentFields Model="_form" />
+                <EducationParentFields Model="_form" />
+            </fieldset>
+
+            @if (CanEdit)
+            {
+                <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Education Details")</button>
+            }
+        </EditForm>
+    }
+</FormSection>
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private string? _error;
+    private EducationDetailsFormModel _form = new();
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var existing = await ApiClient.GetEducationDetailsAsync(ApplicationId);
+            if (existing is not null)
+            {
+                _form = new EducationDetailsFormModel
+                {
+                    CensusNumber = existing.CensusNumber,
+                    StudentName = existing.StudentName,
+                    WmoId = existing.WmoId,
+                    StudentMobile = existing.StudentMobile,
+                    CurrentClass = existing.CurrentClass,
+                    PreviousClass = existing.PreviousClass,
+                    LastExamTotalMarks = existing.LastExamTotalMarks,
+                    LastExamMarksObtained = existing.LastExamMarksObtained,
+                    PreviousYearAttendancePercent = existing.PreviousYearAttendancePercent,
+                    TotalAttendanceDays = existing.TotalAttendanceDays,
+                    TotalAcademicDays = existing.TotalAcademicDays,
+                    FatherJamaat = existing.FatherJamaat,
+                    MotherName = existing.MotherName,
+                    MotherFatherName = existing.MotherFatherName,
+                    MotherCaste = existing.MotherCaste,
+                    MotherJamaat = existing.MotherJamaat,
+                    MotherMembershipNumber = existing.MotherMembershipNumber,
+                    MotherCnic = existing.MotherCnic,
+                    MotherMonthlyIncome = existing.MotherMonthlyIncome,
+                    MotherMobile = existing.MotherMobile,
+                    MotherProfession = existing.MotherProfession,
+                };
+            }
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            await ApiClient.UpsertEducationDetailsAsync(ApplicationId, new UpsertEducationApplicationDetailsRequest(
+                _form.CensusNumber, _form.StudentName, _form.WmoId, _form.StudentMobile, _form.CurrentClass,
+                _form.PreviousClass, _form.LastExamTotalMarks, _form.LastExamMarksObtained, _form.PreviousYearAttendancePercent,
+                _form.TotalAttendanceDays, _form.TotalAcademicDays, _form.FatherJamaat, _form.MotherName,
+                _form.MotherFatherName, _form.MotherCaste, _form.MotherJamaat, _form.MotherMembershipNumber,
+                _form.MotherCnic, _form.MotherMonthlyIncome, _form.MotherMobile, _form.MotherProfession));
+            Toast.Success("Education details saved");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

@@ -44,6 +44,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<HousingApplicationDetails> HousingApplicationDetails => Set<HousingApplicationDetails>();
     public DbSet<MarriageApplicationDetails> MarriageApplicationDetails => Set<MarriageApplicationDetails>();
     public DbSet<BusinessLoanApplicationDetails> BusinessLoanApplicationDetails => Set<BusinessLoanApplicationDetails>();
+    public DbSet<EducationApplicationDetails> EducationApplicationDetails => Set<EducationApplicationDetails>();
+    public DbSet<HealthApplicationDetails> HealthApplicationDetails => Set<HealthApplicationDetails>();
     public DbSet<ApplicationGuarantor> ApplicationGuarantors => Set<ApplicationGuarantor>();
 
     // Payments & ledger

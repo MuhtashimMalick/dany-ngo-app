@@ -4,6 +4,7 @@
 @inject ToastService Toast
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IntakeNotificationState IntakeState
 
 <div class="page-header">
     @if (AuthState.HasPermission("applications.create"))
@@ -44,7 +45,27 @@
         <label for="dateToFilter">To</label>
         <input id="dateToFilter" type="date" @bind="_dateToFilter" @bind:after="() => LoadPageAsync(1)" />
     </div>
+    <div class="field filter-field-md mb-0">
+        <label for="channelFilter">Channel</label>
+        <select id="channelFilter" @bind="_channelFilter" @bind:after="() => LoadPageAsync(1)">
+            <option value="">All channels</option>
+            <option value="InApp">In-App</option>
+            <option value="GoogleForm">Google Form</option>
+        </select>
+    </div>
 </FilterBar>
+
+@if (_newIntakeBannerCount > 0 && !_intakeBannerDismissed)
+{
+    <div class="alert alert-info" id="@IntakeBannerId" role="status">
+        <Icon Name="info" Size="16" />
+        <span class="flex-1">@_newIntakeBannerCount new Google Form application@(_newIntakeBannerCount == 1 ? "" : "s") since your last visit</span>
+        <button type="button" class="btn btn-secondary btn-sm" @onclick="ShowNewIntakeApplicationsAsync">Show them</button>
+        <button type="button" class="icon-btn" aria-label="Dismiss" @onclick="() => _intakeBannerDismissed = true">
+            <Icon Name="close" Size="14" />
+        </button>
+    </div>
+}
 
 <FilterChips Filters="ActiveFilters" OnClearAll="ClearAllFiltersAsync" />
 
@@ -59,6 +80,7 @@
            EmptyDescription="Applications you record will appear here." EmptyIcon="applications">
     <HeaderRow>
         <th>App #</th>
+        <th>Channel</th>
         <th>Applicant</th>
         <th>Category</th>
         <th>Fund</th>
@@ -72,6 +94,7 @@
     <RowTemplate Context="application">
         <tr>
             <td>@application.ApplicationNumber</td>
+            <td><IntakeChannelChip Channel="@application.IntakeChannel" /></td>
             <td>
                 <span class="flex items-center gap-2">
                     @application.ApplicantName
@@ -91,7 +114,7 @@
             </td>
             <td>@application.ApplicationCategoryName</td>
             <td>@application.FundCategoryName</td>
-            <td class="num">@application.RequestedAmount.ToString("N2")</td>
+            <td class="num">@(application.RequestedAmount?.ToString("N2") ?? "Not stated")</td>
             <td class="num">@(application.ApprovedAmount?.ToString("N2") ?? "-")</td>
             <td>@application.Priority</td>
             <td><StatusBadge Status="@application.Status" /></td>
@@ -132,7 +155,7 @@
                 <div class="application-summary-amounts">
                     <div>
                         <div class="fund-balance-col-label">Requested</div>
-                        <div class="fund-balance-col-value">@_managing.RequestedAmount.ToString("N2")</div>
+                        <div class="fund-balance-col-value">@(_managing.RequestedAmount?.ToString("N2") ?? "Not stated")</div>
                     </div>
                     <div>
                         <div class="fund-balance-col-label">Approved</div>
@@ -157,9 +180,44 @@
                     <DetailItem Label="Category" Value="@_managing.ApplicationCategoryName" />
                     <DetailItem Label="Fund" Value="@_managing.FundCategoryName" />
                     <DetailItem Label="Priority" Value="@_managing.Priority" />
-                    <DetailItem Label="Intake Channel" Value="@_managing.IntakeChannel" />
+                    <DetailItem Label="Intake Channel">
+                        <IntakeChannelChip Channel="@_managing.IntakeChannel" />
+                    </DetailItem>
+                    @if (_managing.IntakeChannel == "GoogleForm")
+                    {
+                        <DetailItem Label="Google Form response ID">
+                            <span class="copy-affordance">
+                                <span class="mono-text">@(_managing.ExternalFormReference ?? "-")</span>
+                                @if (!string.IsNullOrEmpty(_managing.ExternalFormReference))
+                                {
+                                    <button type="button" class="copy-btn @(_copiedResponseReference ? "copied" : "")"
+                                            aria-label="Copy Google Form response ID" title="Copy response ID" @onclick="CopyResponseReferenceAsync">
+                                        <Icon Name="@(_copiedResponseReference ? "check-circle" : "copy")" Size="14" />
+                                    </button>
+                                }
+                            </span>
+                        </DetailItem>
+                        <DetailItem Label="Submitted">
+                            @if (_managing.SubmittedAt is { } submittedAt)
+                            {
+                                <span title="@submittedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")">@submittedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") (@RelativeTimeFormat.From(submittedAt))</span>
+                            }
+                            else
+                            {
+                                <text>-</text>
+                            }
+                        </DetailItem>
+                    }
                     <DetailItem Label="Purpose" Value="@_managing.Purpose" SpanFull="true" />
                 </DetailList>
+
+                @if (_managing.IntakeChannel == "GoogleForm" && (_managing.DeclarationAcceptedAt is null || _managing.TermsAcceptedAt is null))
+                {
+                    <div class="alert alert-warning">
+                        <Icon Name="alert-circle" Size="16" />
+                        <span>This Google Form application arrived without recorded terms/declaration acceptance — staff must capture it@(CategoryHasManifest ? " (see Completeness below)" : "").</span>
+                    </div>
+                }
 
                 @if (CategoryHasManifest)
                 {
@@ -168,17 +226,23 @@
                     </FormSection>
                 }
 
-                @if (_managing.ApplicationCategoryCode == "HOUSE_RENT")
+                @switch (CategoryCapabilities.DetailsSectionKind(_managing.ApplicationCategoryCode))
                 {
-                    <HousingDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
-                }
-                else if (_managing.ApplicationCategoryCode == "SHAADI")
-                {
-                    <MarriageDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
-                }
-                else if (_managing.ApplicationCategoryCode == "ROZGAR")
-                {
-                    <BusinessLoanDetailsSection ApplicationId="_managing.Id" RequestedAmount="_managing.RequestedAmount" @key="_managing.Id" />
+                    case CategoryDetailsSectionKind.Housing:
+                        <HousingDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
+                        break;
+                    case CategoryDetailsSectionKind.Marriage:
+                        <MarriageDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
+                        break;
+                    case CategoryDetailsSectionKind.BusinessLoan:
+                        <BusinessLoanDetailsSection ApplicationId="_managing.Id" RequestedAmount="_managing.RequestedAmount" @key="_managing.Id" />
+                        break;
+                    case CategoryDetailsSectionKind.Education:
+                        <EducationDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
+                        break;
+                    case CategoryDetailsSectionKind.Health:
+                        <HealthDetailsSection ApplicationId="_managing.Id" @key="_managing.Id" />
+                        break;
                 }
 
                 @if (AuthState.HasPermission("applications.review"))
@@ -245,7 +309,7 @@
                                         }
                                         else
                                         {
-                                            <span class="field-hint">Requested: PKR @_managing.RequestedAmount.ToString("N2")</span>
+                                            <span class="field-hint">Requested: @(_managing.RequestedAmount is { } requested ? $"PKR {requested:N2}" : "not stated")</span>
                                             @if (_approvedAmount > _managing.RequestedAmount)
                                             {
                                                 <span class="field-hint">PKR @((_approvedAmount - _managing.RequestedAmount)?.ToString("N2")) above the requested amount</span>
@@ -477,17 +541,45 @@
     [Parameter]
     public Guid? ApplicationIdQuery { get; set; }
 
+    // F4 (redesign): deep-link filters from the intake toast (MainLayout) —
+    // "/applications?intakeChannel=GoogleForm" (status is no longer part of that link; see
+    // MainLayout's GoogleFormFilterPath). Applied once per distinct incoming value (see
+    // OnParametersSetAsync) rather than on every parameter-set, so a filter the user clears
+    // manually afterward doesn't keep getting reapplied on unrelated re-renders. A plain visit to
+    // "/applications" (no query string) instead shows the "Show them" banner below when there are
+    // unread Google Form applications — see OnInitializedAsync's MarkSeenAsync call.
+    [SupplyParameterFromQuery(Name = "status")]
+    [Parameter]
+    public string? StatusQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "intakeChannel")]
+    [Parameter]
+    public string? IntakeChannelQuery { get; set; }
+
     private const int PageSize = 25;
     private PagedResult<ApplicationDto>? _page;
     private int _currentPage = 1;
     private string _search = "";
     private string _statusFilter = "";
     private string _categoryFilter = "";
+    private string _channelFilter = "";
     private DateOnly? _dateFromFilter;
     private DateOnly? _dateToFilter;
     private string? _errorMessage;
     private bool _pendingRowAnimation;
     private Guid? _autoOpenedApplicationId;
+    private string? _lastAppliedStatusQuery;
+    private string? _lastAppliedIntakeChannelQuery;
+
+    // F4 (redesign): "N new Google Form applications since your last visit" banner, shown only when
+    // the user arrived at a plain "/applications" (no intakeChannel query — that means they came via
+    // the toast's deep link already, which applies the filter itself; showing the banner too would
+    // be redundant). Set once in OnInitializedAsync from IntakeNotificationState.MarkSeenAsync's
+    // return value.
+    private int _newIntakeBannerCount;
+    private bool _intakeBannerDismissed;
+    private bool _pendingIntakeBannerAnimation;
+    private const string IntakeBannerId = "new-intake-banner";
 
     private IReadOnlyList<ApplicationCategoryDto> _categories = [];
     private IReadOnlyList<FundCategoryDto> _funds = [];
@@ -509,6 +601,25 @@
 
     private string ApplicantConflictBannerId => $"applicant-conflict-banner-{_managing?.Id:N}";
 
+    // F2: transient "copied" state for the Google Form response ID's copy-to-clipboard affordance
+    // in the detail view above — flips the icon to a checkmark for a moment, then reverts.
+    private bool _copiedResponseReference;
+
+    private async Task CopyResponseReferenceAsync()
+    {
+        if (_managing?.ExternalFormReference is not { } reference)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("ngoFundClipboard.copy", reference);
+        _copiedResponseReference = true;
+        StateHasChanged();
+        await Task.Delay(1500);
+        _copiedResponseReference = false;
+        StateHasChanged();
+    }
+
     private string? _manageError;
     private IReadOnlyList<ApplicationStatusHistoryDto> _history = [];
     private IReadOnlyList<ApplicationRemarkDto> _remarks = [];
@@ -525,14 +636,13 @@
 
     // Completeness backs both the manage modal's inline checklist and the Approve-gate below —
     // fetched alongside history/remarks/documents/payments in ReloadManageDataAsync so it's never
-    // stale relative to what the user is looking at. Only HOUSE_RENT/SHAADI/ROZGAR carry a document
-    // manifest — see CategoryHasManifest — everything else has nothing to check, matching how those
-    // categories behaved before this milestone.
+    // stale relative to what the user is looking at. Every category except EMERGENCY carries a
+    // document manifest — see CategoryCapabilities.HasManifest, the single source of truth for this
+    // (also used by ApplicationWizard.razor).
     private ApplicationCompletenessDto? _completeness;
     private bool _isCompletenessLoading;
 
-    private bool CategoryHasManifest =>
-        _managing?.ApplicationCategoryCode is "HOUSE_RENT" or "SHAADI" or "ROZGAR";
+    private bool CategoryHasManifest => CategoryCapabilities.HasManifest(_managing?.ApplicationCategoryCode);
 
     // Client-side mirror of the server's Approved-transition completeness gate (already enforced
     // API-side as the backstop) — disables the Apply button and shows why inline, rather than
@@ -636,16 +746,39 @@
             {
                 filters.Add(($"To: {_dateToFilter:yyyy-MM-dd}", async () => { _dateToFilter = null; await LoadPageAsync(1); }));
             }
+            if (!string.IsNullOrEmpty(_channelFilter))
+            {
+                filters.Add(($"Channel: {ChannelFilterLabel(_channelFilter)}", async () => { _channelFilter = ""; await LoadPageAsync(1); }));
+            }
             return filters;
         }
     }
+
+    private static string ChannelFilterLabel(string channel) => channel switch
+    {
+        "InApp" => "In-App",
+        "GoogleForm" => "Google Form",
+        _ => channel,
+    };
 
     private async Task ClearAllFiltersAsync()
     {
         _statusFilter = "";
         _categoryFilter = "";
+        _channelFilter = "";
         _dateFromFilter = null;
         _dateToFilter = null;
+        await LoadPageAsync(1);
+    }
+
+    // "Show them" on the new-intake banner: sets filter state directly (rather than navigating via
+    // URL) since the existing _lastApplied*Query guard in OnParametersSetAsync would otherwise skip
+    // re-applying an identical query string. Surfaces through the page's existing removable
+    // "Channel: Google Form" chip in ActiveFilters — no new filter-chip UI needed.
+    private async Task ShowNewIntakeApplicationsAsync()
+    {
+        _channelFilter = "GoogleForm";
+        _intakeBannerDismissed = true;
         await LoadPageAsync(1);
     }
 
@@ -654,13 +787,40 @@
         _categories = await ApiClient.GetApplicationCategoriesAsync();
         _funds = await ApiClient.GetFundCategoriesAsync();
         await LoadPageAsync(1);
+
+        // Marks Google Form intake as seen for this user — this also clears the sidebar badge
+        // immediately (IntakeNotificationState raises Changed, MainLayout re-renders) rather than
+        // waiting up to 60s for the next poll. Never throws; safe to await inline.
+        var cleared = await IntakeState.MarkSeenAsync();
+        if (cleared > 0 && string.IsNullOrWhiteSpace(IntakeChannelQuery))
+        {
+            _newIntakeBannerCount = cleared;
+            _pendingIntakeBannerAnimation = true;
+        }
     }
 
     // Deep-link from the Dashboard's "Needs Attention" list — GoToApplication navigates here with
     // ?applicationId={id}, and this opens that specific application's manage modal on load instead
     // of just landing on the unfiltered list (the fix for the dead-end links the client flagged).
+    // Also handles the sidebar's Google Form badge/toast deep link (F3/F4):
+    // "?status=Pending&intakeChannel=GoogleForm" — applied once per distinct incoming query value
+    // (compared against what was last applied) so clicking the badge again while already on this
+    // page re-applies the filter, but an unrelated re-render never clobbers a filter the user
+    // changed by hand afterward.
     protected override async Task OnParametersSetAsync()
     {
+        if (StatusQuery != _lastAppliedStatusQuery || IntakeChannelQuery != _lastAppliedIntakeChannelQuery)
+        {
+            _lastAppliedStatusQuery = StatusQuery;
+            _lastAppliedIntakeChannelQuery = IntakeChannelQuery;
+            if (!string.IsNullOrWhiteSpace(StatusQuery) || !string.IsNullOrWhiteSpace(IntakeChannelQuery))
+            {
+                _statusFilter = StatusQuery ?? "";
+                _channelFilter = IntakeChannelQuery ?? "";
+                await LoadPageAsync(1);
+            }
+        }
+
         if (ApplicationIdQuery is { } id && id != _autoOpenedApplicationId)
         {
             _autoOpenedApplicationId = id;
@@ -689,6 +849,12 @@
             _pendingApplicantConflictAnimation = false;
             await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", $"#{ApplicantConflictBannerId}");
         }
+
+        if (_pendingIntakeBannerAnimation)
+        {
+            _pendingIntakeBannerAnimation = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateWarningBanner", $"#{IntakeBannerId}");
+        }
     }
 
     private int _loadToken;
@@ -705,7 +871,8 @@
                 applicantId: null,
                 categoryId: string.IsNullOrWhiteSpace(_categoryFilter) ? null : Guid.Parse(_categoryFilter),
                 dateFrom: _dateFromFilter,
-                dateTo: _dateToFilter);
+                dateTo: _dateToFilter,
+                intakeChannel: string.IsNullOrWhiteSpace(_channelFilter) ? null : _channelFilter);
             if (token != _loadToken)
             {
                 return; // a newer load superseded this one; discard

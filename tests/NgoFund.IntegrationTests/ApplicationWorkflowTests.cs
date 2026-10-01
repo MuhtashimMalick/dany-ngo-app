@@ -88,6 +88,10 @@ public class ApplicationWorkflowTests(AuthApiFactory factory) : IClassFixture<Au
             new ChangeApplicationStatusRequest("UnderReview", "Looks legitimate", null));
         Assert.Equal(HttpStatusCode.NoContent, reviewResponse.StatusCode);
 
+        // Feedback round 3, item I: HEALTH now has a real completeness manifest (Google Form
+        // intake's A9) — the Approved transition below 422s without it.
+        await ApplicationCompletenessTestHelpers.CompleteHealthDetailsAsync(client, application.Id);
+
         // UnderReview -> Approved
         var approveResponse = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",
             new ChangeApplicationStatusRequest("Approved", "Approved in full", null, 15000m));

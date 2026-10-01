@@ -1,0 +1,28 @@
+@* Small reusable chip for ApplicationDto.IntakeChannel (F2) — reuses the existing .badge token/dot
+   styling (same convention as StatusBadge) so Google-Form-originated applications read distinctly
+   from In-App (and legacy Paper) ones at a glance, in both the Applications list rows and the
+   manage/detail view. One component, both call sites, so the three channel labels/colors can never
+   drift between them. *@
+<span class="badge @CssKey">@Label</span>
+
+@code {
+    [Parameter, EditorRequired] public string Channel { get; set; } = "";
+
+    private string CssKey => Channel switch
+    {
+        "GoogleForm" => "badge-intake-googleform",
+        "Paper" => "badge-intake-paper",
+        _ => "badge-intake-inapp",
+    };
+
+    private string Label => Channel switch
+    {
+        "InApp" => "In-App",
+        "GoogleForm" => "Google Form",
+        // Paper forms are discontinued (see ApplicationWizard.razor's header comment) — any
+        // existing Paper-channel rows are historical, so the chip says so rather than implying
+        // it's still a live intake path.
+        "Paper" => "Paper (legacy)",
+        _ => Channel,
+    };
+}

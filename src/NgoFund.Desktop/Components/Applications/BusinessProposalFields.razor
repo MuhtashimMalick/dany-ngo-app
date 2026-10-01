@@ -40,8 +40,9 @@
 
 @code {
     [Parameter, EditorRequired] public BusinessLoanDetailsFormModel Model { get; set; } = null!;
-    [Parameter] public decimal RequestedAmount { get; set; }
+    // Nullable (F5) — see BusinessLoanDetailsSection's doc comment on its own RequestedAmount param.
+    [Parameter] public decimal? RequestedAmount { get; set; }
 
     private string CapitalHint =>
-        $"What the business needs in total — a separate, applicant-entered figure from the Requested Amount (PKR {RequestedAmount:N2}), which is what's being asked of the NGO. A gap between the two is expected: it's meant to be covered by \"Capital Already Available\" below, not an error or something to be deducted.";
+        $"What the business needs in total — a separate, applicant-entered figure from the Requested Amount ({(RequestedAmount is { } amount ? $"PKR {amount:N2}" : "not stated")}), which is what's being asked of the NGO. A gap between the two is expected: it's meant to be covered by \"Capital Already Available\" below, not an error or something to be deducted.";
 }

@@ -36,6 +36,9 @@ public static class ApplicationRequirements
     private const string HouseRent = "HOUSE_RENT";
     private const string Shaadi = "SHAADI";
     private const string Rozgar = "ROZGAR";
+    private const string Education = "EDUCATION";
+    private const string Health = "HEALTH";
+    private const string Other = "OTHER";
 
     // v1.4: APPLICANT_CNIC/MEMBERSHIP_CARD slots below are Applicant-scoped, not
     // Application-scoped — the applicant's own CNIC and Jamaat membership card, already mandatory
@@ -91,11 +94,39 @@ public static class ApplicationRequirements
         new("ROZGAR.GUARANTOR_MEMBERSHIP_CARD", "Guarantor's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Guarantor, [DocumentType.MembershipCard]),
     ];
 
+    // A9: EDUCATION/HEALTH/OTHER manifests added by the Google Form intake integration. Applicant-
+    // scoped CNIC/membership-card slots follow the same v1.4 pattern as the three original
+    // categories — see the comment above HouseRentSlots.
+    private static readonly IReadOnlyList<RequiredDocumentSlot> EducationSlots =
+    [
+        new("EDUCATION.MEMBERSHIP_CARD", "Applicant's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.MembershipCard]),
+        new("EDUCATION.STUDENT_BFORM_OR_CNIC", "Student's B-Form / CNIC", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.FormB, DocumentType.CnicFront]),
+        new("EDUCATION.STUDENT_PHOTO_AND_RESULT", "Student's Photo & Last Academic Result", true, 1, DocumentSlotOwnerScope.Application,
+            [DocumentType.PassportPhoto, DocumentType.AcademicResult, DocumentType.SupportingDocument]),
+    ];
+
+    private static readonly IReadOnlyList<RequiredDocumentSlot> HealthSlots =
+    [
+        new("HEALTH.APPLICANT_CNIC", "Applicant's CNIC", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.CnicFront, DocumentType.CnicBack]),
+        new("HEALTH.MEMBERSHIP_CARD", "Applicant's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.MembershipCard]),
+        new("HEALTH.MEDICAL_DOCUMENTS", "Supporting Medical Documents", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.MedicalReport, DocumentType.SupportingDocument]),
+    ];
+
+    private static readonly IReadOnlyList<RequiredDocumentSlot> OtherSlots =
+    [
+        new("OTHER.APPLICANT_CNIC", "Applicant's CNIC", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.CnicFront, DocumentType.CnicBack]),
+        new("OTHER.MEMBERSHIP_CARD", "Applicant's Jamaat Membership Card", true, 1, DocumentSlotOwnerScope.Applicant, [DocumentType.MembershipCard]),
+        new("OTHER.SUPPORTING_DOCUMENTS", "Supporting Documents", true, 1, DocumentSlotOwnerScope.Application, [DocumentType.SupportingDocument]),
+    ];
+
     private static readonly Dictionary<string, IReadOnlyList<RequiredDocumentSlot>> SlotsByCategory = new()
     {
         [HouseRent] = HouseRentSlots,
         [Shaadi] = ShaadiSlots,
         [Rozgar] = RozgarSlots,
+        [Education] = EducationSlots,
+        [Health] = HealthSlots,
+        [Other] = OtherSlots,
     };
 
     /// <summary>Terms-signing fields required, when a category has T&amp;C text, regardless of category — see <see cref="ApplicationCompletenessEvaluator.MissingBaseFields"/>.</summary>
@@ -141,6 +172,17 @@ public static class ApplicationRequirements
     public static readonly RequiredField EmergencyContactPhone = new(nameof(EmergencyContactPhone), "Emergency Contact Phone", "Business Details");
     public static readonly RequiredField PriorBusinessDetails = new(nameof(PriorBusinessDetails), "Prior Business Details", "Business Details");
 
+    /// <summary>A4: required for EVERY category (not just staff-entered ones) once Google Form
+    /// intake made it possible for an application to exist with no amount at all — blocks Approved
+    /// until staff fill it in. See <see cref="ApplicationCompletenessEvaluator.MissingBaseFields"/>.</summary>
+    public static readonly RequiredField RequestedAmount = new(nameof(RequestedAmount), "Requested Amount", "Request");
+
+    public static readonly RequiredField StudentName = new(nameof(StudentName), "Student's Name", "Education Details");
+    public static readonly RequiredField CurrentClass = new(nameof(CurrentClass), "Current Class", "Education Details");
+    public static readonly RequiredField MotherName = new(nameof(MotherName), "Mother's Name", "Education Details");
+
+    public static readonly RequiredField HealthApplicantAge = new(nameof(HealthApplicantAge), "Applicant's Age", "Health Details");
+
     private static readonly Dictionary<string, IReadOnlyList<RequiredField>> FieldsByCategory = new()
     {
         [HouseRent] =
@@ -169,6 +211,8 @@ public static class ApplicationRequirements
             DeclaredBusinessAddress,
             DeclarationAcceptedAt, TermsAcceptedAt,
         ],
+        [Education] = [StudentName, CurrentClass, MotherName],
+        [Health] = [HealthApplicantAge],
     };
 
     /// <summary>The document slots (satisfied/unsatisfied) for a category — empty for categories with no manifest (HEALTH/EDUCATION/EMERGENCY/OTHER).</summary>

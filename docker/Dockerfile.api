@@ -35,7 +35,8 @@ RUN apt-get update \
 COPY --from=build --chown=appuser:appgroup /app/publish .
 
 USER appuser
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_URLS=http://+:8080;http://+:8081
 EXPOSE 8080
+EXPOSE 8081
 
 ENTRYPOINT ["dotnet", "NgoFund.Api.dll"]

@@ -10,7 +10,7 @@ public class UpdateApplicationRequestValidator : AbstractValidator<UpdateApplica
     {
         RuleFor(x => x.ApplicationCategoryId).NotEmpty();
         RuleFor(x => x.FundCategoryId).NotEmpty();
-        RuleFor(x => x.RequestedAmount).GreaterThan(0);
+        RuleFor(x => x.RequestedAmount).NotNull().GreaterThan(0);
         // v1.8 correction: the requested amount is NOT a ceiling — the elders' committee may approve
         // less than, equal to, or more than what was requested. Only positivity is validated here;
         // the "never below completed payments"/"never cleared" guards live in FundApplicationService.

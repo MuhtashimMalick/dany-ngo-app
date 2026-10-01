@@ -60,11 +60,11 @@ public class DocumentServiceTests
     }
 
     // --- A4: content-sniffing (magic bytes vs. declared content type) ---
-    // MatchesDeclaredContentType is a private static helper; invoked via reflection rather than
-    // widening its visibility (InternalsVisibleTo, etc.) just for testability, or exercising the
-    // full UploadAsync path, which would need a real database beyond this method's own check.
+    // MatchesDeclaredContentType is a private static helper on DocumentFileValidator (the shared
+    // upload-validation pipeline both DocumentService and ApplicantService.ReplaceProfileDocumentAsync
+    // go through); invoked via reflection rather than widening its visibility just for testability.
 
-    private static readonly MethodInfo MatchesDeclaredContentTypeMethod = typeof(DocumentService)
+    private static readonly MethodInfo MatchesDeclaredContentTypeMethod = typeof(DocumentFileValidator)
         .GetMethod("MatchesDeclaredContentType", BindingFlags.NonPublic | BindingFlags.Static)!;
 
     private static bool MatchesDeclaredContentType(byte[] bytes, string contentType) =>

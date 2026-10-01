@@ -1,0 +1,85 @@
+@* Health Fund Request (HEALTH) category-detail form — self-contained, same load/save pattern as
+   HousingDetailsSection (see its doc comment). Used by the manage modal's Details tab; the
+   create-flow wizard renders HealthDetailsFields.razor directly on its own single "Health Details"
+   page instead of reusing this wrapper. *@
+@inject ApiClient ApiClient
+@inject AuthState AuthState
+@inject ToastService Toast
+
+<FormSection Title="Health Fund Request Details" Description="From the applicant's Health Fund Request form.">
+    @if (_error is not null)
+    {
+        <div class="alert alert-error">@_error</div>
+    }
+
+    @if (_isLoading)
+    {
+        <Skeleton Rows="1" Columns="1" />
+    }
+    else
+    {
+        <EditForm Model="_form" OnValidSubmit="SaveAsync" id="health-details-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" />
+
+            <fieldset disabled="@(!CanEdit)" class="fieldset-reset">
+                <HealthDetailsFields Model="_form" />
+            </fieldset>
+
+            @if (CanEdit)
+            {
+                <button type="submit" class="btn btn-primary" disabled="@_isSaving" style="margin-top: var(--space-2);">@(_isSaving ? "Saving..." : "Save Health Details")</button>
+            }
+        </EditForm>
+    }
+</FormSection>
+
+@code {
+    [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private string? _error;
+    private HealthDetailsFormModel _form = new();
+
+    private bool CanEdit => AuthState.HasPermission("applications.edit");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var existing = await ApiClient.GetHealthDetailsAsync(ApplicationId);
+            if (existing is not null)
+            {
+                _form = new HealthDetailsFormModel { ApplicantAge = existing.ApplicantAge };
+            }
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            await ApiClient.UpsertHealthDetailsAsync(ApplicationId, new UpsertHealthApplicationDetailsRequest(_form.ApplicantAge));
+            Toast.Success("Health details saved");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

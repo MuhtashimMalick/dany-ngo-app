@@ -30,6 +30,10 @@ try
 
     logger.LogInformation("Seeding initial Super Admin user (if none exists)...");
     await IdentitySeeder.SeedSuperAdminAsync(scope.ServiceProvider);
+
+    logger.LogInformation("Seeding Google Form Intake system user (if none exists)...");
+    await IdentitySeeder.SeedGoogleFormIntakeUserAsync(scope.ServiceProvider);
+
     logger.LogInformation("Seed step complete.");
 
     return 0;

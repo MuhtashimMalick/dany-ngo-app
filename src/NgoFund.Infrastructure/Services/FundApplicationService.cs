@@ -15,7 +15,7 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
 {
     public async Task<PagedResult<ApplicationDto>> GetApplicationsAsync(
         PagedQuery query, string? status, Guid? applicantId, Guid? categoryId, DateOnly? dateFrom, DateOnly? dateTo,
-        CancellationToken cancellationToken)
+        string? intakeChannel, CancellationToken cancellationToken)
     {
         var applicationsQuery = dbContext.Applications
             .AsNoTracking()
@@ -47,6 +47,11 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         if (dateTo is not null)
         {
             applicationsQuery = applicationsQuery.Where(a => a.ApplicationDate <= dateTo);
+        }
+
+        if (intakeChannel is not null && Enum.TryParse<ApplicationIntakeChannel>(intakeChannel, out var intakeChannelEnum))
+        {
+            applicationsQuery = applicationsQuery.Where(a => a.IntakeChannel == intakeChannelEnum);
         }
 
         if (!string.IsNullOrWhiteSpace(query.Search))
@@ -214,6 +219,8 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
             "HOUSE_RENT" => await dbContext.HousingApplicationDetails.AnyAsync(d => d.ApplicationId == entity.Id, cancellationToken),
             "SHAADI" => await dbContext.MarriageApplicationDetails.AnyAsync(d => d.ApplicationId == entity.Id, cancellationToken),
             "ROZGAR" => await dbContext.BusinessLoanApplicationDetails.AnyAsync(d => d.ApplicationId == entity.Id, cancellationToken),
+            "EDUCATION" => await dbContext.EducationApplicationDetails.AnyAsync(d => d.ApplicationId == entity.Id, cancellationToken),
+            "HEALTH" => await dbContext.HealthApplicationDetails.AnyAsync(d => d.ApplicationId == entity.Id, cancellationToken),
             _ => false,
         };
         if (hasDetails)
@@ -596,6 +603,49 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         return new ApplicationRemarkDto(remark.Id, remark.Remark, remark.IsInternal, remark.CreatedAt);
     }
 
+    /// <summary>Backs the Applications screen's Google Form badges: a per-user unread count (see
+    /// <c>users.intake_last_seen_at</c> in docs/schema.md) plus the separate Pending work-queue
+    /// count.</summary>
+    public async Task<IntakeSummaryDto> GetIntakeSummaryAsync(CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new InvalidOperationException("No authenticated user.");
+        var since = await dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.IntakeLastSeenAt ?? u.CreatedAt)
+            .SingleAsync(cancellationToken);
+
+        var unread = await dbContext.Applications.AsNoTracking()
+            .CountAsync(a => a.IntakeChannel == ApplicationIntakeChannel.GoogleForm && a.CreatedAt > since, cancellationToken);
+        var pending = await dbContext.Applications.AsNoTracking()
+            .CountAsync(a => a.IntakeChannel == ApplicationIntakeChannel.GoogleForm && a.Status == ApplicationStatus.Pending, cancellationToken);
+
+        return new IntakeSummaryDto(unread, pending);
+    }
+
+    /// <summary>Advances the caller's <c>intake_last_seen_at</c> high-water mark to now via a
+    /// direct <c>ExecuteUpdate</c> — deliberately bypasses
+    /// <see cref="NgoFund.Infrastructure.Persistence.Interceptors.AuditSaveChangesInterceptor"/>
+    /// so this never produces an audit-log row.</summary>
+    public async Task<IntakeSeenDto> MarkIntakeSeenAsync(CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new InvalidOperationException("No authenticated user.");
+        var now = DateTimeOffset.UtcNow;
+        var since = await dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.IntakeLastSeenAt ?? u.CreatedAt)
+            .SingleAsync(cancellationToken);
+
+        var cleared = await dbContext.Applications.AsNoTracking()
+            .CountAsync(a => a.IntakeChannel == ApplicationIntakeChannel.GoogleForm && a.CreatedAt > since && a.CreatedAt <= now, cancellationToken);
+
+        // Monotonic guard: if two desktop instances race this call, the later `now` always wins.
+        await dbContext.Users
+            .Where(u => u.Id == userId && (u.IntakeLastSeenAt == null || u.IntakeLastSeenAt < now))
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.IntakeLastSeenAt, now), cancellationToken);
+
+        return new IntakeSeenDto(cleared, now);
+    }
+
     public async Task<ApplicationCompletenessDto> GetCompletenessAsync(Guid id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Applications
@@ -629,6 +679,12 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
         var businessLoan = category.Code == "ROZGAR"
             ? await dbContext.BusinessLoanApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == application.Id, cancellationToken)
             : null;
+        var education = category.Code == "EDUCATION"
+            ? await dbContext.EducationApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == application.Id, cancellationToken)
+            : null;
+        var health = category.Code == "HEALTH"
+            ? await dbContext.HealthApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == application.Id, cancellationToken)
+            : null;
 
         var guarantors = await dbContext.ApplicationGuarantors.AsNoTracking()
             .Where(g => g.ApplicationId == application.Id)
@@ -642,7 +698,7 @@ public class FundApplicationService(AppDbContext dbContext, INumberGenerator num
                 || d.ApplicantId == application.ApplicantId)
             .ToListAsync(cancellationToken);
 
-        return ApplicationCompletenessEvaluator.Evaluate(application, category, housing, marriage, businessLoan, documents, guarantors);
+        return ApplicationCompletenessEvaluator.Evaluate(application, category, housing, marriage, businessLoan, education, health, documents, guarantors);
     }
 
     private static ApplicationCompletenessDto MapCompleteness(Guid applicationId, ApplicationCompletenessResult result) => new(

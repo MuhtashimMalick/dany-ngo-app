@@ -1,0 +1,49 @@
+@* Student-information field group for EDUCATION — backs the wizard's "Student Information" page
+   and the manage modal's single-block EducationDetailsSection (paired with
+   EducationParentFields.razor, which covers the "Parents' Information" half of the same model).
+   See ApplicationDetailModels.cs's doc comment for why the Fields/Section split exists. *@
+<div class="form-grid">
+    <FormField Label="Census No." For="eduCensus" Hint="Office reference, if known.">
+        <InputText id="eduCensus" @bind-Value="Model.CensusNumber" />
+    </FormField>
+    <FormField Label="Name of Student *" For="eduStudentName" ValidationFor="() => Model.StudentName">
+        <InputText id="eduStudentName" @bind-Value="Model.StudentName" />
+    </FormField>
+    <FormField Label="WMO ID No." For="eduWmoId">
+        <InputText id="eduWmoId" @bind-Value="Model.WmoId" />
+    </FormField>
+    <FormatField Label="Student's Mobile Number" For="eduStudentMobile" Format="FieldFormat.MobilePhone" @bind-Value="Model.StudentMobile" />
+    <FormField Label="Current Class *" For="eduCurrentClass" ValidationFor="() => Model.CurrentClass">
+        <InputText id="eduCurrentClass" @bind-Value="Model.CurrentClass" />
+    </FormField>
+    <FormField Label="Previous Class" For="eduPreviousClass">
+        <InputText id="eduPreviousClass" @bind-Value="Model.PreviousClass" />
+    </FormField>
+</div>
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Last Exam</div>
+<div class="form-grid">
+    <FormField Label="Roll Number / Total Marks" For="eduTotalMarks">
+        <InputText id="eduTotalMarks" @bind-Value="Model.LastExamTotalMarks" />
+    </FormField>
+    <FormField Label="Marks Obtained" For="eduMarksObtained">
+        <InputText id="eduMarksObtained" @bind-Value="Model.LastExamMarksObtained" />
+    </FormField>
+</div>
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Attendance</div>
+<div class="form-grid">
+    <FormField Label="Previous Year Attendance %" For="eduAttendancePercent" Hint="0-100">
+        <InputNumber id="eduAttendancePercent" @bind-Value="Model.PreviousYearAttendancePercent" min="0" max="100" />
+    </FormField>
+    <FormField Label="Total Attendance (days present)" For="eduAttendanceDays">
+        <InputNumber id="eduAttendanceDays" @bind-Value="Model.TotalAttendanceDays" />
+    </FormField>
+    <FormField Label="Total Academic Days" For="eduAcademicDays">
+        <InputNumber id="eduAcademicDays" @bind-Value="Model.TotalAcademicDays" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EducationDetailsFormModel Model { get; set; } = null!;
+}

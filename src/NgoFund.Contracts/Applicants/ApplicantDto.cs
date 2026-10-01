@@ -6,7 +6,9 @@ public record ApplicantDto(
     string FullName,
     string? FatherOrHusbandName,
     string Cnic,
-    string Gender,
+    /// <summary>Nullable because no Google Form asks for gender — an intake-created applicant has
+    /// it null until staff fill it in. Staff Create/Update flows still require it.</summary>
+    string? Gender,
     DateOnly? DateOfBirth,
     string? MaritalStatus,
     string? Phone,

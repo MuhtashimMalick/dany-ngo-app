@@ -12,7 +12,11 @@ public class UpdateApplicantRequestValidator : AbstractValidator<UpdateApplicant
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Cnic).NotEmpty().MaximumLength(15).Matches(PakistaniFormats.CnicPattern)
             .WithMessage(PakistaniFormats.CnicMessage);
-        RuleFor(x => x.Gender).NotEmpty().Must(v => Enum.TryParse<Gender>(v, out _))
+        // A5: unlike CreateApplicantRequestValidator, Gender is optional here — a Google-Form-
+        // created applicant may still have no gender on file, and the blacklist/edit flow must
+        // keep working for them. When present it must still be a recognized value.
+        RuleFor(x => x.Gender).Must(v => Enum.TryParse<Gender>(v, out _))
+            .When(x => x.Gender is not null)
             .WithMessage($"Gender must be one of: {string.Join(", ", Enum.GetNames<Gender>())}.");
         RuleFor(x => x.MaritalStatus).Must(v => v is null || Enum.TryParse<MaritalStatus>(v, out _))
             .WithMessage($"MaritalStatus must be one of: {string.Join(", ", Enum.GetNames<MaritalStatus>())}.");

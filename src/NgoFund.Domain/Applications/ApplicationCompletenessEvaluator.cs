@@ -113,10 +113,64 @@ public static class ApplicationCompletenessEvaluator
         return missing;
     }
 
+    public static IReadOnlyList<RequiredField> MissingEducationFields(EducationApplicationDetails? details)
+    {
+        var missing = new List<RequiredField>();
+
+        if (string.IsNullOrWhiteSpace(details?.StudentName)) missing.Add(ApplicationRequirements.StudentName);
+        if (string.IsNullOrWhiteSpace(details?.CurrentClass)) missing.Add(ApplicationRequirements.CurrentClass);
+        if (string.IsNullOrWhiteSpace(details?.MotherName)) missing.Add(ApplicationRequirements.MotherName);
+
+        return missing;
+    }
+
+    public static IReadOnlyList<RequiredField> MissingHealthFields(HealthApplicationDetails? details)
+    {
+        var missing = new List<RequiredField>();
+
+        if (details?.ApplicantAge is null) missing.Add(ApplicationRequirements.HealthApplicantAge);
+
+        return missing;
+    }
+
+    /// <summary>A10: the guarantor-contact gate. <see cref="ReplaceApplicationGuarantorsRequestValidator"/>
+    /// normally guarantees every guarantor row has a full contact set before it's ever saved — but
+    /// Google Form intake bypasses that validator (the form collects only one phone per guarantor,
+    /// via <see cref="ApplicationDetailsService.ReplaceGuarantorsAsync"/> called with
+    /// enforceRequiredFields:false), so a Google-Form ROZGAR application can reach here with
+    /// PhoneHome/PhoneOffice/ResidentialAddress/BusinessAddress still null. Uses the exact same
+    /// field set the validator requires, so a guarantor who passed through the validator can never
+    /// fail this check and one who didn't can never slip past it into Approved.</summary>
+    public static IReadOnlyList<RequiredField> MissingGuarantorFields(IReadOnlyList<ApplicationGuarantor> guarantors)
+    {
+        var missing = new List<RequiredField>();
+
+        foreach (var guarantor in guarantors)
+        {
+            var prefix = $"Guarantor {guarantor.SequenceNumber}";
+            void Check(string? value, string suffix) { if (string.IsNullOrWhiteSpace(value)) missing.Add(new RequiredField($"Guarantor{guarantor.SequenceNumber}.{suffix}", $"{prefix}: {suffix}", "Guarantors")); }
+
+            Check(guarantor.FullName, "Full Name");
+            Check(guarantor.Cnic, "CNIC");
+            Check(guarantor.MembershipNumber, "Membership Number");
+            Check(guarantor.PhoneHome, "Home Phone");
+            Check(guarantor.PhoneOffice, "Office Phone");
+            Check(guarantor.PhoneMobile, "Mobile Phone");
+            Check(guarantor.ResidentialAddress, "Residential Address");
+            Check(guarantor.BusinessAddress, "Business Address");
+        }
+
+        return missing;
+    }
+
     /// <summary>Fields living on <see cref="FundApplication"/> itself rather than a category-specific details table: the declared-* fields (which categories need them varies) and the terms-signing block (required for every category once it has T&amp;C text — see <see cref="ApplicationCategory.TermsText"/>).</summary>
     public static IReadOnlyList<RequiredField> MissingBaseFields(FundApplication application, ApplicationCategory category)
     {
         var missing = new List<RequiredField>();
+
+        // A4: required for every category, not just staff-entered ones — Google Form intake can
+        // create an application with a null RequestedAmount (only ROZGAR's form asks for one).
+        if (application.RequestedAmount is null) missing.Add(ApplicationRequirements.RequestedAmount);
 
         switch (category.Code)
         {
@@ -200,6 +254,8 @@ public static class ApplicationCompletenessEvaluator
         HousingApplicationDetails? housingDetails,
         MarriageApplicationDetails? marriageDetails,
         BusinessLoanApplicationDetails? businessLoanDetails,
+        EducationApplicationDetails? educationDetails,
+        HealthApplicationDetails? healthDetails,
         IReadOnlyList<Document> documents,
         IReadOnlyList<ApplicationGuarantor> guarantors)
     {
@@ -209,8 +265,14 @@ public static class ApplicationCompletenessEvaluator
             "HOUSE_RENT" => MissingHousingFields(housingDetails),
             "SHAADI" => MissingMarriageFields(marriageDetails),
             "ROZGAR" => MissingBusinessLoanFields(businessLoanDetails),
+            "EDUCATION" => MissingEducationFields(educationDetails),
+            "HEALTH" => MissingHealthFields(healthDetails),
             _ => [],
         });
+
+        // A10: the guarantor-contact gate — only ROZGAR has guarantors in practice (RequiresGuarantors
+        // > 0), but this runs for every category since an empty guarantor list costs nothing extra.
+        missingFields.AddRange(MissingGuarantorFields(guarantors));
 
         var slots = EvaluateSlots(application.Id, application.ApplicantId, category.Code, documents, guarantors);
         var isComplete = missingFields.Count == 0 && slots.Where(s => s.Slot.IsRequired).All(s => s.IsSatisfied);

@@ -76,6 +76,12 @@ internal static class PaymentTestHelpers
             applicant.Id, categoryId, fundId, requestedAmount, "Normal", DateOnly.FromDateTime(DateTime.UtcNow), "Test"));
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
+        // Feedback round 3, item I: OTHER now has a real completeness manifest (Google Form intake's
+        // A9). The applicant's CNIC/membership-card uploads above already satisfy the two
+        // Applicant-scoped slots; only the application-owned OTHER.SUPPORTING_DOCUMENTS slot is
+        // still missing, or the Approved transition below 422s.
+        await ApplicationCompletenessTestHelpers.CompleteOtherDocumentsAsync(client, application.Id);
+
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, requestedAmount));
 

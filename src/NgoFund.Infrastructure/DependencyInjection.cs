@@ -92,6 +92,7 @@ public static class DependencyInjection
         services.AddScoped<IFundLedgerPdfBuilder, FundLedgerPdfBuilder>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IAppSettingService, AppSettingService>();
+        services.AddScoped<IGoogleFormIntakeService, GoogleFormIntakeService>();
 
         services.AddValidatorsFromAssembly(typeof(NgoFund.Application.Validators.LoginRequestValidator).Assembly);
 

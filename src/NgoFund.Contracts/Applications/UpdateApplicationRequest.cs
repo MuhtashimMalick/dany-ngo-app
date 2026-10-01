@@ -3,7 +3,9 @@ namespace NgoFund.Contracts.Applications;
 public record UpdateApplicationRequest(
     Guid ApplicationCategoryId,
     Guid FundCategoryId,
-    decimal RequestedAmount,
+    /// <summary>Nullable for the same reason as <see cref="CreateApplicationRequest.RequestedAmount"/>
+    /// — <see cref="UpdateApplicationRequestValidator"/> still requires it &gt; 0.</summary>
+    decimal? RequestedAmount,
     decimal? ApprovedAmount,
     string Priority,
     string? Purpose,

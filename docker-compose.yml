@@ -39,8 +39,11 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-NgoFund}
       Jwt__Audience: ${JWT_AUDIENCE:-NgoFundClients}
       Storage__RootPath: /app/storage
+      GoogleFormIntake__ApiKey: ${GOOGLE_FORM_INTAKE_API_KEY:-}
+      Intake__Port: "8081"
     ports:
       - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${INTAKE_PORT:-8081}:8081"
     volumes:
       - filestore:/app/storage
     healthcheck:
@@ -53,6 +56,16 @@ services:
       migrator:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: ["tunnel"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?Set NGROK_AUTHTOKEN in .env}
+    command: http --url=unrupturable-unreticently-carl.ngrok-free.dev api:8081
+    depends_on:
+      api:
+        condition: service_healthy
 
   # Optional DB admin UI — only starts with `docker compose --profile tools up`.
   pgadmin:

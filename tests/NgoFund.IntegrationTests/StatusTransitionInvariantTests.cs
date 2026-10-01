@@ -86,6 +86,8 @@ public class StatusTransitionInvariantTests(AuthApiFactory factory) : IClassFixt
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
+        // Feedback round 3, item I: HEALTH now has a real completeness manifest.
+        await ApplicationCompletenessTestHelpers.CompleteHealthDetailsAsync(client, application.Id);
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, requestedAmount));
 
         return await ReadOrFailAsync<ApplicationDto>(await client.GetAsync($"/api/applications/{application.Id}"), HttpStatusCode.OK);

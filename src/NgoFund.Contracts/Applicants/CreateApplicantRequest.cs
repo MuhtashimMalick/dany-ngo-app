@@ -7,7 +7,10 @@ public record CreateApplicantRequest(
     string FullName,
     string? FatherOrHusbandName,
     string Cnic,
-    string Gender,
+    /// <summary>Nullable so Google Form intake (no form asks for gender) can create an applicant
+    /// without one — <see cref="CreateApplicantRequestValidator"/> still requires it for staff/
+    /// in-app submissions.</summary>
+    string? Gender,
     DateOnly? DateOfBirth,
     string? MaritalStatus,
     string? Phone,

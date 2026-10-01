@@ -10,10 +10,13 @@
 <div class="toast-stack" aria-live="polite" aria-atomic="true">
     @foreach (var toast in ToastService.Items)
     {
-        <div class="toast toast-@(toast.Kind == ToastKind.Success ? "success" : "error")" id="@ElementId(toast.Id)" role="status">
-            <Icon Name="@(toast.Kind == ToastKind.Success ? "check-circle" : "alert-circle")" Size="18" CssClass="toast-icon" />
+        <div class="toast toast-@(KindCssKey(toast.Kind)) @(toast.OnClick is not null ? "toast-clickable" : "")"
+             id="@ElementId(toast.Id)" role="@(toast.OnClick is not null ? "button" : "status")"
+             tabindex="@(toast.OnClick is not null ? "0" : null)"
+             @onclick="() => HandleToastClick(toast)" @onkeydown="e => HandleToastKeyDown(e, toast)">
+            <Icon Name="@(IconFor(toast.Kind))" Size="18" CssClass="toast-icon" />
             <span class="toast-text">@toast.Text</span>
-            <button type="button" class="toast-dismiss" aria-label="Dismiss notification" @onclick="() => ToastService.Dismiss(toast.Id)">
+            <button type="button" class="toast-dismiss" aria-label="Dismiss notification" @onclick="() => ToastService.Dismiss(toast.Id)" @onclick:stopPropagation="true">
                 <Icon Name="close" Size="14" />
             </button>
         </div>
@@ -49,6 +52,42 @@
     }
 
     private static string ElementId(Guid id) => $"toast-{id:N}";
+
+    // F3: the intake poller's Info toast is optionally clickable (navigates to the pre-filtered
+    // Applications list) — Success/Error toasts never set ToastMessage.OnClick, so these are no-ops
+    // for every other toast in the app.
+    private void HandleToastClick(ToastMessage toast)
+    {
+        if (toast.OnClick is null)
+        {
+            return;
+        }
+
+        toast.OnClick();
+        ToastService.Dismiss(toast.Id);
+    }
+
+    private void HandleToastKeyDown(KeyboardEventArgs e, ToastMessage toast)
+    {
+        if (toast.OnClick is not null && e.Key is "Enter" or " ")
+        {
+            HandleToastClick(toast);
+        }
+    }
+
+    private static string KindCssKey(ToastKind kind) => kind switch
+    {
+        ToastKind.Success => "success",
+        ToastKind.Info => "info",
+        _ => "error",
+    };
+
+    private static string IconFor(ToastKind kind) => kind switch
+    {
+        ToastKind.Success => "check-circle",
+        ToastKind.Info => "info",
+        _ => "alert-circle",
+    };
 
     public void Dispose() => ToastService.Changed -= OnChanged;
 }

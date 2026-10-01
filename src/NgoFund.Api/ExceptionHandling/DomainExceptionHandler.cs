@@ -9,7 +9,7 @@ namespace NgoFund.Api.ExceptionHandling;
 /// <see cref="DomainException"/> raised anywhere in Domain/Application becomes an RFC-9457
 /// <c>ProblemDetails</c> response here. No controller should ever hand-roll an error shape.
 /// </summary>
-public class DomainExceptionHandler(IProblemDetailsService problemDetailsService) : IExceptionHandler
+public class DomainExceptionHandler(IProblemDetailsService problemDetailsService, ILogger<DomainExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -27,6 +27,8 @@ public class DomainExceptionHandler(IProblemDetailsService problemDetailsService
         };
 
         httpContext.Response.StatusCode = status;
+
+        logger.LogWarning(domainException, "{ExceptionType} for {Path}: {Message}", domainException.GetType().Name, httpContext.Request.Path, domainException.Message);
 
         var problemDetails = new ProblemDetails
         {

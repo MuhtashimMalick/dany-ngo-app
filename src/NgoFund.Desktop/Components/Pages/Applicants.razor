@@ -117,8 +117,10 @@
 
                             <FormatField Label="CNIC" For="cnic" Format="FieldFormat.Cnic" @bind-Value="_form.Cnic" />
 
-                            <FormField Label="Gender" For="gender">
+                            <FormField Label="@(_editingId is null ? "Gender *" : "Gender")" For="gender"
+                                       Hint="@(_editingId is not null && string.IsNullOrEmpty(_form.Gender) ? "Arrived without a gender (e.g. a Google Form submission) — select one to fill it in." : null)">
                                 <InputSelect id="gender" @bind-Value="_form.Gender">
+                                    <option value="">Select...</option>
                                     <option value="Male">Male</option>
                                     <option value="Female">Female</option>
                                     <option value="Other">Other</option>
@@ -161,91 +163,37 @@
                         </div>
                     </FormSection>
 
-                    @if (_editingId is null)
-                    {
-                        <FormSection Title="Identity Documents" Description="Required to register a new applicant — applicants added before this rule are unaffected.">
-                            <div class="doc-slot-row">
-                                <div class="doc-slot-header">
-                                    <span class="doc-slot-label">CNIC (Front)</span>
-                                    <span class="badge badge-required">Required</span>
-                                    @if (_cnicFrontUpload is not null)
-                                    {
-                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
-                                    }
-                                </div>
-                                @if (_cnicFrontUpload is not null)
-                                {
-                                    <div class="file-drop-selected">
-                                        <Icon Name="file" Size="16" />
-                                        <span class="file-drop-selected-name">@_cnicFrontUpload.FileName</span>
-                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
-                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove CNIC (Front)" @onclick="() => _cnicFrontUpload = null">
-                                            <Icon Name="close" Size="14" />
-                                        </button>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <FileDrop OnFileSelected="OnCnicFrontSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
-                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
-                                }
-                            </div>
+                    <FormSection Title="Identity Documents"
+                                 Description="@(_editingId is null ? "Required to register a new applicant — applicants added before this rule are unaffected." : "Choosing a file replaces the document on file immediately.")">
+                        @if (_editingId is null)
+                        {
+                            <ApplicantDocumentSlot Mode="ApplicantDocumentMode.Create" DocumentType="@ApplicantDocumentCategories.CnicFront.DocumentType" Label="@ApplicantDocumentCategories.CnicFront.Label"
+                                                    PendingFileName="@_cnicFrontUpload?.FileName"
+                                                    OnFileSelected="OnCnicFrontSelectedAsync"
+                                                    OnFileRemoved="() => _cnicFrontUpload = null" />
 
-                            <div class="doc-slot-row">
-                                <div class="doc-slot-header">
-                                    <span class="doc-slot-label">CNIC (Back)</span>
-                                    <span class="badge badge-required">Required</span>
-                                    @if (_cnicBackUpload is not null)
-                                    {
-                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
-                                    }
-                                </div>
-                                @if (_cnicBackUpload is not null)
-                                {
-                                    <div class="file-drop-selected">
-                                        <Icon Name="file" Size="16" />
-                                        <span class="file-drop-selected-name">@_cnicBackUpload.FileName</span>
-                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
-                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove CNIC (Back)" @onclick="() => _cnicBackUpload = null">
-                                            <Icon Name="close" Size="14" />
-                                        </button>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <FileDrop OnFileSelected="OnCnicBackSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
-                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
-                                }
-                            </div>
+                            <ApplicantDocumentSlot Mode="ApplicantDocumentMode.Create" DocumentType="@ApplicantDocumentCategories.CnicBack.DocumentType" Label="@ApplicantDocumentCategories.CnicBack.Label"
+                                                    PendingFileName="@_cnicBackUpload?.FileName"
+                                                    OnFileSelected="OnCnicBackSelectedAsync"
+                                                    OnFileRemoved="() => _cnicBackUpload = null" />
 
-                            <div class="doc-slot-row">
-                                <div class="doc-slot-header">
-                                    <span class="doc-slot-label">Jamaat Membership Card</span>
-                                    <span class="badge badge-required">Required</span>
-                                    @if (_membershipCardUpload is not null)
-                                    {
-                                        <span class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
-                                    }
-                                </div>
-                                @if (_membershipCardUpload is not null)
-                                {
-                                    <div class="file-drop-selected">
-                                        <Icon Name="file" Size="16" />
-                                        <span class="file-drop-selected-name">@_membershipCardUpload.FileName</span>
-                                        <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
-                                        <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove Jamaat Membership Card" @onclick="() => _membershipCardUpload = null">
-                                            <Icon Name="close" Size="14" />
-                                        </button>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <FileDrop OnFileSelected="OnMembershipCardSelectedAsync" Accept=".jpg,.jpeg,.png,.webp,.pdf"
-                                              MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
-                                }
-                            </div>
-                        </FormSection>
-                    }
+                            <ApplicantDocumentSlot Mode="ApplicantDocumentMode.Create" DocumentType="@ApplicantDocumentCategories.MembershipCard.DocumentType" Label="@ApplicantDocumentCategories.MembershipCard.Label"
+                                                    PendingFileName="@_membershipCardUpload?.FileName"
+                                                    OnFileSelected="OnMembershipCardSelectedAsync"
+                                                    OnFileRemoved="() => _membershipCardUpload = null" />
+                        }
+                        else if (_isLoadingEditDocuments)
+                        {
+                            <Skeleton Rows="3" Columns="1" />
+                        }
+                        else
+                        {
+                            <ApplicantDocumentSlots Documents="_editDocuments" PhotoDocumentId="_photoDocumentId" Mode="ApplicantDocumentMode.Edit"
+                                                     BusyDocumentType="_editDocumentBusyType" SlotErrors="_editDocumentErrors"
+                                                     OnViewDocument="document => _viewingDocument = document"
+                                                     OnReplace="HandleEditDocumentReplaceAsync" />
+                        }
+                    </FormSection>
 
                     @if (_editingId is not null)
                     {
@@ -314,7 +262,7 @@
                     <DetailItem Label="CNIC" Value="@_viewingApplicant.Cnic" />
                     <DetailItem Label="Father/Husband" Value="@(_viewingApplicant.FatherOrHusbandName ?? "-")" />
                     <DetailItem Label="Surname" Value="@(_viewingApplicant.Surname ?? "-")" />
-                    <DetailItem Label="Gender" Value="@_viewingApplicant.Gender" />
+                    <DetailItem Label="Gender" Value="@(_viewingApplicant.Gender ?? "Not stated")" />
                     <DetailItem Label="Phone" Value="@(_viewingApplicant.Phone ?? "-")" />
                     <DetailItem Label="Email" Value="@(_viewingApplicant.Email ?? "-")" />
                     <DetailItem Label="Address" Value="@(_viewingApplicant.Address ?? "-")" SpanFull="true" />
@@ -333,21 +281,12 @@
         {
             <Skeleton Rows="2" Columns="1" />
         }
-        else if (VisibleApplicantDocuments.Count == 0)
-        {
-            <EmptyState Icon="file" Title="No documents uploaded" />
-        }
         else
         {
-            <ul class="plain-list" id="applicant-documents-rows">
-                @foreach (var document in VisibleApplicantDocuments)
-                {
-                    <li>
-                        <span class="flex-1">@document.FileName</span>
-                        <button type="button" class="icon-btn" aria-label="View document" @onclick="() => _viewingDocument = document"><Icon Name="eye" Size="16" /></button>
-                    </li>
-                }
-            </ul>
+            <div id="applicant-documents-rows">
+                <ApplicantDocumentSlots Documents="_applicantDocuments" PhotoDocumentId="_viewingApplicant.PhotoDocumentId" Mode="ApplicantDocumentMode.View"
+                                         OnViewDocument="document => _viewingDocument = document" />
+            </div>
         }
 
         <h4>Application History</h4>
@@ -377,7 +316,7 @@
                                 <td>@application.ApplicationNumber</td>
                                 <td>@application.ApplicationCategoryName</td>
                                 <td>@application.FundCategoryName</td>
-                                <td class="num">@application.RequestedAmount.ToString("N2")</td>
+                                <td class="num">@(application.RequestedAmount?.ToString("N2") ?? "Not stated")</td>
                                 <td class="num">@(application.ApprovedAmount?.ToString("N2") ?? "-")</td>
                                 <td><StatusBadge Status="@application.Status" /></td>
                                 <td>@application.ApplicationDate.ToString("yyyy-MM-dd")</td>
@@ -403,6 +342,12 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-secondary" @onclick="CloseDetailModal">Close</button>
+            @if (AuthState.HasPermission("applicants.edit"))
+            {
+                <button type="button" class="btn btn-primary" @onclick="OpenEditFromDetailAsync">
+                    <Icon Name="pencil" Size="15" />Edit
+                </button>
+            }
         </Footer>
     </Modal>
 }
@@ -460,8 +405,9 @@
 
     // Create-only required-document uploads (Task 4b) — held client-side as raw bytes because the
     // applicant row (their owner) doesn't exist yet; sent inline on CreateApplicantRequest and
-    // committed in the same DB transaction as the applicant. Not used on edit — see FormSection's
-    // `_editingId is null` guard around the Identity Documents section.
+    // committed in the same DB transaction as the applicant. Not used on edit — see the Identity
+    // Documents FormSection's `_editingId is null` branch, which renders ApplicantDocumentSlots
+    // (Edit mode, immediate upload) instead once an applicant row actually exists.
     private PendingUpload? _cnicFrontUpload;
     private PendingUpload? _cnicBackUpload;
     private PendingUpload? _membershipCardUpload;
@@ -487,10 +433,14 @@
     private bool _pendingDocumentsAnimation;
     private DocumentDto? _viewingDocument;
 
-    private List<DocumentDto> VisibleApplicantDocuments =>
-        _viewingApplicant is null
-            ? []
-            : _applicantDocuments.Where(d => d.Id != _viewingApplicant.PhotoDocumentId).ToList();
+    // Edit-modal document state (F6/Issue 1 fix) — loaded fresh by OpenEditModal every time it
+    // opens (not shared with _applicantDocuments above, which belongs to the read-only detail
+    // modal) so a replace's effect is always reflected without reaching into the detail modal's
+    // own state. Keyed by ApplicantProfileDocumentTypes value.
+    private IReadOnlyList<DocumentDto> _editDocuments = [];
+    private bool _isLoadingEditDocuments;
+    private string? _editDocumentBusyType;
+    private readonly Dictionary<string, string> _editDocumentErrors = new();
 
     // Same box recipe as .webcam-frame/.webcam-preview in app.css (100% width, 4:3 aspect ratio,
     // radius-md, 1px border) so a saved photo doesn't visibly jump size/shape relative to the
@@ -584,6 +534,20 @@
         }
     }
 
+    // Closes the read-only dead end DocumentSlotRow used to send staff into (view modal, no upload
+    // affordance) by reusing the same deep-link they already land on — jumps straight to Edit for
+    // the applicant currently open in the detail modal.
+    private async Task OpenEditFromDetailAsync()
+    {
+        if (_viewingApplicant is not { } applicant)
+        {
+            return;
+        }
+
+        CloseDetailModal();
+        await OpenEditModal(applicant);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_pendingRowAnimation)
@@ -594,10 +558,11 @@
         if (_pendingDocumentsAnimation)
         {
             _pendingDocumentsAnimation = false;
-            if (VisibleApplicantDocuments.Count > 0)
-            {
-                await JS.InvokeVoidAsync("ngoFundMotion.animateChecklistItems", "#applicant-documents-rows li");
-            }
+            // Selector updated for the grouped-by-category layout (ApplicantDocumentSlots, Issue 2
+            // fix) — each category is now its own .doc-slot-row rather than a flat <li> per
+            // document, and every category always renders (even empty ones show "Not on file"), so
+            // this no longer needs the old VisibleApplicantDocuments.Count > 0 gate.
+            await JS.InvokeVoidAsync("ngoFundMotion.animateChecklistItems", "#applicant-documents-rows .doc-slot-row");
         }
     }
 
@@ -633,7 +598,7 @@
         _showForm = true;
     }
 
-    private void OpenEditModal(ApplicantDto applicant)
+    private async Task OpenEditModal(ApplicantDto applicant)
     {
         _editingId = applicant.Id;
         _editingApplicant = applicant;
@@ -658,7 +623,32 @@
             BlacklistReason = applicant.BlacklistReason,
         };
         _formError = null;
+        _editDocuments = [];
+        _editDocumentBusyType = null;
+        _editDocumentErrors.Clear();
         _showForm = true;
+
+        // Opens the modal immediately (above) so the rest of the form is usable right away, then
+        // fills the Identity Documents section once this resolves — FormSection shows a Skeleton
+        // for that section in the meantime (see the Identity Documents FormSection markup).
+        _isLoadingEditDocuments = true;
+        var targetApplicantId = applicant.Id;
+        try
+        {
+            var documents = await ApiClient.GetDocumentsForApplicantAsync(applicant.Id);
+            if (targetApplicantId == _editingId)
+            {
+                _editDocuments = documents;
+            }
+        }
+        catch (ApiException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _isLoadingEditDocuments = false;
+        }
     }
 
     private void CloseForm()
@@ -752,6 +742,45 @@
         return memory.ToArray();
     }
 
+    // Edit-modal document replace/add (Issue 1 fix) — fires as soon as a file is picked in
+    // ApplicantDocumentSlots' Edit mode; there is no separate save step for documents. A per-slot
+    // error is shown inline on that one category only (never _formError), and missing/incomplete
+    // documents never block Save here — only the create flow gates on them (see SaveAsync's
+    // _editingId is null branch).
+    private async Task HandleEditDocumentReplaceAsync((string DocumentType, IBrowserFile File) replace)
+    {
+        if (_editingId is not { } applicantId)
+        {
+            return;
+        }
+
+        var (documentType, file) = replace;
+        var label = ApplicantDocumentCategories.All.First(c => c.DocumentType == documentType).Label;
+
+        _editDocumentErrors.Remove(documentType);
+        _editDocumentBusyType = documentType;
+
+        try
+        {
+            var bytes = await ReadAllBytesAsync(file);
+            await ApiClient.ReplaceApplicantDocumentAsync(applicantId, documentType, bytes, file.Name, file.ContentType);
+            Toast.Success($"{label} updated · {file.Name}");
+            var documents = await ApiClient.GetDocumentsForApplicantAsync(applicantId);
+            if (applicantId == _editingId)
+            {
+                _editDocuments = documents;
+            }
+        }
+        catch (ApiException ex)
+        {
+            _editDocumentErrors[documentType] = ex.Message;
+        }
+        finally
+        {
+            _editDocumentBusyType = null;
+        }
+    }
+
     private static InlineFileUpload? ToInlineUpload(PendingUpload? upload) =>
         upload is null ? null : new InlineFileUpload(upload.FileName, upload.ContentType, Convert.ToBase64String(upload.Bytes));
 
@@ -761,6 +790,15 @@
 
         if (_editingId is null)
         {
+            // Staff create still requires Gender even though the shared form model/DTO are now
+            // nullable (F5) — the server rejects an empty value here too, this just surfaces it
+            // without a round trip.
+            if (string.IsNullOrEmpty(_form.Gender))
+            {
+                _formError = "Select a gender before saving.";
+                return;
+            }
+
             // Fast client-side guard ahead of the server's own rejection (400) — named so the
             // user knows exactly which document to add instead of just seeing a disabled button.
             var missingDocs = new List<string>();
@@ -932,7 +970,12 @@
         public string? Surname { get; set; }
         public string? FatherOrHusbandName { get; set; }
         [Required] public string Cnic { get; set; } = "";
-        public string Gender { get; set; } = "Male";
+        // Nullable to match ApplicantDto.Gender (F5) — a Google-Form-originated applicant may have
+        // none on file. Staff create still requires a value (enforced in SaveAsync, since this
+        // model is shared with edit, where null must stay a valid save — see the class doc above).
+        // Defaults to "Male" only for the create-modal's pre-filled first value; edit mode overwrites
+        // it from the loaded applicant, including null, in OpenEditModal.
+        public string? Gender { get; set; } = "Male";
         public string? MembershipNumber { get; set; }
         public string? Phone { get; set; }
         public string? Email { get; set; }

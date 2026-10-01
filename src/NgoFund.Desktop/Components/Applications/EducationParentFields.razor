@@ -1,0 +1,41 @@
+@* Parents'-information field group for EDUCATION — pairs with EducationStudentFields.razor; see
+   its doc comment. The father's own details are the selected applicant's own profile (the wizard
+   labels the Applicant & Request page's applicant picker "Father / Guardian" for EDUCATION — see
+   ApplicationWizard.razor), so the only father-side field captured here is Jamaat. *@
+<div class="form-section-legend">Father</div>
+<div class="form-grid">
+    <FormField Label="Father's Jamaat" For="eduFatherJamaat" Hint="The father/guardian's other details are the selected applicant's own profile.">
+        <InputText id="eduFatherJamaat" @bind-Value="Model.FatherJamaat" />
+    </FormField>
+</div>
+
+<div class="form-section-legend" style="margin-top: var(--space-4);">Mother</div>
+<div class="form-grid">
+    <FormField Label="Mother's Name *" For="eduMotherName" ValidationFor="() => Model.MotherName">
+        <InputText id="eduMotherName" @bind-Value="Model.MotherName" />
+    </FormField>
+    <FormField Label="Mother's Father's Name" For="eduMotherFatherName">
+        <InputText id="eduMotherFatherName" @bind-Value="Model.MotherFatherName" />
+    </FormField>
+    <FormField Label="Mother's Caste / Zaat" For="eduMotherCaste">
+        <InputText id="eduMotherCaste" @bind-Value="Model.MotherCaste" />
+    </FormField>
+    <FormField Label="Mother's Jamaat" For="eduMotherJamaat">
+        <InputText id="eduMotherJamaat" @bind-Value="Model.MotherJamaat" />
+    </FormField>
+    <FormField Label="Mother's Bhavnagar Jamaat Membership Number" For="eduMotherMembership">
+        <InputText id="eduMotherMembership" @bind-Value="Model.MotherMembershipNumber" />
+    </FormField>
+    <FormatField Label="Mother's CNIC Number" For="eduMotherCnic" Format="FieldFormat.Cnic" @bind-Value="Model.MotherCnic" />
+    <FormField Label="Mother's Monthly Income (PKR)" For="eduMotherIncome">
+        <InputNumber id="eduMotherIncome" @bind-Value="Model.MotherMonthlyIncome" />
+    </FormField>
+    <FormatField Label="Mother's Mobile Number" For="eduMotherMobile" Format="FieldFormat.MobilePhone" @bind-Value="Model.MotherMobile" />
+    <FormField Label="Mother's Skill / Profession" For="eduMotherProfession">
+        <InputText id="eduMotherProfession" @bind-Value="Model.MotherProfession" />
+    </FormField>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EducationDetailsFormModel Model { get; set; } = null!;
+}

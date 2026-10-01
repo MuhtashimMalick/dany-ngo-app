@@ -21,5 +21,9 @@ public enum DocumentType
     FormB,
     PassportPhoto,
     WeddingCard,
-    RentReceipt
+    RentReceipt,
+    /// <summary>HEALTH.MEDICAL_DOCUMENTS slot — supporting medical documentation for a health application.</summary>
+    MedicalReport,
+    /// <summary>Part of the EDUCATION.STUDENT_PHOTO_AND_RESULT slot alongside <see cref="PassportPhoto"/> — the student's last academic result.</summary>
+    AcademicResult
 }

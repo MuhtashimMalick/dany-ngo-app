@@ -562,6 +562,26 @@ input[type="radio"] {
   color: var(--status-pending-fg);
 }
 
+/* Neutral/informational notice — not a warning or error, just "here's something new". Reuses the
+   same blue pair as badge-underreview/badge-intake-googleform (the existing Google Form hue)
+   rather than introducing a new token, per 's one-design-token rule. Lays its actions out
+   inline (e.g. Applications.razor's "N new Google Form applications" banner: text, a button, a
+   dismiss icon) rather than stacking everything on its own line. */
+.alert-info {
+  background: var(--status-under-review-bg);
+  color: var(--status-under-review-fg);
+  align-items: center;
+}
+
+.alert-info .btn-sm {
+  flex-shrink: 0;
+}
+
+.alert-info .icon-btn {
+  flex-shrink: 0;
+  color: inherit;
+}
+
 /* ---------- Cards ----------
    Border, not shadow — shadow is reserved for true overlays (modals, dropdowns, toasts) per the
    design review. An in-page container sitting in normal document flow doesn't need to look like
@@ -621,6 +641,13 @@ input[type="radio"] {
    CNIC-conflict flag (GuarantorsEditor.razor). Reuses the same amber pair as .alert-warning rather
    than a new hue, per 's one-design-token rule. */
 .badge-warning { background: var(--status-pending-bg); color: var(--status-pending-fg); }
+
+/* IntakeChannelChip (F2) — Google Form uses the same blue pair as "Under Review" so a Google-Form
+   row reads as distinct at a glance in the Applications list without introducing a new hue; Paper
+   (legacy) uses the same muted gray as On Hold, signaling "historical, not a live intake path". */
+.badge-intake-inapp { background: var(--status-neutral-bg); color: var(--status-neutral-fg); }
+.badge-intake-googleform { background: var(--status-under-review-bg); color: var(--status-under-review-fg); }
+.badge-intake-paper { background: var(--status-on-hold-bg); color: var(--status-on-hold-fg); }
 
 /* Voided ledger entries (ApplicantLedger.razor) stay visible per the "never hide a voided row"
    rule — struck through and dimmed so a reader never mistakes one for money that actually moved —
@@ -1595,6 +1622,13 @@ table.data-table {
 
 .toast-success .toast-icon { color: var(--status-approved-fg); }
 .toast-error .toast-icon { color: var(--color-destructive); }
+.toast-info .toast-icon { color: var(--color-primary); }
+
+/* Clickable Info toast (F3, e.g. the Google Form intake notice) — otherwise identical to a plain
+   toast, just signals it's actionable. */
+.toast-clickable { cursor: pointer; }
+.toast-clickable:hover, .toast-clickable:focus-visible { border-color: var(--color-primary); }
+.toast-clickable:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
 
 .toast-text {
   flex: 1;
@@ -1616,6 +1650,31 @@ table.data-table {
   background: var(--color-muted);
   color: var(--color-foreground);
 }
+
+/* ---------- Intake channel / Google Form (F2/F3) ---------- */
+
+.mono-text {
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+  font-size: var(--text-sm);
+}
+
+.copy-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.copy-btn {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+.copy-btn:hover { background: var(--color-muted); color: var(--color-foreground); }
+.copy-btn.copied { color: var(--status-approved-fg); }
 
 /* ---------- Combobox (typeahead) ---------- */
 

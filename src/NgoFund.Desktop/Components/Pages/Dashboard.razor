@@ -1,8 +1,10 @@
 @page "/"
+@implements IDisposable
 @inject ApiClient ApiClient
 @inject AuthState AuthState
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IntakeNotificationState IntakeState
 
 <div class="page-header"></div>
 
@@ -45,6 +47,41 @@ else
             <FundBalanceCard Balance="fund" Committed="CommittedFor(fund.FundCategoryId)" />
         }
     </div>
+
+    @* F4 (redesign): Google Form intake stat — PendingGoogleFormCount, fed by
+       IntakeNotificationState (kicked off alongside the other dashboard loads in
+       OnInitializedAsync and kept live via its Changed event on each 60s poll). Gated on
+       applications.view the same way other permission-scoped sections below are.
+
+       @key="IntakeState.PendingCount" forces Blazor to tear down and recreate this StatCard
+       (instead of diffing into it) whenever the count changes. CountUp's GSAP interop writes
+       textContent directly into the value node during its tween, which detaches that node from
+       Blazor's diffing — without @key, a later Changed/poll re-render silently fails to update
+       the number on screen (see interop.js animateStatCards). Recreating the element each time
+       sidesteps that: the fresh node always starts out Blazor-owned and renders the current
+       value through normal interpolation. *@
+    @if (AuthState.HasPermission("applications.view"))
+    {
+        <div class="stat-grid" id="dashboard-intake-stats">
+            @if (IntakeState.HasLoaded)
+            {
+                <StatCard @key="IntakeState.PendingCount"
+                          Label="Pending Google Form applications"
+                          Value="@IntakeState.PendingCount.ToString("N0")"
+                          Hint="Awaiting first review"
+                          CountUp="@IntakeState.PendingCount"
+                          CountUpDecimals="0" />
+            }
+            else
+            {
+                @* Intake summary hasn't loaded yet (or its fetch failed) — show a neutral
+                   placeholder instead of a misleading "0". *@
+                <StatCard Label="Pending Google Form applications"
+                          Value="—"
+                          Hint="Awaiting first review" />
+            }
+        </div>
+    }
 
     @*
     <div class="card month-strip" id="dashboard-month-strip">
@@ -218,7 +255,7 @@ else
                                 <span class="needs-attention-name">@application.ApplicantName &middot; @application.ApplicationNumber</span>
                                 <span class="needs-attention-meta">@application.ApplicationCategoryName &middot; <StatusBadge Status="@application.Status" /></span>
                             </span>
-                            <span class="needs-attention-amount">@application.RequestedAmount.ToString("N2") PKR</span>
+                            <span class="needs-attention-amount">@(application.RequestedAmount is { } amount ? $"{amount:N2} PKR" : "Not stated")</span>
                         </button>
                     </li>
                 }
@@ -378,6 +415,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        IntakeState.Changed += OnIntakeStateChanged;
+
         try
         {
             var to = DateOnly.FromDateTime(DateTime.Today);
@@ -402,7 +441,11 @@ else
             // if this one endpoint is slow, missing, or erroring (F5).
             var insightsTask = LoadInsightsSafeAsync();
 
-            await Task.WhenAll(summaryTask, pendingTask, underReviewTask, donationsTrendTask, paymentsTrendTask, appsThisMonthTask, appsLastMonthTask, insightsTask);
+            // IntakeState.RefreshAsync() never throws (see IntakeNotificationState) — safe to
+            // include alongside everything else awaited here.
+            var intakeTask = IntakeState.RefreshAsync();
+
+            await Task.WhenAll(summaryTask, pendingTask, underReviewTask, donationsTrendTask, paymentsTrendTask, appsThisMonthTask, appsLastMonthTask, insightsTask, intakeTask);
 
             _summary = summaryTask.Result;
             _insights = insightsTask.Result;
@@ -441,6 +484,7 @@ else
         {
             _pendingStatCardAnimation = false;
             await JS.InvokeVoidAsync("ngoFundMotion.animateStatCards", "#dashboard-fund-cards .fund-balance-card");
+            await JS.InvokeVoidAsync("ngoFundMotion.animateStatCards", "#dashboard-intake-stats .stat-card");
 
             if (_insights is not null)
             {
@@ -448,6 +492,12 @@ else
             }
         }
     }
+
+    // Keeps the Pending Google Form stat live across the 60s poll (IntakeNotificationState.Changed)
+    // without re-fetching anything else on the page. May fire off the UI thread — wrap in InvokeAsync.
+    private async void OnIntakeStateChanged() => await InvokeAsync(StateHasChanged);
+
+    public void Dispose() => IntakeState.Changed -= OnIntakeStateChanged;
 
     // Insights are a "nice to have" layered on top of an already-working dashboard — any failure
     // here (endpoint down, timeout, bad response) must not propagate into the Task.WhenAll above

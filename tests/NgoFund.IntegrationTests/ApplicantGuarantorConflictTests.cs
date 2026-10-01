@@ -23,9 +23,9 @@ public class ApplicantGuarantorConflictTests(AuthApiFactory factory) : IClassFix
 {
     /// <summary>Creates an applicant + a HEALTH/Zakat application (left at its default Pending status
     /// — an "active" status) with one guarantor bearing <paramref name="guarantorCnic"/>, so that CNIC
-    /// now conflicts with any other application's APPLICANT of the same CNIC. HEALTH has no
-    /// completeness manifest and RequiresGuarantors == 0, so this "other" application never needs to
-    /// itself reach Approved for the test.</summary>
+    /// now conflicts with any other application's APPLICANT of the same CNIC. RequiresGuarantors == 0
+    /// for HEALTH, and this "other" application never needs to itself reach Approved for the test, so
+    /// its own completeness (it has a manifest as of item I) is irrelevant here.</summary>
     private static async Task<ApplicationDto> CreateActiveApplicationWithGuarantorCnicAsync(HttpClient client, string guarantorCnic, string ownerApplicantCnic)
     {
         var applicant = await CreateApplicantAsync(client, ownerApplicantCnic);
@@ -44,15 +44,17 @@ public class ApplicantGuarantorConflictTests(AuthApiFactory factory) : IClassFix
         return application;
     }
 
-    /// <summary>A bare HEALTH/Zakat application for <paramref name="applicantCnic"/>, driven to
-    /// UnderReview (one step before Approved) — HEALTH has no completeness manifest and no guarantor
-    /// requirement, so nothing but the applicant-guarantor-conflict gate can block Approved.</summary>
+    /// <summary>A HEALTH/Zakat application for <paramref name="applicantCnic"/>, driven to
+    /// UnderReview (one step before Approved) with its completeness manifest already satisfied (item
+    /// I) and no guarantor requirement, so nothing but the applicant-guarantor-conflict gate can
+    /// still block Approved.</summary>
     private static async Task<ApplicationDto> CreateReadyToApproveHealthApplicationAsync(HttpClient client, string applicantCnic)
     {
         var applicant = await CreateApplicantAsync(client, applicantCnic);
         var (categories, _) = await LoadSeedIdsAsync(client);
         var zakatFundId = await LoadZakatFundIdAsync(client);
         var application = await CreateBareApplicationAsync(client, applicant.Id, categories["HEALTH"], zakatFundId);
+        await ApplicationCompletenessTestHelpers.CompleteHealthDetailsAsync(client, application.Id);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
 

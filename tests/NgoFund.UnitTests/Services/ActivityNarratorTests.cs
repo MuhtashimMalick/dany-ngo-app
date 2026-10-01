@@ -569,6 +569,145 @@ public class ActivityNarratorTests
         Assert.Null(ActivityNarrator.Narrate(db.Add(document), "Create"));
     }
 
+    // --- Document (applicant profile document replace, v1.6) ---
+
+    private static (AppDbContext Db, Applicant Applicant, Document Document) CreateTrackedProfileDocument(DocumentType documentType)
+    {
+        var db = CreateDb();
+        var applicant = new Applicant { FullName = "Ali Khan", Cnic = "12345-1234567-1", MembershipNumber = "MEM-001" };
+        db.Attach(applicant);
+        var document = new Document
+        {
+            FileName = "old.png",
+            StorageKey = "old-key",
+            ContentType = "image/png",
+            SizeBytes = 100,
+            Sha256 = new string('a', 64),
+            DocumentType = documentType,
+            ApplicantId = applicant.Id,
+            Applicant = applicant,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        db.Attach(document);
+        return (db, applicant, document);
+    }
+
+    [Theory]
+    [InlineData(DocumentType.ApplicantPhoto, "Profile photo")]
+    [InlineData(DocumentType.CnicFront, "CNIC (Front)")]
+    [InlineData(DocumentType.CnicBack, "CNIC (Back)")]
+    [InlineData(DocumentType.MembershipCard, "Jamaat Membership Card")]
+    public void Document_ProfileDocumentReplaced_NarratesExpectedSentence(DocumentType documentType, string expectedDisplayName)
+    {
+        var (db, applicant, document) = CreateTrackedProfileDocument(documentType);
+        var entry = db.Entry(document);
+        entry.Property(nameof(Document.StorageKey)).CurrentValue = "new-key";
+
+        var narration = ActivityNarrator.Narrate(entry, "Update");
+
+        Assert.Equal($"{expectedDisplayName} for applicant \"{applicant.FullName}\" was replaced", narration!.Summary);
+        Assert.Equal("Applicant", narration.EntityLabel);
+        Assert.Equal(applicant.MembershipNumber, narration.EntityNumber);
+        Assert.Equal(ActivityVerb.Updated, narration.Verb);
+    }
+
+    [Fact]
+    public void Document_ProfileDocumentReplaced_ApplicantNotTracked_UsesFallbackSentence()
+    {
+        var db = CreateDb();
+        var document = new Document
+        {
+            FileName = "old.png",
+            StorageKey = "old-key",
+            ContentType = "image/png",
+            SizeBytes = 100,
+            Sha256 = new string('a', 64),
+            DocumentType = DocumentType.CnicFront,
+            ApplicantId = Guid.NewGuid(), // not tracked
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        var entry = db.Attach(document);
+        entry.Property(nameof(Document.StorageKey)).CurrentValue = "new-key";
+
+        var narration = ActivityNarrator.Narrate(entry, "Update");
+
+        Assert.Equal("An applicant's CNIC (Front) was replaced", narration!.Summary);
+        Assert.Null(narration.EntityNumber);
+    }
+
+    [Fact]
+    public void Document_Create_NotNarrated()
+    {
+        var (db, _, document) = CreateTrackedProfileDocument(DocumentType.CnicFront);
+
+        Assert.Null(ActivityNarrator.Narrate(db.Entry(document), "Create"));
+    }
+
+    [Fact]
+    public void Document_Delete_NotNarrated()
+    {
+        var (db, _, document) = CreateTrackedProfileDocument(DocumentType.CnicFront);
+
+        Assert.Null(ActivityNarrator.Narrate(db.Entry(document), "Delete"));
+    }
+
+    [Fact]
+    public void Document_DescriptionOnlyUpdate_NotNarrated()
+    {
+        var (db, _, document) = CreateTrackedProfileDocument(DocumentType.CnicFront);
+        var entry = db.Entry(document);
+        entry.Property(nameof(Document.Description)).CurrentValue = "corrected note";
+
+        Assert.Null(ActivityNarrator.Narrate(entry, "Update"));
+    }
+
+    [Fact]
+    public void Document_NonApplicantOwned_StorageKeyChanged_NotNarrated()
+    {
+        var db = CreateDb();
+        var document = new Document
+        {
+            FileName = "supporting.pdf",
+            StorageKey = "old-key",
+            ContentType = "application/pdf",
+            SizeBytes = 100,
+            Sha256 = new string('a', 64),
+            DocumentType = DocumentType.SupportingDocument,
+            ApplicationId = Guid.NewGuid(),
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        var entry = db.Attach(document);
+        entry.Property(nameof(Document.StorageKey)).CurrentValue = "new-key";
+
+        Assert.Null(ActivityNarrator.Narrate(entry, "Update"));
+    }
+
+    /// <summary>Isolates the <c>ApplicantId is null</c> condition specifically: unlike the test
+    /// above (which changes the owner AND the document type together), this keeps DocumentType at
+    /// a type that WOULD qualify for profile-document narration (CnicFront) and only changes the
+    /// owner to application-scoped — confirming it's the missing ApplicantId, not the type, that
+    /// suppresses narration.</summary>
+    [Fact]
+    public void Document_ApplicationOwnedCnicFront_StorageKeyChanged_NotNarrated()
+    {
+        var db = CreateDb();
+        var document = new Document
+        {
+            FileName = "guarantor-cnic.png",
+            StorageKey = "old-key",
+            ContentType = "image/png",
+            SizeBytes = 100,
+            Sha256 = new string('a', 64),
+            DocumentType = DocumentType.CnicFront,
+            ApplicationId = Guid.NewGuid(), // application-scoped, not applicant-owned
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        var entry = db.Attach(document);
+        entry.Property(nameof(Document.StorageKey)).CurrentValue = "new-key";
+
+        Assert.Null(ActivityNarrator.Narrate(entry, "Update"));
+    }
+
     [Fact]
     public void ApplicationUser_LastLoginAtOnlyChange_IsNoise()
     {

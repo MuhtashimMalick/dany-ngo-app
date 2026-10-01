@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NgoFund.Application.Abstractions;
 using NgoFund.Contracts.Applicants;
 using NgoFund.Contracts.Common;
@@ -10,7 +11,8 @@ using NgoFund.Infrastructure.Persistence;
 
 namespace NgoFund.Infrastructure.Services;
 
-public class ApplicantService(AppDbContext dbContext, IDocumentService documentService) : IApplicantService
+public class ApplicantService(
+    AppDbContext dbContext, IDocumentService documentService, IFileStorage fileStorage, ILogger<ApplicantService> logger) : IApplicantService
 {
     public async Task<PagedResult<ApplicantDto>> GetApplicantsAsync(PagedQuery query, CancellationToken cancellationToken)
     {
@@ -57,7 +59,10 @@ public class ApplicantService(AppDbContext dbContext, IDocumentService documentS
         // already written to disk before a rollback leaves an orphan blob in /app/storage — no
         // reachable `documents` row ever points at it, so this is harmless and, per 's
         // ponytail guidance, not worth building a cleanup mechanism for.
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // C3: uses BeginTransactionIfNoneAsync (not a plain BeginTransactionAsync) so this method
+        // also works nested inside GoogleFormIntakeService's own outer transaction — Commit/Dispose
+        // below are no-ops in that case, and the outer caller controls commit/rollback.
+        await using var transaction = await dbContext.Database.BeginTransactionIfNoneAsync(cancellationToken);
 
         var entity = new Applicant
         {
@@ -65,7 +70,7 @@ public class ApplicantService(AppDbContext dbContext, IDocumentService documentS
             FullName = request.FullName,
             FatherOrHusbandName = request.FatherOrHusbandName,
             Cnic = request.Cnic,
-            Gender = Enum.Parse<Gender>(request.Gender),
+            Gender = request.Gender is null ? null : Enum.Parse<Gender>(request.Gender),
             DateOfBirth = request.DateOfBirth,
             MaritalStatus = request.MaritalStatus is null ? null : Enum.Parse<MaritalStatus>(request.MaritalStatus),
             Phone = request.Phone,
@@ -90,9 +95,9 @@ public class ApplicantService(AppDbContext dbContext, IDocumentService documentS
         dbContext.Applicants.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await UploadInlineAsync(request.CnicFront, "CnicFront", entity.Id, cancellationToken);
-        await UploadInlineAsync(request.CnicBack, "CnicBack", entity.Id, cancellationToken);
-        await UploadInlineAsync(request.MembershipCard, "MembershipCard", entity.Id, cancellationToken);
+        await UploadInlineAsync(request.CnicFront, ApplicantProfileDocumentTypes.CnicFront, entity.Id, cancellationToken);
+        await UploadInlineAsync(request.CnicBack, ApplicantProfileDocumentTypes.CnicBack, entity.Id, cancellationToken);
+        await UploadInlineAsync(request.MembershipCard, ApplicantProfileDocumentTypes.MembershipCard, entity.Id, cancellationToken);
 
         var photoDocument = await UploadInlineAsync(request.Photo, nameof(DocumentType.ApplicantPhoto), entity.Id, cancellationToken);
         if (photoDocument is not null)
@@ -135,7 +140,7 @@ public class ApplicantService(AppDbContext dbContext, IDocumentService documentS
         entity.FullName = request.FullName;
         entity.FatherOrHusbandName = request.FatherOrHusbandName;
         entity.Cnic = request.Cnic;
-        entity.Gender = Enum.Parse<Gender>(request.Gender);
+        entity.Gender = request.Gender is null ? null : Enum.Parse<Gender>(request.Gender);
         entity.DateOfBirth = request.DateOfBirth;
         entity.MaritalStatus = request.MaritalStatus is null ? null : Enum.Parse<MaritalStatus>(request.MaritalStatus);
         entity.Phone = request.Phone;
@@ -186,22 +191,153 @@ public class ApplicantService(AppDbContext dbContext, IDocumentService documentS
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>See <see cref="IApplicantService.ReplaceProfileDocumentAsync"/>. Mutates the
+    /// existing <see cref="Document"/> row in place (never delete-and-insert) so the id stays
+    /// stable and ActivityNarrator sees one coherent tracked change with old+new
+    /// StorageKey/Sha256/FileName together. Only covers the three identity-document categories in
+    /// <see cref="ApplicantProfileDocumentTypes.All"/> — the profile photo
+    /// (<c>ApplicantPhoto</c>/<see cref="Applicant.PhotoDocumentId"/>) has its own separate,
+    /// unrelated flow (<see cref="SetProfilePhotoAsync"/>) and is deliberately rejected here; see
+    /// that method's own doc comment for why this one must not also accept it.</summary>
+    public async Task<DocumentDto> ReplaceProfileDocumentAsync(
+        Guid applicantId, string documentType, Stream content, string fileName, string contentType, CancellationToken cancellationToken)
+    {
+        if (!ApplicantProfileDocumentTypes.All.Contains(documentType, StringComparer.Ordinal))
+        {
+            throw new InvalidFileException(
+                $"'{documentType}' is not a replaceable applicant profile document type. Allowed: {string.Join(", ", ApplicantProfileDocumentTypes.All)}.");
+        }
+
+        var parsedType = Enum.Parse<DocumentType>(documentType);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        // Row lock: two concurrent replaces of the same applicant's same document category must be
+        // serialized, or both could read "no existing document" and jointly insert a duplicate.
+        var applicant = await dbContext.Applicants
+            .FromSqlInterpolated($"SELECT * FROM applicants WHERE id = {applicantId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new EntityNotFoundException("Applicant", applicantId);
+
+        var existingDocuments = await dbContext.Documents
+            .Where(d => d.ApplicantId == applicantId && d.DocumentType == parsedType)
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync(cancellationToken);
+
+        var stored = await DocumentFileValidator.ValidateAndStoreAsync(fileStorage, content, contentType, cancellationToken);
+
+        Document resultDocument;
+        var orphanedStorageKeys = new List<string>();
+
+        if (existingDocuments.Count == 0)
+        {
+            resultDocument = new Document
+            {
+                FileName = fileName,
+                StorageKey = stored.StorageKey,
+                ContentType = contentType,
+                SizeBytes = stored.SizeBytes,
+                Sha256 = stored.Sha256,
+                DocumentType = parsedType,
+                ApplicantId = applicantId,
+                Applicant = applicant,
+                UploadedAt = DateTimeOffset.UtcNow,
+            };
+            dbContext.Documents.Add(resultDocument);
+        }
+        else
+        {
+            resultDocument = existingDocuments[0];
+            orphanedStorageKeys.Add(resultDocument.StorageKey);
+
+            resultDocument.Applicant = applicant; // explicit fixup — ActivityNarrator reads this navigation
+            resultDocument.FileName = fileName;
+            resultDocument.StorageKey = stored.StorageKey;
+            resultDocument.ContentType = contentType;
+            resultDocument.SizeBytes = stored.SizeBytes;
+            resultDocument.Sha256 = stored.Sha256;
+            resultDocument.UploadedAt = DateTimeOffset.UtcNow;
+            // ExternalFileReference is deliberately left untouched — clearing it risks a late Google
+            // Form Apps Script retry re-creating the old file as a duplicate.
+
+            if (existingDocuments.Count > 1)
+            {
+                var duplicates = existingDocuments.Skip(1).ToList();
+                orphanedStorageKeys.AddRange(duplicates.Select(d => d.StorageKey));
+                dbContext.Documents.RemoveRange(duplicates);
+            }
+        }
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await TryDeleteFileAsync(stored.StorageKey, cancellationToken); // compensate: don't leave the new upload orphaned
+            throw;
+        }
+
+        foreach (var storageKey in orphanedStorageKeys)
+        {
+            await TryDeleteFileAsync(storageKey, cancellationToken);
+        }
+
+        return DocumentService.Map(resultDocument);
+    }
+
+    private async Task TryDeleteFileAsync(string storageKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await fileStorage.DeleteAsync(storageKey, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to delete orphaned document file {StorageKey}", storageKey);
+        }
+    }
+
+    // IgnoreQueryFilters: the unique indexes on cnic and membership_number cover soft-deleted
+    // rows too, so a value held by a soft-deleted applicant must be caught here or the INSERT/
+    // UPDATE hits the DB constraint and surfaces as a raw 500 instead of a clear domain error.
     private async Task EnsureUniqueAsync(string cnic, string? membershipNumber, Guid? existingApplicantId, CancellationToken cancellationToken)
     {
-        if (await dbContext.Applicants.AnyAsync(a => a.Cnic == cnic && a.Id != existingApplicantId, cancellationToken))
+        var cnicHolder = await dbContext.Applicants.IgnoreQueryFilters()
+            .Where(a => a.Cnic == cnic && a.Id != existingApplicantId)
+            .Select(a => (bool?)a.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (cnicHolder is not null)
         {
+            if (cnicHolder.Value)
+            {
+                throw new ApplicantRecordDeletedException("CNIC", cnic);
+            }
+
             throw new DuplicateFieldException("applicant", "CNIC", cnic);
         }
 
-        if (membershipNumber is not null &&
-            await dbContext.Applicants.AnyAsync(a => a.MembershipNumber == membershipNumber && a.Id != existingApplicantId, cancellationToken))
+        if (membershipNumber is not null)
         {
-            throw new DuplicateFieldException("applicant", "membership number", membershipNumber);
+            var membershipHolder = await dbContext.Applicants.IgnoreQueryFilters()
+                .Where(a => a.MembershipNumber == membershipNumber && a.Id != existingApplicantId)
+                .Select(a => (bool?)a.IsDeleted)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (membershipHolder is not null)
+            {
+                if (membershipHolder.Value)
+                {
+                    throw new ApplicantRecordDeletedException("membership number", membershipNumber);
+                }
+
+                throw new DuplicateFieldException("applicant", "membership number", membershipNumber);
+            }
         }
     }
 
     private static ApplicantDto Map(Applicant a) => new(
-        a.Id, a.MembershipNumber, a.FullName, a.FatherOrHusbandName, a.Cnic, a.Gender.ToString(),
+        a.Id, a.MembershipNumber, a.FullName, a.FatherOrHusbandName, a.Cnic, a.Gender?.ToString(),
         a.DateOfBirth, a.MaritalStatus?.ToString(), a.Phone, a.AlternatePhone, a.Email, a.Address,
         a.City, a.District, a.Province, a.Occupation, a.MonthlyIncome, a.DependentsCount, a.HouseholdSize,
         a.PhotoDocumentId, a.IsBlacklisted, a.BlacklistReason, a.Notes,

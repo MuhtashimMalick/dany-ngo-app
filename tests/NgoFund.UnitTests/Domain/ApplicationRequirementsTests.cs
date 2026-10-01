@@ -25,6 +25,9 @@ public class ApplicationRequirementsTests
     [InlineData("HOUSE_RENT")]
     [InlineData("SHAADI")]
     [InlineData("ROZGAR")]
+    [InlineData("EDUCATION")]
+    [InlineData("HEALTH")]
+    [InlineData("OTHER")]
     public void DocumentSlotsFor_EveryRequiredSlot_HasAtLeastOneAcceptedTypeAndPositiveMinCount(string categoryCode)
     {
         foreach (var slot in ApplicationRequirements.DocumentSlotsFor(categoryCode).Where(s => s.IsRequired))
@@ -34,25 +37,16 @@ public class ApplicationRequirementsTests
         }
     }
 
-    [Theory]
-    [InlineData("HEALTH")]
-    [InlineData("EDUCATION")]
-    [InlineData("EMERGENCY")]
-    [InlineData("OTHER")]
-    public void DocumentSlotsFor_NonFormCategories_ReturnsEmpty(string categoryCode)
-    {
-        Assert.Empty(ApplicationRequirements.DocumentSlotsFor(categoryCode));
-    }
+    // A9: EMERGENCY is the only category left with genuinely no manifest (fields or slots) — the
+    // three Google Form intake categories (HEALTH/EDUCATION/OTHER) now have both.
+    [Fact]
+    public void DocumentSlotsFor_Emergency_ReturnsEmpty() => Assert.Empty(ApplicationRequirements.DocumentSlotsFor("EMERGENCY"));
 
-    [Theory]
-    [InlineData("HEALTH")]
-    [InlineData("EDUCATION")]
-    [InlineData("EMERGENCY")]
-    [InlineData("OTHER")]
-    public void RequiredFieldsFor_NonFormCategories_ReturnsEmpty(string categoryCode)
-    {
-        Assert.Empty(ApplicationRequirements.RequiredFieldsFor(categoryCode));
-    }
+    [Fact]
+    public void RequiredFieldsFor_Emergency_ReturnsEmpty() => Assert.Empty(ApplicationRequirements.RequiredFieldsFor("EMERGENCY"));
+
+    [Fact]
+    public void RequiredFieldsFor_Other_ReturnsEmpty_NoFieldsOnlyDocumentSlots() => Assert.Empty(ApplicationRequirements.RequiredFieldsFor("OTHER"));
 
     [Fact]
     public void DocumentSlotsFor_HouseRent_MatchesGoldenSlotKeySet()
@@ -112,5 +106,42 @@ public class ApplicationRequirementsTests
     public void FindSlot_UnknownKey_ReturnsNull()
     {
         Assert.Null(ApplicationRequirements.FindSlot("ROZGAR", "ROZGAR.NOT_A_REAL_SLOT"));
+    }
+
+    [Fact]
+    public void DocumentSlotsFor_Education_MatchesGoldenSlotKeySet()
+    {
+        var keys = ApplicationRequirements.DocumentSlotsFor("EDUCATION").Select(s => s.SlotKey).ToHashSet();
+
+        Assert.Equal(["EDUCATION.MEMBERSHIP_CARD", "EDUCATION.STUDENT_BFORM_OR_CNIC", "EDUCATION.STUDENT_PHOTO_AND_RESULT"], keys);
+    }
+
+    [Fact]
+    public void DocumentSlotsFor_Health_MatchesGoldenSlotKeySet()
+    {
+        var keys = ApplicationRequirements.DocumentSlotsFor("HEALTH").Select(s => s.SlotKey).ToHashSet();
+
+        Assert.Equal(["HEALTH.APPLICANT_CNIC", "HEALTH.MEMBERSHIP_CARD", "HEALTH.MEDICAL_DOCUMENTS"], keys);
+    }
+
+    [Fact]
+    public void DocumentSlotsFor_Other_MatchesGoldenSlotKeySet()
+    {
+        var keys = ApplicationRequirements.DocumentSlotsFor("OTHER").Select(s => s.SlotKey).ToHashSet();
+
+        Assert.Equal(["OTHER.APPLICANT_CNIC", "OTHER.MEMBERSHIP_CARD", "OTHER.SUPPORTING_DOCUMENTS"], keys);
+    }
+
+    // v1.4-style regression: exactly 11 Applicant-scoped slots exist across every category now
+    // that EDUCATION/HEALTH/OTHER have manifests too (docs/schema.md's "Applicant-scoped slots" list).
+    [Fact]
+    public void ApplicantScopedSlots_AcrossAllCategories_CountIsEleven()
+    {
+        string[] categories = ["HOUSE_RENT", "SHAADI", "ROZGAR", "EDUCATION", "HEALTH", "OTHER"];
+        var count = categories
+            .SelectMany(ApplicationRequirements.DocumentSlotsFor)
+            .Count(s => s.OwnerScope == DocumentSlotOwnerScope.Applicant);
+
+        Assert.Equal(11, count);
     }
 }

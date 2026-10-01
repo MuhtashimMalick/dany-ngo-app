@@ -83,6 +83,44 @@ public class BusinessLoanDetailsFormModel
     public string? EmergencyContactPhone { get; set; }
 }
 
+public class EducationDetailsFormModel
+{
+    public string? CensusNumber { get; set; }
+
+    [Required(ErrorMessage = "Student name is required.")]
+    public string StudentName { get; set; } = "";
+    public string? WmoId { get; set; }
+    public string? StudentMobile { get; set; }
+
+    [Required(ErrorMessage = "Current class is required.")]
+    public string CurrentClass { get; set; } = "";
+    public string? PreviousClass { get; set; }
+    public string? LastExamTotalMarks { get; set; }
+    public string? LastExamMarksObtained { get; set; }
+    public decimal? PreviousYearAttendancePercent { get; set; }
+    public int? TotalAttendanceDays { get; set; }
+    public int? TotalAcademicDays { get; set; }
+
+    public string? FatherJamaat { get; set; }
+
+    [Required(ErrorMessage = "Mother's name is required.")]
+    public string MotherName { get; set; } = "";
+    public string? MotherFatherName { get; set; }
+    public string? MotherCaste { get; set; }
+    public string? MotherJamaat { get; set; }
+    public string? MotherMembershipNumber { get; set; }
+    public string? MotherCnic { get; set; }
+    public decimal? MotherMonthlyIncome { get; set; }
+    public string? MotherMobile { get; set; }
+    public string? MotherProfession { get; set; }
+}
+
+public class HealthDetailsFormModel
+{
+    [Required(ErrorMessage = "Applicant age is required.")]
+    public int? ApplicantAge { get; set; }
+}
+
 /// <summary>One ROZGAR guarantor row. Documents are deliberately not modeled here any more — per
 /// the completeness milestone, guarantor documents are uploaded/displayed exclusively through the
 /// Documents wizard page's guarantor-grouped <see cref="DocumentSlotList"/> (and the manage

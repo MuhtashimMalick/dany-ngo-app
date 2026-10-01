@@ -19,6 +19,8 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
     private const string HousingCategoryCode = "HOUSE_RENT";
     private const string MarriageCategoryCode = "SHAADI";
     private const string BusinessLoanCategoryCode = "ROZGAR";
+    private const string EducationCategoryCode = "EDUCATION";
+    private const string HealthCategoryCode = "HEALTH";
 
     public async Task<HousingApplicationDetailsDto?> GetHousingDetailsAsync(Guid applicationId, CancellationToken cancellationToken)
     {
@@ -27,7 +29,7 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         return entity is null ? null : Map(entity);
     }
 
-    public async Task<HousingApplicationDetailsDto> UpsertHousingDetailsAsync(Guid applicationId, UpsertHousingApplicationDetailsRequest request, CancellationToken cancellationToken)
+    public async Task<HousingApplicationDetailsDto> UpsertHousingDetailsAsync(Guid applicationId, UpsertHousingApplicationDetailsRequest request, CancellationToken cancellationToken, bool enforceRequiredFields = true)
     {
         var application = await EnsureCategoryAsync(applicationId, HousingCategoryCode, cancellationToken);
 
@@ -51,7 +53,10 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         entity.ReceivesMedicalAssistance = request.ReceivesMedicalAssistance;
         entity.ReceivesWidowAssistance = request.ReceivesWidowAssistance;
 
-        ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingHousingFields(entity));
+        if (enforceRequiredFields)
+        {
+            ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingHousingFields(entity));
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return Map(entity);
@@ -64,7 +69,7 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         return entity is null ? null : Map(entity);
     }
 
-    public async Task<MarriageApplicationDetailsDto> UpsertMarriageDetailsAsync(Guid applicationId, UpsertMarriageApplicationDetailsRequest request, CancellationToken cancellationToken)
+    public async Task<MarriageApplicationDetailsDto> UpsertMarriageDetailsAsync(Guid applicationId, UpsertMarriageApplicationDetailsRequest request, CancellationToken cancellationToken, bool enforceRequiredFields = true)
     {
         var application = await EnsureCategoryAsync(applicationId, MarriageCategoryCode, cancellationToken);
 
@@ -96,7 +101,10 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         entity.NikahDate = request.NikahDate;
         entity.RukhsatiDate = request.RukhsatiDate;
 
-        ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingMarriageFields(entity));
+        if (enforceRequiredFields)
+        {
+            ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingMarriageFields(entity));
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return Map(entity);
@@ -109,7 +117,7 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         return entity is null ? null : Map(entity);
     }
 
-    public async Task<BusinessLoanApplicationDetailsDto> UpsertBusinessLoanDetailsAsync(Guid applicationId, UpsertBusinessLoanApplicationDetailsRequest request, CancellationToken cancellationToken)
+    public async Task<BusinessLoanApplicationDetailsDto> UpsertBusinessLoanDetailsAsync(Guid applicationId, UpsertBusinessLoanApplicationDetailsRequest request, CancellationToken cancellationToken, bool enforceRequiredFields = true)
     {
         var application = await EnsureCategoryAsync(applicationId, BusinessLoanCategoryCode, cancellationToken);
 
@@ -137,7 +145,88 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         entity.EmergencyContactCnic = request.EmergencyContactCnic;
         entity.EmergencyContactPhone = request.EmergencyContactPhone;
 
-        ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingBusinessLoanFields(entity));
+        if (enforceRequiredFields)
+        {
+            ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingBusinessLoanFields(entity));
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Map(entity);
+    }
+
+    public async Task<EducationApplicationDetailsDto?> GetEducationDetailsAsync(Guid applicationId, CancellationToken cancellationToken)
+    {
+        await EnsureCategoryAsync(applicationId, EducationCategoryCode, cancellationToken);
+        var entity = await dbContext.EducationApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == applicationId, cancellationToken);
+        return entity is null ? null : Map(entity);
+    }
+
+    public async Task<EducationApplicationDetailsDto> UpsertEducationDetailsAsync(Guid applicationId, UpsertEducationApplicationDetailsRequest request, CancellationToken cancellationToken, bool enforceRequiredFields = true)
+    {
+        var application = await EnsureCategoryAsync(applicationId, EducationCategoryCode, cancellationToken);
+
+        var entity = await dbContext.EducationApplicationDetails.SingleOrDefaultAsync(d => d.ApplicationId == applicationId, cancellationToken);
+        if (entity is null)
+        {
+            entity = new EducationApplicationDetails { ApplicationId = applicationId };
+            dbContext.EducationApplicationDetails.Add(entity);
+        }
+
+        entity.CensusNumber = request.CensusNumber;
+        entity.StudentName = request.StudentName;
+        entity.WmoId = request.WmoId;
+        entity.StudentMobile = request.StudentMobile;
+        entity.CurrentClass = request.CurrentClass;
+        entity.PreviousClass = request.PreviousClass;
+        entity.LastExamTotalMarks = request.LastExamTotalMarks;
+        entity.LastExamMarksObtained = request.LastExamMarksObtained;
+        entity.PreviousYearAttendancePercent = request.PreviousYearAttendancePercent;
+        entity.TotalAttendanceDays = request.TotalAttendanceDays;
+        entity.TotalAcademicDays = request.TotalAcademicDays;
+        entity.FatherJamaat = request.FatherJamaat;
+        entity.MotherName = request.MotherName;
+        entity.MotherFatherName = request.MotherFatherName;
+        entity.MotherCaste = request.MotherCaste;
+        entity.MotherJamaat = request.MotherJamaat;
+        entity.MotherMembershipNumber = request.MotherMembershipNumber;
+        entity.MotherCnic = request.MotherCnic;
+        entity.MotherMonthlyIncome = request.MotherMonthlyIncome;
+        entity.MotherMobile = request.MotherMobile;
+        entity.MotherProfession = request.MotherProfession;
+
+        if (enforceRequiredFields)
+        {
+            ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingEducationFields(entity));
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Map(entity);
+    }
+
+    public async Task<HealthApplicationDetailsDto?> GetHealthDetailsAsync(Guid applicationId, CancellationToken cancellationToken)
+    {
+        await EnsureCategoryAsync(applicationId, HealthCategoryCode, cancellationToken);
+        var entity = await dbContext.HealthApplicationDetails.AsNoTracking().SingleOrDefaultAsync(d => d.ApplicationId == applicationId, cancellationToken);
+        return entity is null ? null : Map(entity);
+    }
+
+    public async Task<HealthApplicationDetailsDto> UpsertHealthDetailsAsync(Guid applicationId, UpsertHealthApplicationDetailsRequest request, CancellationToken cancellationToken, bool enforceRequiredFields = true)
+    {
+        var application = await EnsureCategoryAsync(applicationId, HealthCategoryCode, cancellationToken);
+
+        var entity = await dbContext.HealthApplicationDetails.SingleOrDefaultAsync(d => d.ApplicationId == applicationId, cancellationToken);
+        if (entity is null)
+        {
+            entity = new HealthApplicationDetails { ApplicationId = applicationId };
+            dbContext.HealthApplicationDetails.Add(entity);
+        }
+
+        entity.ApplicantAge = request.ApplicantAge;
+
+        if (enforceRequiredFields)
+        {
+            ThrowIfFieldsMissing(application.ApplicationNumber, ApplicationCompletenessEvaluator.MissingHealthFields(entity));
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return Map(entity);
@@ -182,7 +271,10 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
             .Select(g => g.Id!.Value)
             .ToHashSet();
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // C3: BeginTransactionIfNoneAsync, not a plain BeginTransactionAsync — see
+        // DatabaseFacadeExtensions. Lets the Google Form intake pipeline call this nested inside
+        // its own outer transaction without throwing.
+        await using var transaction = await dbContext.Database.BeginTransactionIfNoneAsync(cancellationToken);
 
         // Soft-delete dropped guarantors first and flush, so their sequence_no slot is free (the
         // unique index on (application_id, sequence_no) is partial, WHERE is_deleted = false)
@@ -328,6 +420,14 @@ public class ApplicationDetailsService(AppDbContext dbContext, ICurrentUserServi
         d.BrideMaritalStatus?.ToString(), d.BridePreviousHusbandName, d.BrideJamaat, d.BridePriorTrustAssistance,
         d.GroomName, d.GroomFatherName, d.GroomGrandfatherName, d.GroomJamaat, d.GroomMaritalStatus?.ToString(),
         d.GroomPreviousWifeName, d.GroomAddress, d.GroomMobile, d.GroomBusinessAddress, d.NikahDate, d.RukhsatiDate);
+
+    private static EducationApplicationDetailsDto Map(EducationApplicationDetails d) => new(
+        d.ApplicationId, d.CensusNumber, d.StudentName, d.WmoId, d.StudentMobile, d.CurrentClass, d.PreviousClass,
+        d.LastExamTotalMarks, d.LastExamMarksObtained, d.PreviousYearAttendancePercent, d.TotalAttendanceDays,
+        d.TotalAcademicDays, d.FatherJamaat, d.MotherName, d.MotherFatherName, d.MotherCaste, d.MotherJamaat,
+        d.MotherMembershipNumber, d.MotherCnic, d.MotherMonthlyIncome, d.MotherMobile, d.MotherProfession);
+
+    private static HealthApplicationDetailsDto Map(HealthApplicationDetails d) => new(d.ApplicationId, d.ApplicantAge);
 
     private static BusinessLoanApplicationDetailsDto Map(BusinessLoanApplicationDetails d) => new(
         d.ApplicationId, d.PaperFormNumber, d.BusinessPhone, d.Education, d.Skill, d.Experience, d.OtherIncomeSources,

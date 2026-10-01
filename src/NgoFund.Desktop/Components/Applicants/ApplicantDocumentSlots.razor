@@ -1,0 +1,74 @@
+@* Composes one ApplicantDocumentSlot per fixed category (see ApplicantDocumentCategories), in
+   that order, from the applicant's full document list — the View-modal "grouped by category"
+   fix and the Edit-modal "replace a document" fix share this one component so the two modes can
+   never drift. Only used in Edit/View mode; the create flow still wires three standalone
+   ApplicantDocumentSlot instances directly to its own pending-upload fields (Applicants.razor),
+   since no applicant row/document list exists yet to group. *@
+
+@foreach (var category in ApplicantDocumentCategories.All)
+{
+    <ApplicantDocumentSlot Mode="Mode" DocumentType="@category.DocumentType" Label="@category.Label"
+                            Documents="@DocumentsFor(category.DocumentType)"
+                            IsBusy="@(BusyDocumentType == category.DocumentType)"
+                            ErrorMessage="@ErrorFor(category.DocumentType)"
+                            OnFileSelected="@(f => OnReplace.InvokeAsync((category.DocumentType, f)))"
+                            OnViewDocument="OnViewDocument" />
+}
+
+@{
+    var otherDocuments = OtherDocuments();
+}
+@if (otherDocuments.Count > 0)
+{
+    <div class="doc-slot-group-heading">Other documents</div>
+    <ul class="plain-list">
+        @foreach (var document in otherDocuments)
+        {
+            <li>
+                <span class="flex-1">@document.FileName <span class="field-hint">(@HumanizeDocumentType(document.DocumentType))</span></span>
+                <button type="button" class="icon-btn" aria-label="View document" @onclick="() => OnViewDocument.InvokeAsync(document)"><Icon Name="eye" Size="16" /></button>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DocumentDto> Documents { get; set; } = [];
+
+    /// <summary>Excluded from the "Other documents" leftover group below — a superseded old photo
+    /// (the applicant's CURRENT photo is matched by id) is the only thing that would otherwise show
+    /// up there, same exclusion the flat list used before this component existed.</summary>
+    [Parameter] public Guid? PhotoDocumentId { get; set; }
+
+    [Parameter, EditorRequired] public ApplicantDocumentMode Mode { get; set; }
+
+    /// <summary>Edit mode only — which category currently has an upload in flight.</summary>
+    [Parameter] public string? BusyDocumentType { get; set; }
+
+    /// <summary>Edit mode only — per-category inline error from the last failed upload attempt.</summary>
+    [Parameter] public IReadOnlyDictionary<string, string>? SlotErrors { get; set; }
+
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+
+    /// <summary>Edit mode only — fired as soon as a file is picked for a category's Replace/Add
+    /// control; the parent uploads immediately via ApiClient.ReplaceApplicantDocumentAsync.</summary>
+    [Parameter] public EventCallback<(string DocumentType, IBrowserFile File)> OnReplace { get; set; }
+
+    private List<DocumentDto> DocumentsFor(string documentType) =>
+        Documents.Where(d => d.DocumentType == documentType)
+            .OrderByDescending(d => d.UploadedAt)
+            .ToList();
+
+    private string? ErrorFor(string documentType) =>
+        SlotErrors is not null && SlotErrors.TryGetValue(documentType, out var message) ? message : null;
+
+    private List<DocumentDto> OtherDocuments() =>
+        Documents
+            .Where(d => d.Id != PhotoDocumentId)
+            .Where(d => !ApplicantDocumentCategories.All.Any(c => c.DocumentType == d.DocumentType))
+            .OrderByDescending(d => d.UploadedAt)
+            .ToList();
+
+    private static string HumanizeDocumentType(string type) =>
+        System.Text.RegularExpressions.Regex.Replace(type, "(?<!^)([A-Z])", " $1");
+}

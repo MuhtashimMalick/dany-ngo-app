@@ -16,19 +16,27 @@ else if (_objectUrl is not null)
     [Parameter, EditorRequired] public Guid DocumentId { get; set; }
     [Parameter] public string Style { get; set; } = "max-width:160px; max-height:160px; border-radius: var(--radius-md); object-fit: cover;";
 
+    /// <summary>Optional cache-buster — pass the owning DocumentDto's UploadedAt (or anything else
+    /// that changes on replace). A document-replace keeps the same DocumentId but swaps the stored
+    /// content, so DocumentId alone isn't enough to detect that a reload is needed; this forces one
+    /// whenever either value changes.</summary>
+    [Parameter] public object? Version { get; set; }
+
     private bool _isLoading;
     private string? _objectUrl;
     private Guid? _loadedForId;
+    private object? _loadedForVersion;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedForId == DocumentId)
+        if (_loadedForId == DocumentId && Equals(_loadedForVersion, Version))
         {
             return;
         }
 
         await ClearAsync();
         _loadedForId = DocumentId;
+        _loadedForVersion = Version;
         _isLoading = true;
 
         try

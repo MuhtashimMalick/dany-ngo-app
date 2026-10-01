@@ -13,6 +13,7 @@ using NgoFund.Contracts.Documents;
 using NgoFund.Contracts.Donations;
 using NgoFund.Contracts.Donors;
 using NgoFund.Contracts.FundCategories;
+using NgoFund.Contracts.Intake;
 using NgoFund.Contracts.Ledgers;
 using NgoFund.Contracts.Loans;
 using NgoFund.Contracts.Payments;
@@ -328,7 +329,8 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
 
     public async Task<PagedResult<ApplicationDto>> GetApplicationsAsync(
         int page = 1, int pageSize = 25, string? search = null, string? status = null, Guid? applicantId = null,
-        Guid? categoryId = null, DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken cancellationToken = default)
+        Guid? categoryId = null, DateOnly? dateFrom = null, DateOnly? dateTo = null, string? intakeChannel = null,
+        CancellationToken cancellationToken = default)
     {
         var url = $"api/applications?page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(search))
@@ -355,10 +357,31 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         {
             url += $"&dateTo={dateTo:yyyy-MM-dd}";
         }
+        if (!string.IsNullOrWhiteSpace(intakeChannel))
+        {
+            url += $"&intakeChannel={intakeChannel}";
+        }
 
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, url, cancellationToken);
         var response = await httpClient.SendAsync(request, cancellationToken);
         return await ReadOrThrowAsync<PagedResult<ApplicationDto>>(response, cancellationToken);
+    }
+
+    /// <summary>Backs the Applications screen's Google Form badges (unread notification count +
+    /// Pending work-queue count) — see <see cref="IntakeSummaryDto"/>.</summary>
+    public async Task<IntakeSummaryDto> GetIntakeSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, "api/applications/intake-summary", cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<IntakeSummaryDto>(response, cancellationToken);
+    }
+
+    /// <summary>Marks Google Form arrivals seen for the current user — see <see cref="IntakeSeenDto"/>.</summary>
+    public async Task<IntakeSeenDto> MarkIntakeSeenAsync(CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Post, "api/me/intake-seen", cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<IntakeSeenDto>(response, cancellationToken);
     }
 
     public async Task<ApplicationDto> GetApplicationAsync(Guid id, CancellationToken cancellationToken = default)
@@ -485,6 +508,40 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         return await ReadOrThrowAsync<BusinessLoanApplicationDetailsDto>(response, cancellationToken);
     }
 
+    public async Task<EducationApplicationDetailsDto?> GetEducationDetailsAsync(Guid applicationId, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/applications/{applicationId}/details/education", cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound
+            ? null
+            : await ReadOrThrowAsync<EducationApplicationDetailsDto>(response, cancellationToken);
+    }
+
+    public async Task<EducationApplicationDetailsDto> UpsertEducationDetailsAsync(Guid applicationId, UpsertEducationApplicationDetailsRequest upsertRequest, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Put, $"api/applications/{applicationId}/details/education", cancellationToken);
+        request.Content = JsonContent.Create(upsertRequest);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<EducationApplicationDetailsDto>(response, cancellationToken);
+    }
+
+    public async Task<HealthApplicationDetailsDto?> GetHealthDetailsAsync(Guid applicationId, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/applications/{applicationId}/details/health", cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound
+            ? null
+            : await ReadOrThrowAsync<HealthApplicationDetailsDto>(response, cancellationToken);
+    }
+
+    public async Task<HealthApplicationDetailsDto> UpsertHealthDetailsAsync(Guid applicationId, UpsertHealthApplicationDetailsRequest upsertRequest, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Put, $"api/applications/{applicationId}/details/health", cancellationToken);
+        request.Content = JsonContent.Create(upsertRequest);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<HealthApplicationDetailsDto>(response, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ApplicationGuarantorDto>> GetGuarantorsAsync(Guid applicationId, CancellationToken cancellationToken = default)
     {
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Get, $"api/applications/{applicationId}/guarantors", cancellationToken);
@@ -550,6 +607,26 @@ public class ApiClient(HttpClient httpClient, AuthState authState)
         }
 
         var request = await CreateAuthorizedRequestAsync(HttpMethod.Post, url, cancellationToken);
+
+        var form = new MultipartFormDataContent();
+        var byteContent = new ByteArrayContent(fileBytes);
+        byteContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(byteContent, "file", fileName);
+        request.Content = form;
+
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        return await ReadOrThrowAsync<DocumentDto>(response, cancellationToken);
+    }
+
+    /// <summary>Replaces one of an applicant's three profile-document categories (CNIC front/back,
+    /// membership card — see <see cref="NgoFund.Contracts.Applicants.ApplicantProfileDocumentTypes"/>)
+    /// in place via <c>PUT api/applicants/{id}/documents/{documentType}</c>. The document keeps its
+    /// existing id; only its stored content changes. Not used for the profile photo, which keeps its
+    /// own dedicated <see cref="SetApplicantPhotoAsync"/> flow.</summary>
+    public async Task<DocumentDto> ReplaceApplicantDocumentAsync(
+        Guid applicantId, string documentType, byte[] fileBytes, string fileName, string contentType, CancellationToken cancellationToken = default)
+    {
+        var request = await CreateAuthorizedRequestAsync(HttpMethod.Put, $"api/applicants/{applicantId}/documents/{documentType}", cancellationToken);
 
         var form = new MultipartFormDataContent();
         var byteContent = new ByteArrayContent(fileBytes);

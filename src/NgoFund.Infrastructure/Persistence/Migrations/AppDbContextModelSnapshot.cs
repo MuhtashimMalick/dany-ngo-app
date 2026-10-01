@@ -371,7 +371,6 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnName("full_name");
 
                     b.Property<string>("Gender")
-                        .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasColumnName("gender");
@@ -1125,6 +1124,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("donation_id");
 
+                    b.Property<string>("ExternalFileReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("external_file_reference");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(260)
@@ -1172,6 +1176,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DonationId")
                         .HasDatabaseName("ix_documents_donation_id");
+
+                    b.HasIndex("ExternalFileReference")
+                        .IsUnique()
+                        .HasDatabaseName("ix_documents_external_file_reference")
+                        .HasFilter("external_file_reference IS NOT NULL");
 
                     b.HasIndex("PaymentId")
                         .HasDatabaseName("ix_documents_payment_id");
@@ -1430,6 +1439,133 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.ToTable("donors", (string)null);
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.EducationApplicationDetails", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("CensusNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("census_number");
+
+                    b.Property<string>("CurrentClass")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("current_class");
+
+                    b.Property<string>("FatherJamaat")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("father_jamaat");
+
+                    b.Property<string>("LastExamMarksObtained")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("last_exam_marks_obtained");
+
+                    b.Property<string>("LastExamTotalMarks")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("last_exam_total_marks");
+
+                    b.Property<string>("MotherCaste")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("mother_caste");
+
+                    b.Property<string>("MotherCnic")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("mother_cnic");
+
+                    b.Property<string>("MotherFatherName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("mother_father_name");
+
+                    b.Property<string>("MotherJamaat")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("mother_jamaat");
+
+                    b.Property<string>("MotherMembershipNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("mother_membership_number");
+
+                    b.Property<string>("MotherMobile")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("mother_mobile");
+
+                    b.Property<decimal?>("MotherMonthlyIncome")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("mother_monthly_income");
+
+                    b.Property<string>("MotherName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("mother_name");
+
+                    b.Property<string>("MotherProfession")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("mother_profession");
+
+                    b.Property<string>("PreviousClass")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("previous_class");
+
+                    b.Property<decimal?>("PreviousYearAttendancePercent")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("previous_year_attendance_percent");
+
+                    b.Property<string>("StudentMobile")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("student_mobile");
+
+                    b.Property<string>("StudentName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("student_name");
+
+                    b.Property<int?>("TotalAcademicDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_academic_days");
+
+                    b.Property<int?>("TotalAttendanceDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_attendance_days");
+
+                    b.Property<string>("WmoId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("wmo_id");
+
+                    b.HasKey("ApplicationId")
+                        .HasName("pk_education_application_details");
+
+                    b.ToTable("education_application_details", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_education_details_academic_days_positive", "total_academic_days IS NULL OR total_academic_days > 0");
+
+                            t.HasCheckConstraint("ck_education_details_attendance_days_nonneg", "total_attendance_days IS NULL OR total_attendance_days >= 0");
+
+                            t.HasCheckConstraint("ck_education_details_attendance_le_academic_days", "total_attendance_days IS NULL OR total_academic_days IS NULL OR total_attendance_days <= total_academic_days");
+
+                            t.HasCheckConstraint("ck_education_details_attendance_pct_range", "previous_year_attendance_percent IS NULL OR (previous_year_attendance_percent >= 0 AND previous_year_attendance_percent <= 100)");
+
+                            t.HasCheckConstraint("ck_education_details_mother_income_nonneg", "mother_monthly_income IS NULL OR mother_monthly_income >= 0");
+                        });
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.FundApplication", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1559,7 +1695,7 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("rejection_reason");
 
-                    b.Property<decimal>("RequestedAmount")
+                    b.Property<decimal?>("RequestedAmount")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("requested_amount");
 
@@ -1627,7 +1763,7 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
 
                     b.ToTable("applications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount > 0");
+                            t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount IS NULL OR requested_amount > 0");
                         });
                 });
 
@@ -1794,6 +1930,25 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.ToTable("fund_transactions", null, t =>
                         {
                             t.HasCheckConstraint("ck_fund_transactions_amount_positive", "amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.HealthApplicationDetails", b =>
+                {
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<int?>("ApplicantAge")
+                        .HasColumnType("integer")
+                        .HasColumnName("applicant_age");
+
+                    b.HasKey("ApplicationId")
+                        .HasName("pk_health_application_details");
+
+                    b.ToTable("health_application_details", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_health_details_applicant_age_range", "applicant_age IS NULL OR (applicant_age >= 0 AND applicant_age <= 150)");
                         });
                 });
 
@@ -2935,6 +3090,10 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("full_name");
 
+                    b.Property<DateTimeOffset?>("IntakeLastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("intake_last_seen_at");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -3721,6 +3880,18 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                     b.Navigation("FundCategory");
                 });
 
+            modelBuilder.Entity("NgoFund.Domain.Entities.EducationApplicationDetails", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithOne("EducationDetails")
+                        .HasForeignKey("NgoFund.Domain.Entities.EducationApplicationDetails", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_education_application_details_applications_application_id");
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("NgoFund.Domain.Entities.FundApplication", b =>
                 {
                     b.HasOne("NgoFund.Domain.Entities.Applicant", "Applicant")
@@ -3761,6 +3932,18 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_fund_transactions_fund_categories_fund_category_id");
 
                     b.Navigation("FundCategory");
+                });
+
+            modelBuilder.Entity("NgoFund.Domain.Entities.HealthApplicationDetails", b =>
+                {
+                    b.HasOne("NgoFund.Domain.Entities.FundApplication", "Application")
+                        .WithOne("HealthDetails")
+                        .HasForeignKey("NgoFund.Domain.Entities.HealthApplicationDetails", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_health_application_details_applications_application_id");
+
+                    b.Navigation("Application");
                 });
 
             modelBuilder.Entity("NgoFund.Domain.Entities.HousingApplicationDetails", b =>
@@ -3900,7 +4083,11 @@ namespace NgoFund.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("BusinessLoanDetails");
 
+                    b.Navigation("EducationDetails");
+
                     b.Navigation("Guarantors");
+
+                    b.Navigation("HealthDetails");
 
                     b.Navigation("HousingDetails");
 

@@ -1,0 +1,187 @@
+@* One applicant profile-document category row (CNIC front/back, membership card), shared by the
+   create modal, the edit modal and the read-only view modal via the Mode parameter — replaces the
+   three near-identical hardcoded markup blocks that used to live in Applicants.razor's create
+   section. Reuses DocumentSlotRow's established CSS classes (doc-slot-row/header/label/satisfied-
+   icon, file-drop-selected*, plain-list) but is a new, applicant-specific component: DocumentSlotRow
+   itself explicitly refuses applicant-scoped uploads by design and is not reused here.
+
+   - Create mode: presentational/event-driven only — the parent owns the actual file bytes (no
+     applicant row exists yet to attach a document to) and passes back just the staged file's name.
+   - Edit mode: lists whatever documents already exist for this category (0, 1, or occasionally
+     more — rendered newest-first by the parent), with a Replace button that reveals a FileDrop (or
+     shows the FileDrop directly — "Add" — when the category is currently empty). Uploads fire
+     immediately via OnFileSelected; there is no separate save step for documents.
+   - View mode: read-only — view buttons only, "Not on file" when empty. *@
+@inject IJSRuntime JS
+
+<div class="doc-slot-row" id="doc-slot-@DocumentType">
+    <div class="doc-slot-header">
+        <span class="doc-slot-label">@Label</span>
+        <span class="badge badge-required">Required</span>
+        @if (IsSatisfied)
+        {
+            <span id="@CheckId" class="doc-slot-satisfied-icon"><Icon Name="check-circle" Size="16" /></span>
+        }
+    </div>
+
+    @if (Mode == ApplicantDocumentMode.Create)
+    {
+        @if (PendingFileName is not null)
+        {
+            <div class="file-drop-selected">
+                <Icon Name="file" Size="16" />
+                <span class="file-drop-selected-name">@PendingFileName</span>
+                <Icon Name="check-circle" Size="16" CssClass="file-drop-selected-check" />
+                <button type="button" class="icon-btn file-drop-selected-remove" aria-label="Remove @Label" @onclick="() => OnFileRemoved.InvokeAsync()">
+                    <Icon Name="close" Size="14" />
+                </button>
+            </div>
+        }
+        else
+        {
+            <FileDrop OnFileSelected="@(f => OnFileSelected.InvokeAsync(f))" Accept=".jpg,.jpeg,.png,.webp,.pdf"
+                      MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
+        }
+    }
+    else
+    {
+        @if (Documents.Count > 0)
+        {
+            <ul class="plain-list">
+                @foreach (var document in Documents)
+                {
+                    <li id="@DocRowId(document)">
+                        <span class="flex-1">@document.FileName</span>
+                        <button type="button" class="icon-btn" aria-label="View document" @onclick="() => OnViewDocument.InvokeAsync(document)"><Icon Name="eye" Size="16" /></button>
+                    </li>
+                }
+            </ul>
+        }
+        else if (Mode == ApplicantDocumentMode.View)
+        {
+            <p class="field-hint">Not on file.</p>
+        }
+
+        @if (Mode == ApplicantDocumentMode.Edit)
+        {
+            @if (ErrorMessage is not null)
+            {
+                <p class="field-error">@ErrorMessage</p>
+            }
+
+            @if (IsBusy)
+            {
+                <p class="field-hint">Uploading…</p>
+            }
+            else if (_showReplace || Documents.Count == 0)
+            {
+                <FileDrop OnFileSelected="@(f => OnFileSelected.InvokeAsync(f))" Accept=".jpg,.jpeg,.png,.webp,.pdf"
+                          MaxSizeBytes="InlineFileUpload.MaxSizeBytes" Hint="PDF, JPG, PNG or WEBP up to 10 MB" />
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _showReplace = true">
+                    <Icon Name="upload-cloud" Size="14" />Replace
+                </button>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ApplicantDocumentMode Mode { get; set; }
+    [Parameter, EditorRequired] public string DocumentType { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+
+    /// <summary>Edit/View modes only — existing documents for this category, newest first (the
+    /// parent filters/sorts the applicant's full document list; usually 0 or 1, occasionally more
+    /// for a returning Google Form applicant until the backend's duplicate-collapse on replace
+    /// catches up).</summary>
+    [Parameter] public IReadOnlyList<DocumentDto> Documents { get; set; } = [];
+
+    /// <summary>Create mode only — the staged file's name, held by the parent since no applicant
+    /// row exists yet to attach an actual document to.</summary>
+    [Parameter] public string? PendingFileName { get; set; }
+
+    /// <summary>Edit mode only — true while a replace/add upload for this category is in flight.</summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>Edit mode only — this category's own inline upload error, if the last attempt failed.</summary>
+    [Parameter] public string? ErrorMessage { get; set; }
+
+    [Parameter] public EventCallback<IBrowserFile> OnFileSelected { get; set; }
+    [Parameter] public EventCallback OnFileRemoved { get; set; }
+    [Parameter] public EventCallback<DocumentDto> OnViewDocument { get; set; }
+
+    private bool _showReplace;
+    private bool _wasBusy;
+    private Dictionary<Guid, string> _previousDocSnapshot = new();
+    private bool _previousSatisfied;
+    private bool _hasInitializedSnapshot;
+    private List<string> _pendingAnimateDocRowSelectors = [];
+    private bool _pendingAnimateSatisfied;
+
+    private bool IsSatisfied => Mode == ApplicantDocumentMode.Create ? PendingFileName is not null : Documents.Count > 0;
+    private string CheckId => $"doc-slot-check-{DocumentType}";
+
+    private static string DocRowId(DocumentDto document) => $"doc-row-{document.Id:N}";
+
+    protected override void OnParametersSet()
+    {
+        // Collapse the Replace FileDrop back down once an upload finishes successfully — a failed
+        // upload (ErrorMessage set) leaves it open so the user can immediately retry.
+        if (_wasBusy && !IsBusy && ErrorMessage is null)
+        {
+            _showReplace = false;
+        }
+        _wasBusy = IsBusy;
+
+        if (Mode == ApplicantDocumentMode.Create)
+        {
+            return;
+        }
+
+        // A document row is "new" (content-wise) either because its id wasn't in the previous
+        // snapshot (an add) or because its file name changed for the same id (a replace — the
+        // backend keeps the same document id across a replace, see DocumentThumbnail's Version
+        // parameter for the matching thumbnail-staleness fix).
+        if (_hasInitializedSnapshot)
+        {
+            foreach (var document in Documents)
+            {
+                if (!_previousDocSnapshot.TryGetValue(document.Id, out var previousFileName) || previousFileName != document.FileName)
+                {
+                    _pendingAnimateDocRowSelectors.Add($"#{DocRowId(document)}");
+                }
+            }
+
+            if (!_previousSatisfied && IsSatisfied)
+            {
+                _pendingAnimateSatisfied = true;
+            }
+        }
+
+        _previousDocSnapshot = Documents.ToDictionary(d => d.Id, d => d.FileName);
+        _previousSatisfied = IsSatisfied;
+        _hasInitializedSnapshot = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingAnimateDocRowSelectors.Count > 0)
+        {
+            var selectors = _pendingAnimateDocRowSelectors;
+            _pendingAnimateDocRowSelectors = [];
+            foreach (var selector in selectors)
+            {
+                await JS.InvokeVoidAsync("ngoFundMotion.animateDocRowIn", selector);
+            }
+        }
+
+        if (_pendingAnimateSatisfied)
+        {
+            _pendingAnimateSatisfied = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.animateSlotSatisfied", $"#{CheckId}");
+        }
+    }
+}

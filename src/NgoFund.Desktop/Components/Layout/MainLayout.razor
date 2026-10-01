@@ -5,6 +5,8 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject ILogger<MainLayout> Logger
+@inject ToastService Toast
+@inject IntakeNotificationState IntakeState
 
 <div class="app-shell">
     <nav class="sidebar @(_sidebarCollapsed ? "collapsed" : "")" id="sidebar-nav">
@@ -50,7 +52,16 @@
             }
             @if (AuthState.HasPermission("applications.view"))
             {
-                <NavLink class="nav-item" href="applications" title="Applications"><Icon Name="applications" CssClass="nav-icon" /><span class="nav-label">Applications</span></NavLink>
+                <NavLink class="nav-item" href="applications" title="Applications">
+                    <Icon Name="applications" CssClass="nav-icon" /><span class="nav-label">Applications</span>
+                    @if (IntakeState.UnreadCount > 0)
+                    {
+                        <span class="nav-count" id="@NavBadgeId" role="status" aria-atomic="true"
+                              aria-label="@($"{IntakeState.UnreadCount} new Google Form application{(IntakeState.UnreadCount == 1 ? "" : "s")}")">
+                            @IntakeState.UnreadCount
+                        </span>
+                    }
+                </NavLink>
             }
             @if (AuthState.HasPermission("payments.view"))
             {
@@ -128,6 +139,27 @@
     private ErrorBoundary? _errorBoundary;
     private bool _sidebarCollapsed;
 
+    // F4 (redesign): sidebar "Applications" nav-count badge is now a true per-user "unread since I
+    // last visited" count, served by IntakeNotificationState.UnreadCount (backed by the server-side
+    // intake-seen watermark — see IntakeSummaryDto/IntakeSeenDto). The badge no longer tracks the
+    // live Pending-status queue and no longer hijacks the nav item's destination: "Applications"
+    // always opens the plain unfiltered list (GoogleFormFilterPath below is only ever used for the
+    // toast's explicit deep link). A 60s poll refreshes the count; MainLayout additionally reacts to
+    // IntakeNotificationState.Changed so a "seen" call from Applications.razor clears the badge
+    // immediately instead of waiting for the next tick.
+    private const int IntakePollIntervalSeconds = 60;
+    private const string GoogleFormFilterPath = "applications?intakeChannel=GoogleForm";
+    private const string NavBadgeId = "applications-nav-badge";
+
+    private System.Threading.Timer? _intakePollTimer;
+    private bool _pendingBadgePulse;
+
+    // Toast-on-genuine-arrival baseline (redesign): no toast fires for whatever is already unread on
+    // cold launch — the badge alone communicates that. A toast only fires when UnreadCount rises
+    // above the baseline recorded the first time HasLoaded becomes true during this running session.
+    private bool _hasUnreadBaseline;
+    private int _unreadBaseline;
+
     private string UserInitial => string.IsNullOrEmpty(AuthState.CurrentUser?.FullName) ? "?" : AuthState.CurrentUser.FullName[..1].ToUpperInvariant();
 
     private string CurrentPageTitle
@@ -152,7 +184,67 @@
     {
         AuthState.Changed += StateHasChanged;
         Navigation.LocationChanged += OnLocationChanged;
+        IntakeState.Changed += OnIntakeStateChanged;
         EnforceAuthGate();
+
+        // Immediate first tick (dueTime: Zero), then every IntakePollIntervalSeconds.
+        // IntakeNotificationState.RefreshAsync() itself checks IsAuthenticated/HasPermission and
+        // never throws, so this can start unconditionally here without duplicating that gate.
+        _intakePollTimer = new System.Threading.Timer(
+            OnIntakePollTimerTick, null, TimeSpan.Zero, TimeSpan.FromSeconds(IntakePollIntervalSeconds));
+    }
+
+    // Timer callbacks run on a thread-pool thread, never the Blazor render sync context — the
+    // refresh (and everything it triggers via IntakeState.Changed) happens inside InvokeAsync so
+    // it's safe to mutate state and trigger a render.
+    private async void OnIntakePollTimerTick(object? state)
+    {
+        await InvokeAsync(() => IntakeState.RefreshAsync());
+    }
+
+    // IntakeNotificationState.Changed may fire off the UI thread (HTTP completions, AuthState
+    // changes) — wrap handling in InvokeAsync. This is also where the toast-on-genuine-arrival rule
+    // lives (see _hasUnreadBaseline/_unreadBaseline doc comment above):
+    //  - not loaded yet → ignore entirely.
+    //  - no baseline yet (first load this session) → record it silently, no toast even if already > 0.
+    //  - unread rose above the baseline → toast for the delta + badge pulse, then move the baseline up.
+    //  - otherwise (unchanged or cleared, e.g. after a "seen" call) → just move the baseline, no toast.
+    private async void OnIntakeStateChanged()
+    {
+        await InvokeAsync(() =>
+        {
+            if (!IntakeState.HasLoaded)
+            {
+                return;
+            }
+
+            if (!_hasUnreadBaseline)
+            {
+                _hasUnreadBaseline = true;
+                _unreadBaseline = IntakeState.UnreadCount;
+            }
+            else if (IntakeState.UnreadCount > _unreadBaseline)
+            {
+                var delta = IntakeState.UnreadCount - _unreadBaseline;
+                Toast.Info(
+                    $"{delta} new Google Form application{(delta == 1 ? "" : "s")} received",
+                    OnIntakeToastClicked);
+                _pendingBadgePulse = true;
+                _unreadBaseline = IntakeState.UnreadCount;
+            }
+            else
+            {
+                _unreadBaseline = IntakeState.UnreadCount;
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private void OnIntakeToastClicked()
+    {
+        _ = IntakeState.MarkSeenAsync();
+        Navigation.NavigateTo(GoogleFormFilterPath);
     }
 
     private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -187,6 +279,12 @@
             await JS.InvokeVoidAsync("ngoFundMotion.animateSidebarToggle", "#sidebar-toggle-btn .sidebar-toggle-icon", _sidebarCollapsed, true);
             await JS.InvokeVoidAsync("ngoFundMotion.animateSidebarNav", "#sidebar-nav .nav-item");
         }
+
+        if (_pendingBadgePulse)
+        {
+            _pendingBadgePulse = false;
+            await JS.InvokeVoidAsync("ngoFundMotion.pulseNavBadge", $"#{NavBadgeId}");
+        }
     }
 
     private async Task ToggleSidebarAsync()
@@ -220,5 +318,7 @@
     {
         AuthState.Changed -= StateHasChanged;
         Navigation.LocationChanged -= OnLocationChanged;
+        IntakeState.Changed -= OnIntakeStateChanged;
+        _intakePollTimer?.Dispose();
     }
 }

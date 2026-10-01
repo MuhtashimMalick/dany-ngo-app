@@ -34,6 +34,7 @@ public partial class App : Application
         services.AddSingleton<ToastService>();
         services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(ResolveApiBaseUrl()) });
         services.AddScoped<ApiClient>();
+        services.AddScoped<IntakeNotificationState>();
 
         var provider = services.BuildServiceProvider();
         Resources.Add("services", provider);

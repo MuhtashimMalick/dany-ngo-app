@@ -10,7 +10,7 @@ namespace NgoFund.Api.ExceptionHandling;
 /// resulting <see cref="ValidationException"/> into the same RFC-9457 <c>ProblemDetails</c> shape
 /// every other error uses.
 /// </summary>
-public class ValidationExceptionHandler(IProblemDetailsService problemDetailsService) : IExceptionHandler
+public class ValidationExceptionHandler(IProblemDetailsService problemDetailsService, ILogger<ValidationExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -24,6 +24,8 @@ public class ValidationExceptionHandler(IProblemDetailsService problemDetailsSer
         var errors = validationException.Errors
             .GroupBy(e => e.PropertyName)
             .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+
+        logger.LogWarning("Validation failed for {Path}: {Errors}", httpContext.Request.Path, errors);
 
         return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
         {

@@ -18,10 +18,16 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(e => e.Sha256).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Description).HasMaxLength(500);
         builder.Property(e => e.SlotKey).HasMaxLength(60);
+        builder.Property(e => e.ExternalFileReference).HasMaxLength(200);
 
         builder.HasIndex(e => e.StorageKey).IsUnique();
         builder.HasIndex(e => new { e.ApplicationId, e.SlotKey });
         builder.HasIndex(e => new { e.ApplicationGuarantorId, e.SlotKey });
+
+        // A6: upload idempotency for Google Form intake — Apps Script retries a submission's file
+        // uploads on every 15-minute retry pass until they've all succeeded; the Drive file id lets
+        // a retried upload resolve to the existing row instead of creating a duplicate.
+        builder.HasIndex(e => e.ExternalFileReference).IsUnique().HasFilter("external_file_reference IS NOT NULL");
 
         // No explicit HasIndex() for the five owner FK columns below — EF Core's convention
         // already creates a non-unique index backing every FK by default. An earlier explicit

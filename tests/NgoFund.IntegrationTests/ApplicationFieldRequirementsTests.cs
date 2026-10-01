@@ -101,6 +101,8 @@ public class ApplicationFieldRequirementsTests(AuthApiFactory factory) : IClassF
 
         // Drive app2 to Paid (the other terminal status) — it must drop out of the count too.
         await client.PostAsJsonAsync($"/api/applications/{app2.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
+        // Feedback round 3, item I: OTHER now has a real completeness manifest.
+        await ApplicationCompletenessTestHelpers.CompleteOtherDocumentsAsync(client, app2.Id);
         await client.PostAsJsonAsync($"/api/applications/{app2.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, 5000m));
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(
             app2.Id, 5000m, DateOnly.FromDateTime(DateTime.UtcNow), "Cash", null, null));

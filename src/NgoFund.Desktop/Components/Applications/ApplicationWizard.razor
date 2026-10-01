@@ -75,7 +75,7 @@
         <div class="wizard-page" id="@_pageContentId" @oninput="HandlePageFieldChanged" @onchange="HandlePageFieldChanged">
             @if (_pages[_pageIndex] == WizardPageKind.ApplicantRequest)
             {
-                <FormSection Title="Applicant">
+                <FormSection Title="@ApplicantSectionTitle">
                     @if (_selectedApplicant is not null)
                     {
                         <div class="flex items-center gap-3">
@@ -129,7 +129,7 @@
                             <FormField Label="Application Date" For="wizardDate">
                                 <InputDate id="wizardDate" @bind-Value="_requestForm.ApplicationDate" />
                             </FormField>
-                            <FormField Label="Purpose *" For="wizardPurpose" CssClass="span-2">
+                            <FormField Label="@PurposeFieldLabel" For="wizardPurpose" CssClass="span-2">
                                 <InputTextArea id="wizardPurpose" @bind-Value="_requestForm.Purpose" />
                             </FormField>
                         </div>
@@ -201,6 +201,24 @@
             {
                 <EditForm Model="_guarantorRows[CurrentGuarantorIndex]">
                     <GuarantorFields Row="_guarantorRows[CurrentGuarantorIndex]" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.EducationStudent)
+            {
+                <EditForm Model="_educationForm">
+                    <EducationStudentFields Model="_educationForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.EducationParents)
+            {
+                <EditForm Model="_educationForm">
+                    <EducationParentFields Model="_educationForm" />
+                </EditForm>
+            }
+            else if (_pages[_pageIndex] == WizardPageKind.HealthDetails)
+            {
+                <EditForm Model="_healthForm">
+                    <HealthDetailsFields Model="_healthForm" />
                 </EditForm>
             }
             else if (_pages[_pageIndex] == WizardPageKind.Documents && _application is not null)
@@ -280,7 +298,8 @@
     private enum WizardPageKind
     {
         ApplicantRequest, Household, HousingDetails, MarriageBride, MarriageGroom,
-        BusinessBackground, BusinessProposal, Guarantor, Documents, Declaration,
+        BusinessBackground, BusinessProposal, Guarantor, EducationStudent, EducationParents,
+        HealthDetails, Documents, Declaration,
     }
 
     [Parameter, EditorRequired] public IReadOnlyList<ApplicationCategoryDto> Categories { get; set; } = [];
@@ -304,6 +323,8 @@
     private readonly MarriageDetailsFormModel _marriageForm = new();
     private readonly BusinessLoanDetailsFormModel _businessForm = new();
     private List<GuarantorRowModel> _guarantorRows = [];
+    private readonly EducationDetailsFormModel _educationForm = new();
+    private readonly HealthDetailsFormModel _healthForm = new();
     private readonly DeclarationFormModel _declarationForm = new();
 
     private ApplicationDto? _application;
@@ -382,12 +403,29 @@
         SelectedCategory?.FundEligibility == "Either" &&
         !(Funds.FirstOrDefault(f => f.Id == _requestForm.FundCategoryId)?.IsZakat ?? false);
 
-    /// <summary>Only HOUSE_RENT/SHAADI/ROZGAR have a document manifest — completeness is fetched
-    /// and shown only for these, matching the manage-modal checklist's same skip rule (nothing to
-    /// check for HEALTH/EDUCATION/EMERGENCY/OTHER, so Finish there behaves exactly as it did
-    /// before this milestone: enabled as soon as the page's own fields are valid).</summary>
-    private bool CategoryHasManifest =>
-        _application?.ApplicationCategoryCode is "HOUSE_RENT" or "SHAADI" or "ROZGAR";
+    /// <summary>Every category except EMERGENCY has a document manifest — completeness is fetched
+    /// and shown for all of them, matching the manage-modal checklist's same skip rule (nothing to
+    /// check for EMERGENCY, so Finish there behaves exactly as it did before this milestone: enabled
+    /// as soon as the page's own fields are valid). See CategoryCapabilities.HasManifest, the single
+    /// source of truth for this shared with Applications.razor's own CategoryHasManifest.</summary>
+    private bool CategoryHasManifest => CategoryCapabilities.HasManifest(_application?.ApplicationCategoryCode);
+
+    /// <summary>EDUCATION's Applicant & Request page picks the FATHER/guardian (the education
+    /// details' own "father" fields are just his Jamaat — see EducationParentFields.razor's doc
+    /// comment), so the section is relabeled while that category is selected; every other category
+    /// keeps the plain "Applicant" label.</summary>
+    private string ApplicantSectionTitle => SelectedCategory?.Code == "EDUCATION" ? "Father / Guardian" : "Applicant";
+
+    /// <summary>The shared Purpose field on the Applicant &amp; Request page doubles as each
+    /// category's free-text description — only the label/hint changes per category (F6); the
+    /// underlying field and its requiredness are identical for every category.</summary>
+    private string PurposeFieldLabel => SelectedCategory?.Code switch
+    {
+        "HEALTH" => "Describe the health issue *",
+        "EDUCATION" => "Describe the assistance needed *",
+        "OTHER" => "Explain your issue *",
+        _ => "Purpose *",
+    };
 
     private string PageTitle => _pages[_pageIndex] switch
     {
@@ -404,6 +442,9 @@
         WizardPageKind.BusinessBackground => "Applicant Background",
         WizardPageKind.BusinessProposal => "Proposed Business",
         WizardPageKind.Guarantor => $"Guarantor {CurrentGuarantorIndex + 1}",
+        WizardPageKind.EducationStudent => "Student Information",
+        WizardPageKind.EducationParents => "Parents' Information",
+        WizardPageKind.HealthDetails => "Health Details",
         WizardPageKind.Documents => "Documents",
         WizardPageKind.Declaration => "Declaration & Terms",
         _ => "",
@@ -424,6 +465,9 @@
             && !string.IsNullOrWhiteSpace(_marriageForm.GroomMaritalStatus),
         WizardPageKind.BusinessProposal => !string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription),
         WizardPageKind.Guarantor => _guarantorRows.Count > CurrentGuarantorIndex && IsGuarantorRowValid(_guarantorRows[CurrentGuarantorIndex]),
+        WizardPageKind.EducationStudent => !string.IsNullOrWhiteSpace(_educationForm.StudentName) && !string.IsNullOrWhiteSpace(_educationForm.CurrentClass),
+        WizardPageKind.EducationParents => !string.IsNullOrWhiteSpace(_educationForm.MotherName),
+        WizardPageKind.HealthDetails => _healthForm.ApplicantAge is > 0,
         WizardPageKind.Declaration => DocumentsAndDetailsComplete && DeclarationFieldsValid,
         _ => true,
     };
@@ -494,6 +538,11 @@
             (string.IsNullOrWhiteSpace(_marriageForm.GroomMaritalStatus), "Groom's Marital Status")),
         WizardPageKind.BusinessProposal => string.IsNullOrWhiteSpace(_businessForm.ProposedBusinessDescription) ? "Proposed Business Description is required." : null,
         WizardPageKind.Guarantor => GuarantorMissingMessage(),
+        WizardPageKind.EducationStudent => JoinMissingFields(
+            (string.IsNullOrWhiteSpace(_educationForm.StudentName), "Name of Student"),
+            (string.IsNullOrWhiteSpace(_educationForm.CurrentClass), "Current Class")),
+        WizardPageKind.EducationParents => string.IsNullOrWhiteSpace(_educationForm.MotherName) ? "Mother's Name is required." : null,
+        WizardPageKind.HealthDetails => _healthForm.ApplicantAge is > 0 ? null : "Applicant Age is required.",
         WizardPageKind.Declaration => DeclarationMissingMessage(),
         _ => null,
     };
@@ -618,6 +667,15 @@
                 {
                     await SaveGuarantorsAndAdvanceAsync();
                 }
+                break;
+            case WizardPageKind.EducationStudent:
+                AdvancePage();
+                break;
+            case WizardPageKind.EducationParents:
+                await SaveEducationAndAdvanceAsync();
+                break;
+            case WizardPageKind.HealthDetails:
+                await SaveHealthAndAdvanceAsync();
                 break;
             case WizardPageKind.Documents:
                 AdvancePage();
@@ -787,6 +845,21 @@
                 }
                 pages.Add(WizardPageKind.Documents);
                 break;
+            case "EDUCATION":
+                pages.Add(WizardPageKind.EducationStudent);
+                pages.Add(WizardPageKind.EducationParents);
+                pages.Add(WizardPageKind.Documents);
+                break;
+            case "HEALTH":
+                pages.Add(WizardPageKind.HealthDetails);
+                pages.Add(WizardPageKind.Documents);
+                break;
+            case "OTHER":
+                // No details page — OTHER has a document manifest (CNIC, membership card,
+                // supporting documents) but no extension table of its own (see
+                // CategoryCapabilities.DetailsSectionKind).
+                pages.Add(WizardPageKind.Documents);
+                break;
         }
 
         pages.Add(WizardPageKind.Declaration);
@@ -903,6 +976,63 @@
                 _businessForm.ProposedBusinessDescription, _businessForm.ProposedBusinessLocation, _businessForm.CapitalRequired,
                 _businessForm.CapitalAlreadyAvailable, _businessForm.HasPriorBusinessExperience, _businessForm.PriorBusinessDetails,
                 _businessForm.EmergencyContactName, _businessForm.EmergencyContactCnic, _businessForm.EmergencyContactPhone));
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveEducationAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpsertEducationDetailsAsync(_application.Id, new UpsertEducationApplicationDetailsRequest(
+                _educationForm.CensusNumber, _educationForm.StudentName, _educationForm.WmoId, _educationForm.StudentMobile,
+                _educationForm.CurrentClass, _educationForm.PreviousClass, _educationForm.LastExamTotalMarks,
+                _educationForm.LastExamMarksObtained, _educationForm.PreviousYearAttendancePercent, _educationForm.TotalAttendanceDays,
+                _educationForm.TotalAcademicDays, _educationForm.FatherJamaat, _educationForm.MotherName,
+                _educationForm.MotherFatherName, _educationForm.MotherCaste, _educationForm.MotherJamaat,
+                _educationForm.MotherMembershipNumber, _educationForm.MotherCnic, _educationForm.MotherMonthlyIncome,
+                _educationForm.MotherMobile, _educationForm.MotherProfession));
+            await RefreshDocumentStateAsync();
+            AdvancePage();
+        }
+        catch (ApiException ex)
+        {
+            _pageError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SaveHealthAndAdvanceAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _pageError = null;
+        try
+        {
+            await ApiClient.UpsertHealthDetailsAsync(_application.Id, new UpsertHealthApplicationDetailsRequest(_healthForm.ApplicantAge));
             await RefreshDocumentStateAsync();
             AdvancePage();
         }

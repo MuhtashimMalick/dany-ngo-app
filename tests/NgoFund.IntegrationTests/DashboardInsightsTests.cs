@@ -102,6 +102,8 @@ public class DashboardInsightsWorkflowTests(AuthApiFactory factory) : IClassFixt
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
+        // Feedback round 3, item I: HEALTH now has a real completeness manifest.
+        await ApplicationCompletenessTestHelpers.CompleteHealthDetailsAsync(client, application.Id);
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("Approved", null, null, application.RequestedAmount));
 
         var paymentResponse = await client.PostAsJsonAsync("/api/payments", new CreatePaymentRequest(

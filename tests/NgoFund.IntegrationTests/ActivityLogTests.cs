@@ -83,6 +83,11 @@ public class ActivityLogTests(AuthApiFactory factory) : IClassFixture<AuthApiFac
             new ChangeApplicationStatusRequest("UnderReview", null, null));
         Assert.Equal(HttpStatusCode.NoContent, reviewResponse.StatusCode);
 
+        // Feedback round 3, item I: OTHER now has a real completeness manifest — satisfied (and its
+        // own feed row, if any, captured) BEFORE the "before" snapshot, so the assertion below still
+        // isolates exactly the Approve transition's own feed delta.
+        await ApplicationCompletenessTestHelpers.CompleteOtherDocumentsAsync(client, application.Id);
+
         var before = await GetFeedAsync(client);
 
         var approveResponse = await client.PostAsJsonAsync($"/api/applications/{application.Id}/status",

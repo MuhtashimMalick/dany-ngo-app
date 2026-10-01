@@ -17,6 +17,10 @@ public class ApplicationCompletenessEvaluatorTests
     {
         Id = id ?? Guid.NewGuid(),
         ApplicationNumber = "APP-0001",
+        // A4: RequestedAmount is now a base required field for every category — defaulted here so
+        // every pre-existing test in this file (written before that rule existed) keeps testing
+        // what it actually means to test, not incidentally failing on a field it never cared about.
+        RequestedAmount = 10000m,
     };
 
     // --- MissingHousingFields ---
@@ -202,6 +206,102 @@ public class ApplicationCompletenessEvaluatorTests
         var category = Category("ROZGAR", termsText: null);
 
         Assert.Contains(ApplicationRequirements.DeclaredBusinessAddress, ApplicationCompletenessEvaluator.MissingBaseFields(application, category));
+    }
+
+    // A4: RequestedAmount is required for every category now — the field Google Form intake can
+    // leave null (every category except ROZGAR's form has no amount question).
+    [Theory]
+    [InlineData("HOUSE_RENT")]
+    [InlineData("EDUCATION")]
+    [InlineData("HEALTH")]
+    [InlineData("OTHER")]
+    [InlineData("EMERGENCY")]
+    public void MissingBaseFields_NullRequestedAmount_IsMissing_ForEveryCategory(string categoryCode)
+    {
+        var application = Application();
+        application.RequestedAmount = null;
+        var category = Category(categoryCode, termsText: null);
+
+        Assert.Contains(ApplicationRequirements.RequestedAmount, ApplicationCompletenessEvaluator.MissingBaseFields(application, category));
+    }
+
+    [Fact]
+    public void MissingBaseFields_RequestedAmountSet_IsNotMissing()
+    {
+        var application = Application(); // RequestedAmount = 10000m by default
+        var category = Category("HEALTH", termsText: null);
+
+        Assert.DoesNotContain(ApplicationRequirements.RequestedAmount, ApplicationCompletenessEvaluator.MissingBaseFields(application, category));
+    }
+
+    // --- MissingEducationFields / MissingHealthFields (A9) ---
+
+    [Fact]
+    public void MissingEducationFields_NullDetails_ReportsAllThree()
+    {
+        var missing = ApplicationCompletenessEvaluator.MissingEducationFields(null);
+
+        Assert.Contains(ApplicationRequirements.StudentName, missing);
+        Assert.Contains(ApplicationRequirements.CurrentClass, missing);
+        Assert.Contains(ApplicationRequirements.MotherName, missing);
+    }
+
+    [Fact]
+    public void MissingEducationFields_EveryFieldFilled_ReportsNothing()
+    {
+        var details = new EducationApplicationDetails { StudentName = "S", CurrentClass = "5th", MotherName = "M" };
+
+        Assert.Empty(ApplicationCompletenessEvaluator.MissingEducationFields(details));
+    }
+
+    [Fact]
+    public void MissingHealthFields_NullAge_IsMissing()
+    {
+        Assert.Contains(ApplicationRequirements.HealthApplicantAge, ApplicationCompletenessEvaluator.MissingHealthFields(null));
+    }
+
+    [Fact]
+    public void MissingHealthFields_AgeSet_ReportsNothing()
+    {
+        Assert.Empty(ApplicationCompletenessEvaluator.MissingHealthFields(new HealthApplicationDetails { ApplicantAge = 30 }));
+    }
+
+    // --- MissingGuarantorFields (A10) ---
+
+    [Fact]
+    public void MissingGuarantorFields_SinglePhoneOnly_ReportsHomeAndOfficePhone_NotMobile()
+    {
+        var guarantor = new ApplicationGuarantor
+        {
+            SequenceNumber = 1, FullName = "G1", Cnic = "40001-1111111-1", MembershipNumber = "M1",
+            ResidentialAddress = "Addr", BusinessAddress = "Biz", PhoneMobile = "0300-0000000",
+            PhoneHome = null, PhoneOffice = null,
+        };
+
+        var missing = ApplicationCompletenessEvaluator.MissingGuarantorFields([guarantor]);
+
+        Assert.Contains(missing, f => f.Label == "Guarantor 1: Home Phone");
+        Assert.Contains(missing, f => f.Label == "Guarantor 1: Office Phone");
+        Assert.DoesNotContain(missing, f => f.Label.Contains("Mobile"));
+    }
+
+    [Fact]
+    public void MissingGuarantorFields_EveryFieldFilled_ReportsNothing()
+    {
+        var guarantor = new ApplicationGuarantor
+        {
+            SequenceNumber = 2, FullName = "G2", Cnic = "40001-1111111-1", MembershipNumber = "M2",
+            ResidentialAddress = "Addr", BusinessAddress = "Biz", PhoneHome = "021-1111111",
+            PhoneOffice = "021-2222222", PhoneMobile = "0300-0000000",
+        };
+
+        Assert.Empty(ApplicationCompletenessEvaluator.MissingGuarantorFields([guarantor]));
+    }
+
+    [Fact]
+    public void MissingGuarantorFields_NoGuarantors_ReportsNothing()
+    {
+        Assert.Empty(ApplicationCompletenessEvaluator.MissingGuarantorFields([]));
     }
 
     // --- EvaluateSlots ---
@@ -436,22 +536,81 @@ public class ApplicationCompletenessEvaluatorTests
         Assert.False(slot.SatisfiedByApplicantProfile);
     }
 
-    // --- Evaluate (dispatcher) regression: non-form categories must Evaluate as always-complete ---
+    // --- Evaluate (dispatcher) regression: EMERGENCY still has no manifest at all ---
 
-    [Theory]
-    [InlineData("HEALTH")]
-    [InlineData("EDUCATION")]
-    [InlineData("EMERGENCY")]
-    [InlineData("OTHER")]
-    public void Evaluate_NonFormCategory_IsAlwaysComplete_RegardlessOfEmptyData(string categoryCode)
+    [Fact]
+    public void Evaluate_Emergency_IsAlwaysComplete_RegardlessOfEmptyData()
     {
         var application = Application();
-        var category = Category(categoryCode, termsText: null);
+        var category = Category("EMERGENCY", termsText: null);
 
-        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, null, [], []);
+        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, null, null, null, [], []);
 
         Assert.True(result.IsComplete);
         Assert.Empty(result.MissingFields);
         Assert.Empty(result.Slots);
+    }
+
+    // A9: HEALTH/EDUCATION/OTHER now DO have a manifest (fields and/or document slots).
+
+    [Fact]
+    public void Evaluate_Health_EmptyData_IsIncomplete_AndListsExpectedGaps()
+    {
+        var application = Application();
+        var category = Category("HEALTH", termsText: null);
+
+        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, null, null, null, [], []);
+
+        Assert.False(result.IsComplete);
+        Assert.Contains(ApplicationRequirements.HealthApplicantAge, result.MissingFields);
+        Assert.Contains(result.Slots, s => s.Slot.SlotKey == "HEALTH.MEDICAL_DOCUMENTS" && s.Slot.IsRequired && !s.IsSatisfied);
+    }
+
+    [Fact]
+    public void Evaluate_Education_EmptyData_IsIncomplete_AndListsExpectedGaps()
+    {
+        var application = Application();
+        var category = Category("EDUCATION", termsText: null);
+
+        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, null, null, null, [], []);
+
+        Assert.False(result.IsComplete);
+        Assert.Contains(ApplicationRequirements.StudentName, result.MissingFields);
+        Assert.Contains(result.Slots, s => s.Slot.SlotKey == "EDUCATION.STUDENT_BFORM_OR_CNIC" && s.Slot.IsRequired && !s.IsSatisfied);
+    }
+
+    [Fact]
+    public void Evaluate_Other_EmptyData_IsIncomplete_OnDocumentSlotsOnly_NoFields()
+    {
+        var application = Application();
+        var category = Category("OTHER", termsText: null);
+
+        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, null, null, null, [], []);
+
+        Assert.False(result.IsComplete);
+        // OTHER has no category-specific fields (A9) — only the base RequestedAmount field (already
+        // satisfied by the Application() factory default) plus its three document slots.
+        Assert.DoesNotContain(result.MissingFields, f => f.SectionLabel != "Request");
+        Assert.Contains(result.Slots, s => s.Slot.SlotKey == "OTHER.SUPPORTING_DOCUMENTS" && !s.IsSatisfied);
+    }
+
+    [Fact]
+    public void Evaluate_Rozgar_GuarantorMissingContactFields_BlocksCompleteness()
+    {
+        var application = Application();
+        var category = Category("ROZGAR", termsText: null);
+        var businessLoan = FullBusinessLoanDetails();
+        application.DeclaredBusinessAddress = "Business address";
+        var guarantor = new ApplicationGuarantor
+        {
+            SequenceNumber = 1, FullName = "G1", Cnic = "40001-1111111-1", MembershipNumber = "M1",
+            ResidentialAddress = "Addr", BusinessAddress = "Biz", PhoneMobile = "0300-0000000",
+            PhoneHome = null, PhoneOffice = null, // Google Form only collects one phone (A10)
+        };
+
+        var result = ApplicationCompletenessEvaluator.Evaluate(application, category, null, null, businessLoan, null, null, [], [guarantor]);
+
+        Assert.False(result.IsComplete);
+        Assert.Contains(result.MissingFields, f => f.Label == "Guarantor 1: Home Phone");
     }
 }

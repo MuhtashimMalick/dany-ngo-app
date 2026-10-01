@@ -88,4 +88,39 @@ internal static class ApplicationCompletenessTestHelpers
         await UploadAsync(client, applicationId, "UtilityBill", "HOUSE_RENT.UTILITY_BILLS");
         await UploadAsync(client, applicationId, "UtilityBill", "HOUSE_RENT.UTILITY_BILLS");
     }
+
+    // Feedback round 3, item I: HEALTH/EDUCATION/OTHER gained a real completeness manifest (the
+    // Google Form intake integration's A9) — a bare CreateBareApplicationAsync application no
+    // longer clears the Approved gate for these three. Any fixture elsewhere in the suite that
+    // needs an Approved HEALTH/EDUCATION/OTHER application (not just the completeness-gate tests
+    // themselves) calls one of these three helpers first, rather than re-deriving the manifest
+    // per test class. Applicant-scoped CNIC/membership-card slots are already satisfied by
+    // CreateApplicantAsync's uploads; these only add what's application-owned.
+
+    public static async Task CompleteHealthDetailsAsync(HttpClient client, Guid applicationId)
+    {
+        await client.PutAsJsonAsync($"/api/applications/{applicationId}/details/health",
+            new UpsertHealthApplicationDetailsRequest(ApplicantAge: 40));
+        await UploadAsync(client, applicationId, "MedicalReport", "HEALTH.MEDICAL_DOCUMENTS");
+    }
+
+    public static async Task CompleteEducationDetailsAsync(HttpClient client, Guid applicationId)
+    {
+        await client.PutAsJsonAsync($"/api/applications/{applicationId}/details/education",
+            new UpsertEducationApplicationDetailsRequest(
+                CensusNumber: null, StudentName: "Test Student", WmoId: null, StudentMobile: null,
+                CurrentClass: "5th", PreviousClass: null, LastExamTotalMarks: null, LastExamMarksObtained: null,
+                PreviousYearAttendancePercent: null, TotalAttendanceDays: null, TotalAcademicDays: null,
+                FatherJamaat: null, MotherName: "Test Mother", MotherFatherName: null, MotherCaste: null,
+                MotherJamaat: null, MotherMembershipNumber: null, MotherCnic: null, MotherMonthlyIncome: null,
+                MotherMobile: null, MotherProfession: null));
+        await UploadAsync(client, applicationId, "FormB", "EDUCATION.STUDENT_BFORM_OR_CNIC");
+        await UploadAsync(client, applicationId, "PassportPhoto", "EDUCATION.STUDENT_PHOTO_AND_RESULT");
+    }
+
+    /// <summary>OTHER has no details table — RequestedAmount (set by CreateBareApplicationAsync)
+    /// and the applicant-scoped CNIC/membership-card slots (from CreateApplicantAsync) are already
+    /// satisfied; only the application-owned SUPPORTING_DOCUMENTS slot needs an upload.</summary>
+    public static async Task CompleteOtherDocumentsAsync(HttpClient client, Guid applicationId) =>
+        await UploadAsync(client, applicationId, "SupportingDocument", "OTHER.SUPPORTING_DOCUMENTS");
 }

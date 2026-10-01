@@ -38,7 +38,11 @@
 
 @code {
     [Parameter, EditorRequired] public Guid ApplicationId { get; set; }
-    [Parameter, EditorRequired] public decimal RequestedAmount { get; set; }
+    // Nullable (F5) — Google-Form-originated applications other than Business Loan itself state no
+    // amount, and this section can in principle be reached for any application whose base
+    // RequestedAmount is now optional, so it mirrors ApplicationDto.RequestedAmount's type exactly
+    // rather than assuming a value is always present.
+    [Parameter] public decimal? RequestedAmount { get; set; }
 
     private bool _isLoading = true;
     private bool _isSaving;

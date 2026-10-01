@@ -21,6 +21,8 @@ public class ApplicationsController(
     IValidator<UpsertHousingApplicationDetailsRequest> housingValidator,
     IValidator<UpsertMarriageApplicationDetailsRequest> marriageValidator,
     IValidator<UpsertBusinessLoanApplicationDetailsRequest> businessLoanValidator,
+    IValidator<UpsertEducationApplicationDetailsRequest> educationValidator,
+    IValidator<UpsertHealthApplicationDetailsRequest> healthValidator,
     IValidator<ReplaceApplicationGuarantorsRequest> guarantorsValidator,
     IValidator<ApproveGuarantorConflictOverrideRequest> conflictOverrideValidator,
     IValidator<ApproveApplicantGuarantorConflictOverrideRequest> applicantConflictOverrideValidator) : ControllerBase
@@ -30,8 +32,15 @@ public class ApplicationsController(
     public async Task<ActionResult<PagedResult<ApplicationDto>>> GetApplications(
         [FromQuery] PagedQuery query, [FromQuery] string? status, [FromQuery] Guid? applicantId,
         [FromQuery] Guid? categoryId, [FromQuery] DateOnly? dateFrom, [FromQuery] DateOnly? dateTo,
-        CancellationToken cancellationToken)
-        => Ok(await applicationService.GetApplicationsAsync(query, status, applicantId, categoryId, dateFrom, dateTo, cancellationToken));
+        [FromQuery] string? intakeChannel, CancellationToken cancellationToken)
+        => Ok(await applicationService.GetApplicationsAsync(query, status, applicantId, categoryId, dateFrom, dateTo, intakeChannel, cancellationToken));
+
+    /// <summary>Backs the Applications screen's Google Form badges — the per-user unread
+    /// notification count and the separate Pending work-queue count.</summary>
+    [HttpGet("intake-summary")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<IntakeSummaryDto>> GetIntakeSummary(CancellationToken cancellationToken)
+        => Ok(await applicationService.GetIntakeSummaryAsync(cancellationToken));
 
     [HttpGet("{id:guid}")]
     [HasPermission("applications.view")]
@@ -133,6 +142,38 @@ public class ApplicationsController(
     {
         await businessLoanValidator.ValidateAndThrowAsync(request, cancellationToken);
         return Ok(await detailsService.UpsertBusinessLoanDetailsAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/details/education")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<EducationApplicationDetailsDto>> GetEducationDetails(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await detailsService.GetEducationDetailsAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/details/education")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<EducationApplicationDetailsDto>> UpsertEducationDetails(Guid id, UpsertEducationApplicationDetailsRequest request, CancellationToken cancellationToken)
+    {
+        await educationValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.UpsertEducationDetailsAsync(id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/details/health")]
+    [HasPermission("applications.view")]
+    public async Task<ActionResult<HealthApplicationDetailsDto>> GetHealthDetails(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await detailsService.GetHealthDetailsAsync(id, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/details/health")]
+    [HasPermission("applications.edit")]
+    public async Task<ActionResult<HealthApplicationDetailsDto>> UpsertHealthDetails(Guid id, UpsertHealthApplicationDetailsRequest request, CancellationToken cancellationToken)
+    {
+        await healthValidator.ValidateAndThrowAsync(request, cancellationToken);
+        return Ok(await detailsService.UpsertHealthDetailsAsync(id, request, cancellationToken));
     }
 
     [HttpGet("{id:guid}/guarantors")]

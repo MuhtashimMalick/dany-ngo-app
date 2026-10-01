@@ -313,6 +313,21 @@ window.ngoFundMotion = (() => {
       });
     },
 
+    // MainLayout.razor: the sidebar's "Applications" nav-count badge (F3) — a single small
+    // overshoot pulse each time the polled PendingGoogleFormCount increases, so a newly-arrived
+    // Google Form submission has a subtle "something changed" cue beyond the number itself.
+    // Skipped entirely under reduced motion (a plain number update already conveys the change).
+    pulseNavBadge(selector) {
+      withReducedMotionGuard((reduceMotion) => {
+        if (reduceMotion) return;
+        gsap.fromTo(
+          selector,
+          { scale: 1 },
+          { scale: 1.35, duration: 0.2, ease: 'power2.out', yoyo: true, repeat: 1, overwrite: true, clearProps: 'transform' }
+        );
+      });
+    },
+
     // CompletenessChecklist.razor: missing-items list re-render (e.g. after a save shrinks the
     // list) — same stagger-fade language as animateTableRows, kept as its own named entry point
     // since a checklist re-render is a distinct motion moment from a data-table page load even
@@ -419,6 +434,33 @@ window.ngoFundPrefs = {
       localStorage.setItem(key, value);
     } catch {
       // Best-effort.
+    }
+  },
+};
+
+// Copy-to-clipboard affordance for the Google Form response ID shown on a GoogleForm application's
+// detail view (F2) — navigator.clipboard requires a secure context, which WebView2 satisfies for
+// its own app origin, but this still falls back to the legacy execCommand path (and swallows any
+// failure) rather than ever throwing back into Blazor for something this low-stakes.
+window.ngoFundClipboard = {
+  async copy(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const el = document.createElement('textarea');
+        el.value = text;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        return true;
+      } catch {
+        return false;
+      }
     }
   },
 };

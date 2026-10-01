@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NgoFund.Domain.Common;
 using NgoFund.Infrastructure.Identity;
+using NgoFund.Infrastructure.Persistence;
 
 namespace NgoFund.Infrastructure.Persistence.Seed;
 
@@ -50,5 +52,39 @@ public static class IdentitySeeder
         logger.LogWarning(
             "Seeded initial Super Admin ({Email}) with a temporary password — MustChangePassword is set; change it on first login.",
             DefaultAdminEmail);
+    }
+
+    /// <summary>
+    /// A8: seeds the non-login system user that attributes every write the Google Form intake
+    /// pipeline makes. Written directly via <see cref="AppDbContext"/> (not <c>UserManager</c>) —
+    /// it deliberately has no password at all, and <c>UserManager.CreateAsync(user)</c> without a
+    /// password only works when Identity's password requirement is disabled globally, which it
+    /// isn't. IsActive=false and no role grants mean it can never sign in through the normal JWT
+    /// login path even if someone tried; only the "GoogleFormIntake" API-key auth scheme (C7) ever
+    /// impersonates it. Idempotent — a no-op once the row exists.
+    /// </summary>
+    public static async Task SeedGoogleFormIntakeUserAsync(IServiceProvider services)
+    {
+        var dbContext = services.GetRequiredService<AppDbContext>();
+
+        if (await dbContext.Users.AnyAsync(u => u.Id == SystemUsers.GoogleFormIntakeUserId))
+        {
+            return;
+        }
+
+        dbContext.Users.Add(new ApplicationUser
+        {
+            Id = SystemUsers.GoogleFormIntakeUserId,
+            UserName = "google-form-intake",
+            NormalizedUserName = "GOOGLE-FORM-INTAKE",
+            Email = null,
+            EmailConfirmed = false,
+            FullName = "Google Form Intake",
+            IsActive = false,
+            MustChangePassword = false,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await dbContext.SaveChangesAsync();
     }
 }

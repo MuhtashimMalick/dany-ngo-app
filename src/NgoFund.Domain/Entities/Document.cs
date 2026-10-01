@@ -50,6 +50,11 @@ public class Document : BaseEntity
     /// completeness.</summary>
     public string? SlotKey { get; set; }
 
+    /// <summary>The Google Drive file id this document was uploaded from, when it arrived via the
+    /// Google Form intake pipeline — used for upload idempotency (a retried Apps Script call for
+    /// the same file must not create a duplicate row). Unique when present.</summary>
+    public string? ExternalFileReference { get; set; }
+
     public DateTimeOffset UploadedAt { get; set; }
     public Guid? UploadedBy { get; set; }
 }

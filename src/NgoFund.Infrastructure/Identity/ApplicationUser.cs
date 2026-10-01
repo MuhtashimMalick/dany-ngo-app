@@ -20,4 +20,7 @@ public class ApplicationUser : IdentityUser<Guid>
     public DateTimeOffset? LastLoginAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Per-user high-water mark for the Google Form unread badge; see docs/schema.md.</summary>
+    public DateTimeOffset? IntakeLastSeenAt { get; set; }
 }

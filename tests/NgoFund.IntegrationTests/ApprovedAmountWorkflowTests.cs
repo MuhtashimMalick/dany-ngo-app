@@ -45,6 +45,8 @@ public class ApprovedAmountWorkflowTests(AuthApiFactory factory) : IClassFixture
         var application = await ReadOrFailAsync<ApplicationDto>(createResponse, HttpStatusCode.Created);
 
         await client.PostAsJsonAsync($"/api/applications/{application.Id}/status", new ChangeApplicationStatusRequest("UnderReview", null, null));
+        // Feedback round 3, item I: OTHER now has a real completeness manifest.
+        await ApplicationCompletenessTestHelpers.CompleteOtherDocumentsAsync(client, application.Id);
         return application;
     }
 

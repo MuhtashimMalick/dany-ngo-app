@@ -18,7 +18,15 @@ public interface IFundApplicationService
     /// </summary>
     Task<PagedResult<ApplicationDto>> GetApplicationsAsync(
         PagedQuery query, string? status, Guid? applicantId, Guid? categoryId, DateOnly? dateFrom, DateOnly? dateTo,
-        CancellationToken cancellationToken);
+        string? intakeChannel, CancellationToken cancellationToken);
+
+    /// <summary>Backs the Applications screen's Google Form badges — the per-user unread count and
+    /// the Pending work-queue count, see <see cref="IntakeSummaryDto"/>.</summary>
+    Task<IntakeSummaryDto> GetIntakeSummaryAsync(CancellationToken cancellationToken);
+
+    /// <summary>Marks Google Form arrivals seen for the caller (advances their
+    /// <c>intake_last_seen_at</c> high-water mark to now) and reports how many were cleared.</summary>
+    Task<IntakeSeenDto> MarkIntakeSeenAsync(CancellationToken cancellationToken);
 
     Task<ApplicationDto> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 

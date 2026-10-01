@@ -5,7 +5,10 @@ public record UpdateApplicantRequest(
     string FullName,
     string? FatherOrHusbandName,
     string Cnic,
-    string Gender,
+    /// <summary>Optional — an intake-created applicant may still have no gender on file.
+    /// <see cref="UpdateApplicantRequestValidator"/> only checks it's a valid enum value when present,
+    /// so the blacklist/edit flow never breaks on a Google-Form applicant.</summary>
+    string? Gender,
     DateOnly? DateOfBirth,
     string? MaritalStatus,
     string? Phone,

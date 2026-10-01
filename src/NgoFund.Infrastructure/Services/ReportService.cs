@@ -40,7 +40,7 @@ public class ReportService(AppDbContext dbContext, IFundCategoryService fundCate
             .ToListAsync(cancellationToken);
 
         var categoryGroups = categoryRows
-            .Select(r => new CategoryBreakdownDto(categoryNames.GetValueOrDefault(r.CategoryId, "Unknown"), r.Count, r.RequestedTotal, r.ApprovedTotal ?? 0m))
+            .Select(r => new CategoryBreakdownDto(categoryNames.GetValueOrDefault(r.CategoryId, "Unknown"), r.Count, r.RequestedTotal ?? 0m, r.ApprovedTotal ?? 0m))
             .OrderByDescending(c => c.Count)
             .ToList();
 
@@ -52,7 +52,7 @@ public class ReportService(AppDbContext dbContext, IFundCategoryService fundCate
             .ToListAsync(cancellationToken);
 
         var pendingCategoryGroups = pendingCategoryRows
-            .Select(r => new CategoryBreakdownDto(categoryNames.GetValueOrDefault(r.CategoryId, "Unknown"), r.Count, r.RequestedTotal, r.ApprovedTotal ?? 0m))
+            .Select(r => new CategoryBreakdownDto(categoryNames.GetValueOrDefault(r.CategoryId, "Unknown"), r.Count, r.RequestedTotal ?? 0m, r.ApprovedTotal ?? 0m))
             .OrderByDescending(c => c.Count)
             .ToList();
 
@@ -196,7 +196,7 @@ public class ReportService(AppDbContext dbContext, IFundCategoryService fundCate
             .AsNoTracking()
             .Where(a => a.Status == ApplicationStatus.Pending || a.Status == ApplicationStatus.UnderReview || a.Status == ApplicationStatus.OnHold)
             .GroupBy(a => a.Priority)
-            .Select(g => new LabeledAmountDto(g.Key.ToString(), g.Count(), g.Sum(a => a.RequestedAmount)))
+            .Select(g => new LabeledAmountDto(g.Key.ToString(), g.Count(), g.Sum(a => a.RequestedAmount) ?? 0m))
             .ToListAsync(cancellationToken);
 
         return new DashboardInsightsDto(

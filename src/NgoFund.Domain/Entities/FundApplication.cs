@@ -26,7 +26,11 @@ public class FundApplication : BaseEntity, IUpdateAuditable
     public Guid FundCategoryId { get; set; }
     public FundCategory FundCategory { get; set; } = null!;
 
-    public decimal RequestedAmount { get; set; }
+    /// <summary>Nullable because Google Form intake only collects an amount for ROZGAR — every
+    /// other category's form has no amount field. Staff Create/Update always supply one (their
+    /// validators still require it &gt; 0); <see cref="ApplicationCompletenessEvaluator.MissingBaseFields"/>
+    /// blocks Approved until it's filled in for every category.</summary>
+    public decimal? RequestedAmount { get; set; }
 
     public decimal? ApprovedAmount { get; set; }
 
@@ -85,6 +89,8 @@ public class FundApplication : BaseEntity, IUpdateAuditable
     public HousingApplicationDetails? HousingDetails { get; set; }
     public MarriageApplicationDetails? MarriageDetails { get; set; }
     public BusinessLoanApplicationDetails? BusinessLoanDetails { get; set; }
+    public EducationApplicationDetails? EducationDetails { get; set; }
+    public HealthApplicationDetails? HealthDetails { get; set; }
     public ICollection<ApplicationGuarantor> Guarantors { get; set; } = [];
 
     public ICollection<ApplicationStatusHistory> StatusHistory { get; set; } = [];

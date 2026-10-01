@@ -11,7 +11,9 @@ public class FundApplicationConfiguration : IEntityTypeConfiguration<FundApplica
     {
         builder.ToTable("applications", t =>
         {
-            t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount > 0");
+            // A4: nullable now — only ROZGAR's Google Form asks for an amount, so intake-created
+            // applications for every other category legitimately have none yet.
+            t.HasCheckConstraint("ck_applications_requested_amount_positive", "requested_amount IS NULL OR requested_amount > 0");
         });
 
         builder.Property(e => e.ApplicationNumber).HasMaxLength(30).IsRequired();

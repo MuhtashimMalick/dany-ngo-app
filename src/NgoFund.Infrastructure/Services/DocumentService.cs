@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using NgoFund.Application.Abstractions;
 using NgoFund.Contracts.Documents;
@@ -12,24 +11,12 @@ namespace NgoFund.Infrastructure.Services;
 
 public class DocumentService(AppDbContext dbContext, IFileStorage fileStorage) : IDocumentService
 {
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/jpeg", "image/png", "image/webp", "application/pdf",
-    };
-
-    private const long MaxSizeBytes = InlineFileUpload.MaxSizeBytes;
-
     public async Task<DocumentDto> UploadAsync(
         Stream content, string fileName, string contentType, string documentType,
         Guid? applicantId, Guid? applicationId, Guid? donationId, Guid? paymentId, Guid? applicationGuarantorId,
         string? slotKey, string? description,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? externalFileReference = null)
     {
-        if (!AllowedContentTypes.Contains(contentType))
-        {
-            throw new InvalidFileException($"Files of type '{contentType}' are not supported. Allowed: JPEG, PNG, WebP, PDF.");
-        }
-
         var ownerCount = new[] { applicantId, applicationId, donationId, paymentId, applicationGuarantorId }.Count(x => x is not null);
         if (ownerCount != 1)
         {
@@ -46,36 +33,15 @@ public class DocumentService(AppDbContext dbContext, IFileStorage fileStorage) :
             await EnsureSlotMatchesAsync(slotKey, parsedDocumentType, applicantId, applicationId, applicationGuarantorId, cancellationToken);
         }
 
-        using var buffer = new MemoryStream();
-        await content.CopyToAsync(buffer, cancellationToken);
-
-        if (buffer.Length == 0)
-        {
-            throw new InvalidFileException("The uploaded file is empty.");
-        }
-
-        if (buffer.Length > MaxSizeBytes)
-        {
-            throw new InvalidFileException($"File exceeds the maximum allowed size of {MaxSizeBytes / 1024 / 1024} MB.");
-        }
-
-        if (!MatchesDeclaredContentType(buffer.ToArray(), contentType))
-        {
-            throw new InvalidFileException($"The uploaded file's contents do not match the declared type '{contentType}'.");
-        }
-
-        var sha256 = Convert.ToHexString(SHA256.HashData(buffer.ToArray()));
-
-        buffer.Position = 0;
-        var storageKey = await fileStorage.SaveAsync(buffer, cancellationToken);
+        var stored = await DocumentFileValidator.ValidateAndStoreAsync(fileStorage, content, contentType, cancellationToken);
 
         var document = new Document
         {
             FileName = fileName,
-            StorageKey = storageKey,
+            StorageKey = stored.StorageKey,
             ContentType = contentType,
-            SizeBytes = buffer.Length,
-            Sha256 = sha256,
+            SizeBytes = stored.SizeBytes,
+            Sha256 = stored.Sha256,
             DocumentType = parsedDocumentType,
             ApplicantId = applicantId,
             ApplicationId = applicationId,
@@ -84,6 +50,7 @@ public class DocumentService(AppDbContext dbContext, IFileStorage fileStorage) :
             ApplicationGuarantorId = applicationGuarantorId,
             SlotKey = slotKey,
             Description = description,
+            ExternalFileReference = externalFileReference,
             UploadedAt = DateTimeOffset.UtcNow,
         };
 
@@ -204,22 +171,5 @@ public class DocumentService(AppDbContext dbContext, IFileStorage fileStorage) :
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private static DocumentDto Map(Document d) => new(d.Id, d.FileName, d.ContentType, d.SizeBytes, d.DocumentType.ToString(), d.Description, d.UploadedAt, d.SlotKey);
-
-    /// <summary>
-    /// Sniffs the leading bytes and checks them against the declared content type, so an upload
-    /// can't lie about what it is (: uploads are validated by content, not extension/
-    /// declared type). Deliberately a small private helper, not a NuGet package — the BCL is
-    /// enough for four fixed magic-byte signatures.
-    /// </summary>
-    private static bool MatchesDeclaredContentType(byte[] bytes, string contentType) => contentType.ToLowerInvariant() switch
-    {
-        "image/jpeg" => bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF,
-        "image/png" => bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(stackalloc byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
-        "image/webp" => bytes.Length >= 12
-            && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8)
-            && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8),
-        "application/pdf" => bytes.Length >= 4 && bytes.AsSpan(0, 4).SequenceEqual("%PDF"u8),
-        _ => false,
-    };
+    internal static DocumentDto Map(Document d) => new(d.Id, d.FileName, d.ContentType, d.SizeBytes, d.DocumentType.ToString(), d.Description, d.UploadedAt, d.SlotKey);
 }
